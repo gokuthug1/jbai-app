@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="l.png" type="image/png" />
+    <title>J.B.A.I</title>
+    <style>
+        /* Fade-Out Animation */
+        @keyframes fadeOut {
+            from { opacity: 1; transform: scale(1); }
+            to { opacity: 0; transform: scale(0.9); }
+        }
+        .fade-out {
+            animation: fadeOut 0.4s ease forwards;
+        }
+
+        /* --- Theme Variables --- */
+        :root {
+            --bg-color: #f3f4f6;
+            --sidebar-bg: #e9e9eb;
+            --sidebar-border: #ddd;
+            --sidebar-hover: #dcdce0;
+            --sidebar-active-bg: #fff;
+            --sidebar-active-border: #ccc;
+            --chat-container-bg: #fff;
+            --text-color: #111;
+            --text-muted: #555;
+            --border-color: #ddd;
+            --input-bg: #fff;
+            --button-bg: #000;
+            --button-text: #fff;
+            --message-user-bg: #f0f0f0;
+            --message-bot-bg: #e5e7eb;
+            --code-bg: #1e1e1e;
+            --code-text: #d4d4d4;
+            --scrollbar-thumb: #ccc;
+            --modal-bg: #fff;
+            --modal-shadow: rgba(0, 0, 0, 0.15);
+            --switch-bg: #ccc;
+            --switch-handle-bg: #fff;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #121212;
+            --sidebar-bg: #1e1e1e;
+            --sidebar-border: #333;
+            --sidebar-hover: #2a2a2a;
+            --sidebar-active-bg: #252525;
+            --sidebar-active-border: #444;
+            --chat-container-bg: #181818;
+            --text-color: #e0e0e0;
+            --text-muted: #aaa;
+            --border-color: #333;
+            --input-bg: #2a2a2a;
+            --button-bg: #e0e0e0;
+            --button-text: #111;
+            --message-user-bg: #2c2c2c;
+            --message-bot-bg: #363636;
+            --code-bg: #2d2d2d;
+            --code-text: #ccc;
+            --scrollbar-thumb: #555;
+            --modal-bg: #2a2a2a;
+            --modal-shadow: rgba(0, 0, 0, 0.5);
+            --switch-bg: #555;
+            --switch-handle-bg: #e0e0e0;
+        }
+
+        [data-theme="midnight"] {
+            --bg-color: #0d1117;
+            --sidebar-bg: #161b22;
+            --sidebar-border: #30363d;
+            --sidebar-hover: #21262d;
+            --sidebar-active-bg: #21262d;
+            --sidebar-active-border: #8b949e;
+            --chat-container-bg: #0d1117;
+            --text-color: #c9d1d9;
+            --text-muted: #8b949e;
+            --border-color: #30363d;
+            --input-bg: #161b22;
+            --button-bg: #238636;
+            --button-text: #ffffff;
+            --message-user-bg: #21262d;
+            --message-bot-bg: #161b22;
+            --code-bg: #010409;
+            --code-text: #c9d1d9;
+            --scrollbar-thumb: #30363d;
+            --modal-bg: #161b22;
+            --modal-shadow: rgba(0, 0, 0, 0.5);
+            --switch-bg: #30363d;
+            --switch-handle-bg: #c9d1d9;
+        }
+        
+        [data-theme="dracula"] {
+            --bg-color: #282a36;
+            --sidebar-bg: #21222c;
+            --sidebar-border: #44475a;
+            --sidebar-hover: #44475a;
+            --sidebar-active-bg: #44475a;
+            --sidebar-active-border: #bd93f9;
+            --chat-container-bg: #282a36;
+            --text-color: #f8f8f2;
+            --text-muted: #6272a4;
+            --border-color: #44475a;
+            --input-bg: #21222c;
+            --button-bg: #bd93f9;
+            --button-text: #f8f8f2;
+            --message-user-bg: #44475a;
+            --message-bot-bg: #21222c;
+            --code-bg: #191a21;
+            --code-text: #f8f8f2;
+            --scrollbar-thumb: #6272a4;
+            --modal-bg: #21222c;
+            --modal-shadow: rgba(0, 0, 0, 0.5);
+            --switch-bg: #6272a4;
+            --switch-handle-bg: #f8f8f2;
+        }
+        
+        [data-theme="solarized-light"] {
+            --bg-color: #fdf6e3;
+            --sidebar-bg: #eee8d5;
+            --sidebar-border: #93a1a1;
+            --sidebar-hover: #e8e1cf;
+            --sidebar-active-bg: #fdf6e3;
+            --sidebar-active-border: #657b83;
+            --chat-container-bg: #fdf6e3;
+            --text-color: #586e75;
+            --text-muted: #93a1a1;
+            --border-color: #93a1a1;
+            --input-bg: #eee8d5;
+            --button-bg: #268bd2;
+            --button-text: #fdf6e3;
+            --message-user-bg: #eee8d5;
+            --message-bot-bg: #eee8d5;
+            --code-bg: #002b36;
+            --code-text: #93a1a1;
+            --scrollbar-thumb: #93a1a1;
+            --modal-bg: #eee8d5;
+            --modal-shadow: rgba(0, 0, 0, 0.15);
+            --switch-bg: #93a1a1;
+            --switch-handle-bg: #fdf6e3;
+        }
+
+        /* Base Styles */
+        body {
+            margin: 0; padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color); color: var(--text-color);
+            display: flex; height: 100vh; width: 100vw;
+            overflow: hidden; position: relative;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* --- Sidebar Styles --- */
+        #sidebar-toggle {
+            position: fixed; top: 15px; left: 15px; z-index: 1100;
+            background: var(--input-bg); border: 1px solid var(--border-color);
+            border-radius: 8px; width: 40px; height: 40px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: left 0.35s ease-in-out; color: var(--text-color);
+        }
+        #sidebar-toggle svg { stroke: currentColor; }
+
+        .close-icon { display: block; }
+        .open-icon { display: none; }
+        body.sidebar-collapsed .close-icon { display: none; }
+        body.sidebar-collapsed .open-icon { display: block; }
+
+        .sidebar {
+            width: 260px; background-color: var(--sidebar-bg);
+            display: flex; flex-direction: column;
+            padding: 10px; border-right: 1px solid var(--sidebar-border);
+            flex-shrink: 0; transition: margin-left 0.35s ease-in-out;
+            margin-left: 0; height: 100%; box-sizing: border-box;
+        }
+        body.sidebar-collapsed .sidebar {
+            /* FIX: Corrected calculation. 260 (width) + 20 (padding) + 1 (border) = 281 */
+            margin-left: -281px;
+        }
+        body:not(.sidebar-collapsed) #sidebar-toggle {
+            /* FIX: Corrected calculation. 260 (sidebar) + 1 (border) + 15 (desired space) = 276 */
+            left: 276px;
+        }
+
+        .sidebar-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 15px; padding-top: 50px;
+        }
+        #new-chat-btn {
+            background: var(--input-bg); color: var(--text-color);
+            border: 1px solid var(--border-color); border-radius: 6px;
+            padding: 8px 12px; cursor: pointer; font-size: 14px;
+        }
+        #new-chat-btn:hover { background-color: var(--sidebar-hover); }
+        .conversation-list { flex: 1; overflow-y: auto; }
+        .conversation-item {
+            padding: 10px; margin-bottom: 5px; border-radius: 6px; cursor: pointer;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            border: 1px solid transparent; user-select: none;
+        }
+        .conversation-item:hover { background-color: var(--sidebar-hover); }
+        .conversation-item.active {
+            background-color: var(--sidebar-active-bg);
+            border-color: var(--sidebar-active-border);
+            font-weight: bold;
+        }
+        .rename-input {
+            width: 100%; box-sizing: border-box; 
+            /* FIX: Used theme variable for border color instead of hardcoded blue. */
+            border: 1px solid var(--border-color);
+            border-radius: 4px; padding: 8px; font-size: 1em; outline: none;
+            background: var(--input-bg); color: var(--text-color);
+        }
+        .conversation-list::-webkit-scrollbar { width: 6px; }
+        .conversation-list::-webkit-scrollbar-thumb {
+            background-color: var(--scrollbar-thumb); border-radius: 3px;
+        }
+
+        /* Chat Container */
+        .chat-container {
+            display: flex; flex-direction: column; flex: 1; height: 100vh;
+            background-color: var(--chat-container-bg); overflow: hidden; position: relative;
+        }
+
+        /* Message Area */
+        .message-area {
+            flex: 1; padding: 20px; overflow-y: auto;
+            border-bottom: 1px solid var(--border-color); display: flex;
+            flex-direction: column; gap: 10px;
+            width: 100%; box-sizing: border-box;
+            /* IMPROVEMENT: Add scrollbar hiding for Firefox for consistency. */
+            scrollbar-width: none;
+        }
+        .message-area::-webkit-scrollbar { display: none; }
+
+        /* Message Styles */
+        .message {
+            display: flex; max-width: 100%; align-items: flex-start;
+            box-sizing: border-box;
+        }
+        .message.user { justify-content: flex-end; }
+        .message.bot { justify-content: flex-start; }
+        .message-content {
+            padding: 8px 12px; border-radius: 16px;
+            max-width: 800px;
+            word-wrap: break-word; white-space: pre-wrap; box-sizing: border-box;
+            line-height: 1.45; position: relative;
+        }
+        .message.user .message-content { background-color: var(--message-user-bg); }
+        .message.bot .message-content { background-color: var(--message-bot-bg); }
+        
+        /* Copy Button for ENTIRE Bot Message */
+        .copy-button {
+            position: absolute; bottom: 8px; right: 8px;
+            background: rgba(0,0,0,0.1); border: none; border-radius: 5px;
+            cursor: pointer; padding: 4px; opacity: 0;
+            transition: opacity 0.2s, background-color 0.2s;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--text-color);
+        }
+        .message-content:hover .copy-button { opacity: 0.7; }
+        .copy-button:hover { opacity: 1; background: rgba(0,0,0,0.2); }
+        .copy-button svg { width: 16px; height: 16px; stroke: currentColor; }
+
+        /* Code Block Styles */
+        .message-content pre {
+            position: relative;
+            background-color: var(--code-bg); color: var(--code-text);
+            padding: 12px; border-radius: 8px; overflow-x: auto;
+            font-family: 'SF Mono', 'Fira Code', 'Courier New', Courier, monospace;
+            font-size: 0.9em; white-space: pre;
+            padding-top: 35px;
+        }
+        
+        .copy-code-button {
+            position: absolute; top: 8px; right: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color); border-radius: 5px;
+            cursor: pointer; padding: 4px 8px; opacity: 0;
+            transition: opacity 0.2s, background-color 0.2s;
+            display: flex; align-items: center; justify-content: center;
+            color: var(--code-text); font-size: 12px;
+        }
+        .message-content pre:hover .copy-code-button { opacity: 0.7; }
+        .copy-code-button:hover { opacity: 1; background: rgba(255, 255, 255, 0.2); }
+        .copy-code-button svg { width: 14px; height: 14px; stroke: currentColor; margin-right: 5px; }
+        
+        /* Typing Cursor Animation */
+        @keyframes blink { 50% { background-color: var(--text-color); } }
+        .typing-cursor {
+            display: inline-block; width: 2px; height: 1em; background-color: transparent;
+            margin-left: 2px; vertical-align: text-bottom; animation: blink 1s step-end infinite;
+        }
+
+        /* Chat Input Area */
+        .chat-input-container {
+            padding: 10px 20px;
+            border-top: 1px solid var(--border-color);
+            background-color: var(--chat-container-bg);
+        }
+        .chat-input-wrapper {
+            display: flex; align-items: center; gap: 10px;
+            max-width: 900px; margin: 0 auto;
+        }
+        textarea {
+            flex: 1; border: 1px solid var(--border-color); border-radius: 12px;
+            padding: 10px; resize: none; outline: none; height: 40px; overflow-y: hidden;
+            font-size: 16px; background-color: var(--input-bg); color: var(--text-color);
+        }
+        #toggle-options-button, #send-button {
+            background-color: var(--button-bg); color: var(--button-text); border: none;
+            border-radius: 50%; width: 40px; height: 40px; display: flex;
+            align-items: center; justify-content: center; cursor: pointer; transition: background-color 0.3s;
+            flex-shrink: 0;
+        }
+        #send-button svg path { fill: var(--button-text); }
+        /* FIX: Changed selector from `stroke` to `fill` as the SVG path is a filled shape. */
+        #toggle-options-button svg path { fill: var(--button-text); }
+
+        /* Modal Overlay & Settings Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6); backdrop-filter: blur(5px);
+            display: flex; justify-content: center; align-items: center; z-index: 2000;
+        }
+        .settings-card {
+            background-color: var(--modal-bg); border-radius: 12px; padding: 25px;
+            width: 90%; max-width: 350px; box-shadow: 0 4px 20px var(--modal-shadow);
+            text-align: left; animation: slideIn 0.3s ease-out; color: var(--text-color);
+            /* FIX: Added box-sizing to prevent padding from breaking the max-width layout. */
+            box-sizing: border-box; 
+        }
+        @keyframes slideIn { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .settings-card h2 { margin-top: 0; font-size: 20px; }
+        .settings-row { margin: 20px 0; display: flex; align-items: center; justify-content: space-between; }
+        .settings-row label { font-size: 16px; }
+        .settings-card select, .settings-card .volume-slider {
+            max-width: 150px; padding: 6px; font-size: 14px; background: var(--input-bg);
+            color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px;
+        }
+        .settings-card button {
+            width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 8px;
+            background-color: var(--button-bg); color: var(--button-text);
+            font-size: 16px; font-weight: bold; cursor: pointer;
+        }
+        .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            /* FIX: Use theme variables for switch colors. */
+            background-color: var(--switch-bg); 
+            transition: 0.4s; border-radius: 24px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+            /* FIX: Use theme variables for switch colors. */
+            background-color: var(--switch-handle-bg); 
+            transition: 0.4s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: var(--button-bg); }
+        input:checked + .slider:before { transform: translateX(26px); }
+        .volume-slider { width: 100px; }
+    </style>
+</head>
+<!-- FIX: Removed empty class="" attribute from body -->
+<body>
+    <button id="sidebar-toggle" title="Toggle Sidebar">
+        <svg class="close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline>
+        </svg>
+        <svg class="open-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline>
+        </svg>
+    </button>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>History</h2>
+            <button id="new-chat-btn">New Chat</button>
+        </div>
+        <div class="conversation-list" id="conversation-list"></div>
+    </div>
+    
+    <div class="chat-container">
+        <div id="message-area" class="message-area"></div>
+        <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+                <button id="toggle-options-button" title="Settings">
+                     <!-- FIX: The original SVG path was designed to be filled, not stroked. Changed stroke="none" to stroke="currentColor" and fill="none" to fill="currentColor" to make it visible and themable. -->
+                    <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.14,12.94c0-.32.06-.63.06-.94s-.06-.63-.06-.94l2.03-1.58a.5.5,0,0,0,.12-.59l-1.92-3.32a.5.5,0,0,0-.57-.2l-2.39.96a7.007,7.007,0,0,0-1.63-.94L14,2.5a.5.5,0,0,0-.5-.5h-3a.5.5,0,0,0-.5.5L9,5.08a7.007,7.007,0,0,0-1.63.94l-2.39-.96a.5.5,0,0,0-.57.2L2.49,8.52a.5.5,0,0,0,.12.59l2.03,1.58c0,.32-.06.63-.06-.94s.06.63.06.94L2.61,14.5a.5.5,0,0,0-.12.59l1.92,3.32a.5.5,0,0,0,.57.2l2.39-.96a7.007,7.007,0,0,0,1.63.94l.5,2.58a.5.5,0,0,0,.5.42h3a.5.5,0,0,0,.5-.42l.5-2.58a7.007,7.007,0,0,0,1.63-.94l2.39.96a.5.5,0,0,0,.57-.2l1.92-3.32a.5.5,0,0,0-.12-.59ZM12,15.5A3.5,3.5,0,1,1,15.5,12,3.5,3.5,0,0,1,12,15.5Z" fill="currentColor" stroke="none"/></svg>
+                </button>
+                <textarea id="chat-input" placeholder="Type your message..."></textarea>
+                <button id="send-button" title="Send Message">
+                    <svg viewBox="0 0 24 24"><path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+// --- Global State ---
+let currentConversation = [];
+let allConversations = [];
+let currentChatId = null;
+let ttsEnabled = false;
+let selectedVoice = null;
+let ttsVolume = 1;
+let filteredVoices = [];
+let isGenerating = false;
+
+// --- Backend API Endpoint ---
+// This single URL now points to your secure backend proxy.
+// The frontend no longer knows or needs the secret API key.
+const API_URL = 'https://jbai-backend.onrender.com/api/generate';
+
+// --- Core Application Logic ---
+function initApp() {
+    const savedTheme = localStorage.getItem('jbai_theme') || 'light';
+    applyTheme(savedTheme);
+
+    const storedData = localStorage.getItem('jbai_conversations');
+    if (storedData) {
+        try {
+            allConversations = JSON.parse(storedData);
+        } catch (e) {
+            console.error("Failed to parse conversations from localStorage:", e);
+            allConversations = [];
+            localStorage.removeItem('jbai_conversations');
+        }
+    }
+
+    loadSidebar();
+    startNewChat();
+    setupEventListeners();
+}
+
+function setupEventListeners() {
+    document.getElementById('new-chat-btn').addEventListener('click', startNewChat);
+    document.getElementById('sidebar-toggle').addEventListener('click', () => {
+        document.body.classList.toggle('sidebar-collapsed');
+    });
+    document.getElementById('chat-input').addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            handleChat();
+        }
+    });
+    document.getElementById('send-button').addEventListener('click', handleChat);
+    document.getElementById('toggle-options-button').addEventListener('click', showSettingsModal);
+}
+
+function startNewChat() {
+    currentConversation = [];
+    currentChatId = null;
+    document.getElementById('message-area').innerHTML = '';
+    document.getElementById('chat-input').value = '';
+    document.querySelectorAll('.conversation-item.active').forEach(el => el.classList.remove('active'));
+    isGenerating = false;
+}
+
+function loadSidebar() {
+    const listElement = document.getElementById('conversation-list');
+    listElement.innerHTML = '';
+    allConversations.sort((a, b) => b.id - a.id);
+    allConversations.forEach(chat => {
+        const item = document.createElement('div');
+        item.className = 'conversation-item';
+        item.textContent = chat.title || 'Untitled Chat'; // Fallback for safety
+        item.dataset.chatId = chat.id;
+        if (chat.id === currentChatId) item.classList.add('active');
+        item.addEventListener('click', () => loadChat(chat.id));
+        item.addEventListener('dblclick', () => handleRename(item, chat.id));
+        listElement.appendChild(item);
+    });
+}
+
+function handleRename(itemElement, chatId) {
+    const originalTitle = itemElement.textContent;
+    itemElement.innerHTML = `<input class="rename-input" type="text" value="${escapeHTML(originalTitle)}">`;
+    const input = itemElement.querySelector('.rename-input');
+    input.focus();
+    input.select();
+    
+    const save = () => {
+        const newTitle = input.value.trim();
+        if (newTitle && newTitle !== originalTitle) {
+            const chat = allConversations.find(c => c.id === chatId);
+            if (chat) chat.title = newTitle;
+            saveAllConversations();
+        }
+        loadSidebar(); // Always reload sidebar to restore the element's state
+    };
+    
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') save();
+        if (e.key === 'Escape') loadSidebar(); // Allow canceling rename
+    });
+}
+
+function loadChat(chatId) {
+    const chat = allConversations.find(c => c.id === chatId);
+    if (!chat) return;
+    currentChatId = chat.id;
+    currentConversation = chat.history;
+    const messageArea = document.getElementById('message-area');
+    messageArea.innerHTML = '';
+    currentConversation.forEach(turn => {
+        if (turn && turn.role && turn.parts && turn.parts[0] && typeof turn.parts[0].text === 'string') {
+            const sender = turn.role === 'user' ? 'user' : 'bot';
+            displayMessage(turn.parts[0].text, sender);
+        }
+    });
+    setTimeout(() => {
+        messageArea.scrollTop = messageArea.scrollHeight;
+    }, 0);
+    loadSidebar();
+}
+
+function saveAllConversations() {
+    localStorage.setItem('jbai_conversations', JSON.stringify(allConversations));
+}
+
+async function generateTitle(chatHistory) {
+    const titlePromptContent = `Based on this conversation, create a short, concise title (4-5 words max). Output only the title, with no extra text or quotes.
+            User: ${chatHistory[0].parts[0].text}
+            AI: ${chatHistory[1].parts[0].text}`;
+
+    try {
+        const response = await fetch(API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: titlePromptContent }] }],
+                generationConfig: { "temperature": 0.3 }
+            }),
+        });
+
+        if (!response.ok) {
+          // If the server gives an error, just fall back gracefully.
+          console.error("Title generation failed due to server response:", response.status);
+          return "New Chat";
+        }
+
+        const data = await response.json();
+        // Add robust checking for the response structure
+        const title = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        return title ? title.trim().replace(/["*]/g, '') : "New Chat";
+
+    } catch (error) {
+        console.error("Title generation failed:", error);
+        return "New Chat";
+    }
+}
+
+async function saveCurrentChat() {
+    if (currentChatId) {
+        const chat = allConversations.find(c => c.id === currentChatId);
+        if (chat) chat.history = currentConversation;
+    } else if (currentConversation.length >= 2) {
+        const newTitle = await generateTitle(currentConversation);
+        currentChatId = Date.now();
+        allConversations.push({
+            id: currentChatId,
+            title: newTitle,
+            history: currentConversation
+        });
+    }
+    saveAllConversations();
+    loadSidebar();
+}
+
+function escapeHTML(text) {
+    const p = document.createElement('p');
+    p.textContent = text;
+    return p.innerHTML;
+}
+
+function formatMessageContent(content) {
+    let formatted = escapeHTML(content);
+    const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+    return formatted.replace(codeBlockRegex, (match, lang, code) => {
+        const languageClass = lang ? `language-${lang}` : '';
+        return `<pre><code class="${languageClass}">${code.trim()}</code></pre>`;
+    });
+}
+
+function addCodeCopyButtons(messageContentElement) {
+    const codeBlocks = messageContentElement.querySelectorAll('pre');
+    const copyIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+
+    codeBlocks.forEach(pre => {
+        const code = pre.querySelector('code');
+        if (!code) return;
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-code-button';
+        copyBtn.innerHTML = copyIconSVG + 'Copy';
+
+        copyBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            navigator.clipboard.writeText(code.textContent).then(() => {
+                copyBtn.textContent = 'Copied!';
+                setTimeout(() => {
+                    copyBtn.innerHTML = copyIconSVG + 'Copy';
+                }, 2000);
+            });
+        });
+        pre.appendChild(copyBtn);
+    });
+}
+
+async function getSystemContext() {
+    let contextParts = [];
+    const now = new Date();
+    contextParts.push(`- Current Date & Time: ${now.toLocaleString()}`);
+
+    if ('getBattery' in navigator) {
+        try {
+            const battery = await navigator.getBattery();
+            const batteryStatus = `${(battery.level * 100).toFixed(0)}%${battery.charging ? ' (charging)' : ''}`;
+            contextParts.push(`- Device Battery: ${batteryStatus}`);
+        } catch (error) {
+            console.warn("Could not retrieve battery status:", error);
+        }
+    }
+
+    if ('geolocation' in navigator) {
+        try {
+            const position = await new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+            });
+            const location = `Lat: ${position.coords.latitude.toFixed(4)}, Lon: ${position.coords.longitude.toFixed(4)}`;
+            contextParts.push(`- User Location: ${location} (approximate)`);
+        } catch (error) {
+            let reason = "Unavailable";
+            if (error.code === 1) reason = "Permission denied by user";
+            if (error.code === 2) reason = "Position unavailable";
+            if (error.code === 3) reason = "Request timed out";
+            contextParts.push(`- User Location: ${reason}`);
+        }
+    }
+
+    contextParts.push(`- Online Status: ${navigator.onLine ? 'Online' : 'Offline'}`);
+    contextParts.push(`- Device Info (User Agent): ${navigator.userAgent}`);
+
+    return `You have access to the user's real-time information. Use it to answer relevant questions (like "what time is it?" or "what is my battery level?"). When asked, present the information in a user-friendly way.
+Here is the current real-time context:
+${contextParts.join('\n')}
+---
+`;
+}
+
+function displayMessage(content, sender) {
+    const messageEl = document.createElement('div');
+    messageEl.className = `message ${sender}`;
+    const contentEl = document.createElement('div');
+    contentEl.className = 'message-content';
+    contentEl.innerHTML = formatMessageContent(content);
+    messageEl.appendChild(contentEl);
+
+    if (sender === 'bot') {
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'copy-button';
+        copyBtn.title = 'Copy full message';
+        const copyIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+        const checkIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+        copyBtn.innerHTML = copyIconSVG;
+
+        copyBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(content).then(() => {
+                copyBtn.innerHTML = checkIconSVG;
+                setTimeout(() => { copyBtn.innerHTML = copyIconSVG; }, 2000);
+            });
+        });
+        contentEl.appendChild(copyBtn);
+        addCodeCopyButtons(contentEl);
+    }
+
+    const messageArea = document.getElementById('message-area');
+    messageArea.appendChild(messageEl);
+    messageArea.scrollTop = messageArea.scrollHeight;
+    return messageEl;
+}
+
+const generateResponse = async (userMessage) => {
+    if (isGenerating) return;
+    isGenerating = true;
+
+    const thinkingMessage = displayMessage("●", 'bot');
+    currentConversation.push({ role: "user", parts: [{ text: userMessage }] });
+
+    const realTimeContext = await getSystemContext();
+    const baseSystemPrompt = "You are a highly intelligent and helpful assistant named J.B.A.I.\nYour responses should follow these guidelines:\n- Always aim to be accurate, clear, and concise.\n- Use bullet points or numbered lists where appropriate to enhance readability.\n- When writing HTML code, ensure the following:\n  - Combine HTML, CSS, and JavaScript into a single HTML file.\n  - Ensure the code is functional, well-structured, and includes inline comments where helpful.\n  - Apply modern styling practices for clean and intuitive UI/UX.";
+    
+    const systemInstruction = { parts: [{ text: realTimeContext + baseSystemPrompt }] };
+
+    try {
+        const response = await fetch(API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                contents: currentConversation,
+                systemInstruction: systemInstruction
+            })
+        });
+
+        thinkingMessage.remove();
+
+        if (!response.ok) {
+            // Try to parse the error message from the backend
+            const errorData = await response.json().catch(() => ({})); 
+            const errorMessage = errorData?.error?.message || `Error: The server responded with status ${response.status}. Is the backend running?`;
+            throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        // Check for the expected response structure from Google, now proxied
+        const botResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+        if (!botResponse) {
+             throw new Error("Invalid or empty response structure from the API.");
+        }
+
+        displayMessage(botResponse, "bot");
+        speakTTS(botResponse);
+
+        currentConversation.push({ role: "model", parts: [{ text: botResponse }] });
+        await saveCurrentChat();
+
+    } catch (error) {
+        if (thinkingMessage) thinkingMessage.remove();
+        // Display a user-friendly error from the catch block
+        displayMessage(`${error.message}`, 'bot');
+        currentConversation.pop(); // Remove the user's message from history if the call failed
+    } finally {
+        isGenerating = false;
+    }
+};
+
+const handleChat = () => {
+    const chatInput = document.getElementById('chat-input');
+    const userMessage = chatInput.value.trim();
+    if (!userMessage || isGenerating) return;
+
+    chatInput.value = "";
+    chatInput.style.height = '40px';
+    displayMessage(userMessage, 'user');
+    generateResponse(userMessage);
+};
+
+function applyTheme(themeName) {
+    document.documentElement.setAttribute('data-theme', themeName);
+    localStorage.setItem('jbai_theme', themeName);
+}
+
+function showSettingsModal() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+    const card = document.createElement('div');
+    card.className = 'settings-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-labelledby', 'settings-title');
+    
+    card.innerHTML = `
+        <h2 id="settings-title">Settings</h2>
+        <div class="settings-row">
+            <label for="themeSelect">Theme</label>
+            <select id="themeSelect">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+                <option value="midnight">Midnight</option>
+                <option value="dracula">Dracula</option>
+                <option value="solarized-light">Solarized Light</option>
+            </select>
+        </div>
+        <div class="settings-row">
+            <label>Enable TTS</label>
+            <label class="switch"><input type="checkbox" id="ttsToggle"><span class="slider"></span></label>
+        </div>
+        <div class="settings-row">
+            <label>Voice Volume</label>
+            <input type="range" min="0" max="1" step="0.1" value="${ttsVolume}" class="volume-slider" id="volumeSlider">
+        </div>
+        <div class="settings-row">
+            <label for="voiceSelect">Bot Voice</label>
+            <select id="voiceSelect" disabled></select>
+        </div>
+        <button id="closeSettingsBtn">Close</button>`;
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    const themeSelect = document.getElementById('themeSelect');
+    themeSelect.value = localStorage.getItem('jbai_theme') || 'light';
+    themeSelect.addEventListener('change', (e) => applyTheme(e.target.value));
+
+    document.getElementById('ttsToggle').checked = ttsEnabled;
+    document.getElementById('ttsToggle').addEventListener('change', (e) => { ttsEnabled = e.target.checked; });
+    document.getElementById('volumeSlider').addEventListener('input', (e) => { ttsVolume = parseFloat(e.target.value); });
+    document.getElementById('voiceSelect').addEventListener('change', (e) => {
+        const voiceIndex = e.target.value;
+        if(filteredVoices[voiceIndex]) {
+            selectedVoice = filteredVoices[voiceIndex];
+        }
+    });
+    document.getElementById('closeSettingsBtn').addEventListener('click', () => overlay.remove());
+    populateVoiceList();
+}
+
+function speakTTS(text) {
+    if (window.speechSynthesis && ttsEnabled && text.trim() !== '') {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, 'Code block.'));
+        utterance.volume = ttsVolume;
+        if (selectedVoice) utterance.voice = selectedVoice;
+        window.speechSynthesis.speak(utterance);
+    }
+}
+
+function populateVoiceList() {
+    const voiceSelect = document.getElementById('voiceSelect');
+    if (!voiceSelect || typeof speechSynthesis === 'undefined') return;
+    
+    const setVoices = () => {
+        filteredVoices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+        voiceSelect.innerHTML = '';
+
+        if (filteredVoices.length === 0) {
+            voiceSelect.disabled = true;
+            const option = document.createElement('option');
+            option.textContent = "No English voices found";
+            voiceSelect.appendChild(option);
+            return;
+        }
+
+        voiceSelect.disabled = false;
+        let selectedIndex = 0;
+        
+        filteredVoices.forEach((voice, index) => {
+            const option = document.createElement('option');
+            option.value = index;
+            option.textContent = `${voice.name} (${voice.lang})`;
+            voiceSelect.appendChild(option);
+            if (selectedVoice && selectedVoice.name === voice.name) {
+                selectedIndex = index;
+            }
+        });
+        
+        voiceSelect.selectedIndex = selectedIndex;
+        if (!selectedVoice && filteredVoices.length > 0) {
+            selectedVoice = filteredVoices[0];
+        }
+    };
+    
+    setVoices();
+    if (speechSynthesis.onvoiceschanged !== undefined) {
+        speechSynthesis.onvoiceschanged = setVoices;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
