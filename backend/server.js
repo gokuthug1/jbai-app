@@ -2,18 +2,25 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
-require('dotenv').config(); // This loads the variables from .env into process.env
+require('dotenv').config(); // This should be near the top
 
-// Initialize the Express app
+// Initialize the Express app - MUST be done before using 'app'
 const app = express();
 
-// Use middleware
-app.use(cors()); // Enable Cross-Origin Resource Sharing
-app.use(express.json()); // Enable the server to parse JSON request bodies
+// --- CORS Configuration ---
+// Define the allowed origin (your Vercel frontend URL)
+const corsOptions = {
+  origin: 'https://jbai-app.vercel.app'
+};
 
-// Get the API key and Port from environment variables
+// Use middleware IN THE CORRECT ORDER
+app.use(cors(corsOptions)); // Use your specific options here
+app.use(express.json());   // Then, enable the server to parse JSON
+
+// --- Environment Variables & API Configuration ---
 const API_KEY = process.env.GOOGLE_API_KEY;
 const PORT = process.env.PORT || 3000;
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent`;
 
 // Check if the API key is available
 if (!API_KEY) {
@@ -21,13 +28,11 @@ if (!API_KEY) {
   process.exit(1); // Exit the application if the key is missing
 }
 
-// Define the Google API URL
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent`;
-
+// --- API Route ---
 // Create a POST endpoint to proxy requests to the Google Gemini API
 app.post('/api/generate', async (req, res) => {
   try {
-    // The client will send the 'contents' and 'systemInstruction' in the request body
+    // The client sends the 'contents' and 'systemInstruction' in the request body
     const { contents, systemInstruction } = req.body;
 
     // Make a POST request to the actual Google API
@@ -57,7 +62,7 @@ app.post('/api/generate', async (req, res) => {
   }
 });
 
-// Start the server
+// --- Start the Server ---
 app.listen(PORT, () => {
-  console.log(`✅ Backend server is running on http://localhost:${PORT}`);
+  console.log(`✅ Backend server is running on port ${PORT}`);
 });
