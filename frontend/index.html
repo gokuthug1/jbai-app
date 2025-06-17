@@ -803,7 +803,7 @@ const generateResponse = async (userMessage) => {
                 saveCurrentChat();
                 speakTTS(botResponseText);
             }
-        }, 10); // Adjust typing speed (milliseconds per character)
+        }, 0.6); // Adjust typing speed (milliseconds per character)
 
     } catch (error) {
         if (thinkingMessage) thinkingMessage.remove();
