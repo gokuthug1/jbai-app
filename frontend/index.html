@@ -395,9 +395,8 @@
             </div>
         </div>
     </div>
-    
     <script>
-// --- Global State ---
+        // --- Global State ---
 let currentConversation = [];
 let allConversations = [];
 let currentChatId = null;
@@ -406,6 +405,7 @@ let selectedVoice = null;
 let ttsVolume = 1;
 let filteredVoices = [];
 let isGenerating = false;
+let botTypingMessageElement = null; // Reference to the bot's message container for typing animation
 
 // --- Backend API Endpoint ---
 // This single URL now points to your secure backend proxy.
@@ -455,6 +455,10 @@ function startNewChat() {
     document.getElementById('chat-input').value = '';
     document.querySelectorAll('.conversation-item.active').forEach(el => el.classList.remove('active'));
     isGenerating = false;
+    if (botTypingMessageElement) {
+        botTypingMessageElement.remove(); // Clear any ongoing typing animation placeholder
+        botTypingMessageElement = null;
+    }
 }
 
 function loadSidebar() {
@@ -479,7 +483,7 @@ function handleRename(itemElement, chatId) {
     const input = itemElement.querySelector('.rename-input');
     input.focus();
     input.select();
-    
+
     const save = () => {
         const newTitle = input.value.trim();
         if (newTitle && newTitle !== originalTitle) {
@@ -489,7 +493,7 @@ function handleRename(itemElement, chatId) {
         }
         loadSidebar(); // Always reload sidebar to restore the element's state
     };
-    
+
     input.addEventListener('blur', save);
     input.addEventListener('keydown', e => {
         if (e.key === 'Enter') save();
@@ -507,7 +511,8 @@ function loadChat(chatId) {
     currentConversation.forEach(turn => {
         if (turn && turn.role && turn.parts && turn.parts[0] && typeof turn.parts[0].text === 'string') {
             const sender = turn.role === 'user' ? 'user' : 'bot';
-            displayMessage(turn.parts[0].text, sender);
+            // When loading existing chat, display full message instantly
+            displayMessage(turn.parts[0].text, sender, true); // Pass true to skip typing animation
         }
     });
     setTimeout(() => {
@@ -536,9 +541,9 @@ async function generateTitle(chatHistory) {
         });
 
         if (!response.ok) {
-          // If the server gives an error, just fall back gracefully.
-          console.error("Title generation failed due to server response:", response.status);
-          return "New Chat";
+            // If the server gives an error, just fall back gracefully.
+            console.error("Title generation failed due to server response:", response.status);
+            return "New Chat";
         }
 
         const data = await response.json();
@@ -569,21 +574,135 @@ async function saveCurrentChat() {
     loadSidebar();
 }
 
+/**
+ * Escapes HTML entities in a string to prevent XSS.
+ * @param {string} text The string to escape.
+ * @returns {string} The escaped string.
+ */
 function escapeHTML(text) {
-    const p = document.createElement('p');
-    p.textContent = text;
-    return p.innerHTML;
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
 }
 
+/**
+ * Applies inline markdown formatting (bold, italic, inline code, links) and escapes content.
+ * @param {string} text The raw text segment to apply inline markdown to.
+ * @returns {string} The HTML string with inline markdown converted and content escaped.
+ */
+function applyInlineMarkdown(text) {
+    let result = escapeHTML(text); // Start by escaping the raw text to prevent XSS
+
+    // Bold: **text** or __text__
+    result = result.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    result = result.replace(/__(.*?)__/g, '<strong>$1</strong>');
+
+    // Italic: *text* or _text_
+    result = result.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    result = result.replace(/_(.*?)_/g, '<em>$1</em>');
+
+    // Inline Code: `code`
+    result = result.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Links: [text](url)
+    result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+
+    // Convert single newlines within this inline context to <br> for line breaks within paragraphs
+    result = result.replace(/\n/g, '<br>');
+
+    return result;
+}
+
+/**
+ * Formats the message content from markdown to HTML, handling block-level elements
+ * like code blocks, headings, lists, and paragraphs, as well as inline elements.
+ * @param {string} content The raw markdown content.
+ * @returns {string} The formatted HTML string.
+ */
 function formatMessageContent(content) {
-    let formatted = escapeHTML(content);
+    let processedContent = content;
+
+    // 1. Extract and replace code blocks with placeholders
+    // This is done first to prevent other markdown rules from affecting code block content.
     const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
-    return formatted.replace(codeBlockRegex, (match, lang, code) => {
-        const languageClass = lang ? `language-${lang}` : '';
-        return `<pre><code class="${languageClass}">${code.trim()}</code></pre>`;
+    const extractedCodeBlocks = [];
+    processedContent = processedContent.replace(codeBlockRegex, (match, lang, code) => {
+        const placeholder = `__JBAICODEBLOCK_PLACEHOLDER_${extractedCodeBlocks.length}__`;
+        extractedCodeBlocks.push({ lang, code });
+        return placeholder;
     });
+
+    // 2. Process content line by line for block-level elements (headings, lists, paragraphs)
+    let lines = processedContent.split('\n');
+    let finalHtmlLines = [];
+    let inUnorderedList = false;
+
+    lines.forEach(line => {
+        const trimmedLine = line.trim();
+
+        // A. Check for Headings (e.g., # Heading, ## Subheading)
+        const headingMatch = trimmedLine.match(/^(#{1,6})\s(.*)$/);
+        if (headingMatch) {
+            if (inUnorderedList) { // Close list if currently open
+                finalHtmlLines.push('</ul>');
+                inUnorderedList = false;
+            }
+            const tag = `h${headingMatch[1].length}`;
+            const headingText = applyInlineMarkdown(headingMatch[2].trim()); // Apply inline markdown within heading
+            finalHtmlLines.push(`<${tag}>${headingText}</${tag}>`);
+            return; // Move to the next line
+        }
+
+        // B. Check for Unordered List Items (e.g., - Item, * Item)
+        const listItemMatch = trimmedLine.match(/^(\*|-)\s(.*)$/);
+        if (listItemMatch) {
+            if (!inUnorderedList) { // Open new list if not already in one
+                finalHtmlLines.push('<ul>');
+                inUnorderedList = true;
+            }
+            const listItemText = applyInlineMarkdown(listItemMatch[2].trim()); // Apply inline markdown within list item
+            finalHtmlLines.push(`<li>${listItemText}</li>`);
+            return; // Move to the next line
+        }
+
+        // C. Handle other lines as paragraphs or empty lines
+        if (inUnorderedList) { // If we were in a list, close it
+            finalHtmlLines.push('</ul>');
+            inUnorderedList = false;
+        }
+
+        if (trimmedLine.length > 0) {
+            // Apply inline markdown to the whole line and wrap in a paragraph tag
+            const paragraphContent = applyInlineMarkdown(trimmedLine);
+            finalHtmlLines.push(`<p>${paragraphContent}</p>`);
+        } else {
+            // Add an empty string for blank lines, which can result in visual spacing
+            finalHtmlLines.push('');
+        }
+    });
+
+    // Close any open list at the very end of the content
+    if (inUnorderedList) {
+        finalHtmlLines.push('</ul>');
+    }
+
+    processedContent = finalHtmlLines.filter(line => line !== '').join('\n'); // Filter out empty lines to avoid redundant <p></p> or just extra newlines
+
+    // 3. Re-insert Code Blocks (must be the absolute last step after all other markdown is done)
+    extractedCodeBlocks.forEach((block, index) => {
+        const placeholder = `__JBAICODEBLOCK_PLACEHOLDER_${index}__`;
+        const languageClass = block.lang ? `language-${block.lang}` : '';
+        const escapedCode = escapeHTML(block.code); // Ensure code content is safe from XSS
+        processedContent = processedContent.replace(placeholder, `<pre><code class="${languageClass}">${escapedCode}</code></pre>`);
+    });
+
+    return processedContent;
 }
 
+/**
+ * Adds copy buttons to code blocks within a given message content element.
+ * @param {HTMLElement} messageContentElement The div.message-content element to scan for code blocks.
+ */
 function addCodeCopyButtons(messageContentElement) {
     const codeBlocks = messageContentElement.querySelectorAll('pre');
     const copyIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
@@ -591,6 +710,9 @@ function addCodeCopyButtons(messageContentElement) {
     codeBlocks.forEach(pre => {
         const code = pre.querySelector('code');
         if (!code) return;
+
+        // Check if a copy button already exists to prevent duplicates on re-rendering
+        if (pre.querySelector('.copy-code-button')) return;
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'copy-code-button';
@@ -608,6 +730,32 @@ function addCodeCopyButtons(messageContentElement) {
         pre.appendChild(copyBtn);
     });
 }
+
+/**
+ * Adds a main copy button to a bot message for the entire message content.
+ * @param {HTMLElement} contentEl The message-content div where the button should be appended.
+ * @param {string} content The original raw text content to copy.
+ */
+function addMainMessageCopyButton(contentEl, content) {
+    // Check if a copy button already exists to prevent duplicates
+    if (contentEl.querySelector('.copy-button')) return;
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'copy-button';
+    copyBtn.title = 'Copy full message';
+    const copyIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
+    const checkIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+    copyBtn.innerHTML = copyIconSVG;
+
+    copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(content).then(() => { // copy the original markdown content
+            copyBtn.innerHTML = checkIconSVG;
+            setTimeout(() => { copyBtn.innerHTML = copyIconSVG; }, 2000);
+        });
+    });
+    contentEl.appendChild(copyBtn);
+}
+
 
 async function getSystemContext() {
     let contextParts = [];
@@ -650,30 +798,33 @@ ${contextParts.join('\n')}
 `;
 }
 
-function displayMessage(content, sender) {
+/**
+ * Displays a message in the chat interface.
+ * For user messages or loaded chat history, it displays immediately.
+ * For new bot responses, it creates the message container for the typing animation.
+ * @param {string} content The message text.
+ * @param {'user' | 'bot'} sender The sender of the message.
+ * @param {boolean} [instant=false] If true, displays the message instantly without typing animation.
+ * @returns {HTMLElement} The created message element.
+ */
+function displayMessage(content, sender, instant = false) {
     const messageEl = document.createElement('div');
     messageEl.className = `message ${sender}`;
     const contentEl = document.createElement('div');
     contentEl.className = 'message-content';
-    contentEl.innerHTML = formatMessageContent(content);
-    messageEl.appendChild(contentEl);
 
-    if (sender === 'bot') {
-        const copyBtn = document.createElement('button');
-        copyBtn.className = 'copy-button';
-        copyBtn.title = 'Copy full message';
-        const copyIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-        const checkIconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-        copyBtn.innerHTML = copyIconSVG;
-
-        copyBtn.addEventListener('click', () => {
-            navigator.clipboard.writeText(content).then(() => {
-                copyBtn.innerHTML = checkIconSVG;
-                setTimeout(() => { copyBtn.innerHTML = copyIconSVG; }, 2000);
-            });
-        });
-        contentEl.appendChild(copyBtn);
-        addCodeCopyButtons(contentEl);
+    if (sender === 'user' || instant) {
+        // For user messages and loaded history, format and display instantly
+        contentEl.innerHTML = formatMessageContent(content);
+        messageEl.appendChild(contentEl);
+        if (sender === 'bot') {
+            addCodeCopyButtons(contentEl);
+            addMainMessageCopyButton(contentEl, content);
+        }
+    } else {
+        // For new bot responses, just append the content element.
+        // The typing animation function will populate and format it later.
+        messageEl.appendChild(contentEl);
     }
 
     const messageArea = document.getElementById('message-area');
@@ -682,16 +833,55 @@ function displayMessage(content, sender) {
     return messageEl;
 }
 
+/**
+ * Simulates a typing animation for the bot's response.
+ * @param {HTMLElement} messageElement The parent div.message.bot element.
+ * @param {string} content The full raw text content to type.
+ */
+async function typeMessage(messageElement, content) {
+    const contentEl = messageElement.querySelector('.message-content');
+    contentEl.innerHTML = ''; // Clear content for typing effect
+
+    const typingSpeed = 20; // milliseconds per character
+    let currentText = '';
+
+    // Simulate typing by adding characters one by one.
+    // Temporarily use textContent for performance during typing.
+    for (let i = 0; i < content.length; i++) {
+        currentText += content[i];
+        contentEl.textContent = currentText; // Update textContent
+        document.getElementById('message-area').scrollTop = document.getElementById('message-area').scrollHeight;
+        await new Promise(resolve => setTimeout(resolve, typingSpeed));
+    }
+
+    // After typing is complete, apply the full markdown formatting
+    contentEl.innerHTML = formatMessageContent(content);
+    addCodeCopyButtons(contentEl); // Add code copy buttons after final rendering
+    addMainMessageCopyButton(contentEl, content); // Add the main message copy button
+    
+    document.getElementById('message-area').scrollTop = document.getElementById('message-area').scrollHeight;
+}
+
 const generateResponse = async (userMessage) => {
     if (isGenerating) return;
     isGenerating = true;
 
-    const thinkingMessage = displayMessage("●", 'bot');
+    // Disable input and send button during generation
+    const chatInput = document.getElementById('chat-input');
+    const sendButton = document.getElementById('send-button');
+    chatInput.disabled = true;
+    sendButton.disabled = true;
+
+    // Display user message instantly
+    displayMessage(userMessage, 'user');
     currentConversation.push({ role: "user", parts: [{ text: userMessage }] });
+
+    // Create the bot message element which will be typed into
+    botTypingMessageElement = displayMessage("", 'bot'); // Create empty bot message container
 
     const realTimeContext = await getSystemContext();
     const baseSystemPrompt = "You are a highly intelligent and helpful assistant named J.B.A.I.\nYour responses should follow these guidelines:\n- Always aim to be accurate, clear, and concise.\n- Use bullet points or numbered lists where appropriate to enhance readability.\n- When writing HTML code, ensure the following:\n  - Combine HTML, CSS, and JavaScript into a single HTML file.\n  - Ensure the code is functional, well-structured, and includes inline comments where helpful.\n  - Apply modern styling practices for clean and intuitive UI/UX.";
-    
+
     const systemInstruction = { parts: [{ text: realTimeContext + baseSystemPrompt }] };
 
     try {
@@ -704,36 +894,40 @@ const generateResponse = async (userMessage) => {
             })
         });
 
-        thinkingMessage.remove();
-
         if (!response.ok) {
-            // Try to parse the error message from the backend
-            const errorData = await response.json().catch(() => ({})); 
+            const errorData = await response.json().catch(() => ({}));
             const errorMessage = errorData?.error?.message || `Error: The server responded with status ${response.status}. Is the backend running?`;
             throw new Error(errorMessage);
         }
 
         const data = await response.json();
-        // Check for the expected response structure from Google, now proxied
         const botResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!botResponse) {
-             throw new Error("Invalid or empty response structure from the API.");
+            throw new Error("Invalid or empty response structure from the API.");
         }
 
-        displayMessage(botResponse, "bot");
+        // Now, type the full response into the prepared message element
+        await typeMessage(botTypingMessageElement, botResponse);
         speakTTS(botResponse);
 
         currentConversation.push({ role: "model", parts: [{ text: botResponse }] });
         await saveCurrentChat();
 
     } catch (error) {
-        if (thinkingMessage) thinkingMessage.remove();
-        // Display a user-friendly error from the catch block
-        displayMessage(`${error.message}`, 'bot');
+        // If an error occurs, clean up the typing element and display an error message
+        if (botTypingMessageElement) {
+            botTypingMessageElement.remove();
+        }
+        displayMessage(`Error: ${error.message}`, 'bot', true); // Display error instantly
         currentConversation.pop(); // Remove the user's message from history if the call failed
     } finally {
         isGenerating = false;
+        botTypingMessageElement = null; // Clear the reference
+        // Re-enable input and send button
+        chatInput.disabled = false;
+        sendButton.disabled = false;
+        chatInput.focus();
     }
 };
 
@@ -743,8 +937,7 @@ const handleChat = () => {
     if (!userMessage || isGenerating) return;
 
     chatInput.value = "";
-    chatInput.style.height = '40px';
-    displayMessage(userMessage, 'user');
+    chatInput.style.height = '40px'; // Reset input height
     generateResponse(userMessage);
 };
 
@@ -764,7 +957,7 @@ function showSettingsModal() {
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-modal', 'true');
     card.setAttribute('aria-labelledby', 'settings-title');
-    
+
     card.innerHTML = `
         <h2 id="settings-title">Settings</h2>
         <div class="settings-row">
@@ -802,7 +995,7 @@ function showSettingsModal() {
     document.getElementById('volumeSlider').addEventListener('input', (e) => { ttsVolume = parseFloat(e.target.value); });
     document.getElementById('voiceSelect').addEventListener('change', (e) => {
         const voiceIndex = e.target.value;
-        if(filteredVoices[voiceIndex]) {
+        if (filteredVoices[voiceIndex]) {
             selectedVoice = filteredVoices[voiceIndex];
         }
     });
@@ -813,7 +1006,11 @@ function showSettingsModal() {
 function speakTTS(text) {
     if (window.speechSynthesis && ttsEnabled && text.trim() !== '') {
         window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, 'Code block.'));
+        // Remove markdown elements from text spoken by TTS for better readability
+        const cleanText = text.replace(/```[\s\S]*?```/g, 'Code block. ')
+                               .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1') // Remove links, keep text
+                               .replace(/(\*\*|__|\*|_|`)/g, ''); // Remove bold, italic, inline code markers
+        const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.volume = ttsVolume;
         if (selectedVoice) utterance.voice = selectedVoice;
         window.speechSynthesis.speak(utterance);
@@ -823,7 +1020,7 @@ function speakTTS(text) {
 function populateVoiceList() {
     const voiceSelect = document.getElementById('voiceSelect');
     if (!voiceSelect || typeof speechSynthesis === 'undefined') return;
-    
+
     const setVoices = () => {
         filteredVoices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
         voiceSelect.innerHTML = '';
@@ -838,7 +1035,7 @@ function populateVoiceList() {
 
         voiceSelect.disabled = false;
         let selectedIndex = 0;
-        
+
         filteredVoices.forEach((voice, index) => {
             const option = document.createElement('option');
             option.value = index;
@@ -848,13 +1045,13 @@ function populateVoiceList() {
                 selectedIndex = index;
             }
         });
-        
+
         voiceSelect.selectedIndex = selectedIndex;
         if (!selectedVoice && filteredVoices.length > 0) {
-            selectedVoice = filteredVoices[0];
+            selectedVoice = filteredVoices[0]; // Default to the first available English voice
         }
     };
-    
+
     setVoices();
     if (speechSynthesis.onvoiceschanged !== undefined) {
         speechSynthesis.onvoiceschanged = setVoices;
