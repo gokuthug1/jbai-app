@@ -426,9 +426,13 @@ let filteredVoices = [];
 let isGenerating = false;
 
 // --- Backend API Endpoints ---
-const API_URL = 'https://jbai-app.onrender.com/api/generate';
-const IMAGE_API_URL = 'https://jbai-app.onrender.com/api/generate-image';
 
+// PASTE THE REAL URL YOU COPIED FROM YOUR RENDER WEB SERVICE DASHBOARD HERE
+const BACKEND_BASE_URL = 'https://jbai-backend.onrender.com'; 
+
+// The rest of the URLs will be built from your base URL
+const API_URL = `${BACKEND_BASE_URL}/api/generate`;
+const IMAGE_API_URL = `${BACKEND_BASE_URL}/api/generate-image`;
 // --- Core Application Logic ---
 function initApp() {
     const savedTheme = localStorage.getItem('jbai_theme') || 'light';
