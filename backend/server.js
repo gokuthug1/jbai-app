@@ -1,63 +1,132 @@
-// Import necessary packages
+// --- Import necessary packages ---
 const express = require('express');
-const axios = require('axios');
 const cors = require('cors');
-require('dotenv').config(); // This loads the variables from .env into process.env
+require('dotenv').config(); // For local development
 
-// Initialize the Express app
+// UPDATED: Import the official Google Cloud Vertex AI library
+const { VertexAI } = require('@google-cloud/vertexai');
+
+// --- Initialization ---
 const app = express();
+const port = process.env.PORT || 3000;
 
-// Use middleware
-app.use(cors()); // Enable Cross-Origin Resource Sharing
-app.use(express.json()); // Enable the server to parse JSON request bodies
+// --- CORS Configuration (Your robust setup is kept) ---
+const allowedOrigins = [
+  'https://jbai-app.vercel.app', // Your production frontend
+  'http://localhost:3000',
+  'http://127.0.0.1:5500' // For VS Code Live Server
+];
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS policy does not allow access from this origin.'));
+    }
+  }
+};
 
-// Get the API key and Port from environment variables
-const API_KEY = process.env.GOOGLE_API_KEY;
-const PORT = process.env.PORT || 3000;
+// --- Middleware ---
+app.use(cors(corsOptions));
+app.use(express.json());
 
-// Check if the API key is available
-if (!API_KEY) {
-  console.error("FATAL ERROR: GOOGLE_API_KEY is not defined in the .env file.");
-  process.exit(1); // Exit the application if the key is missing
+// --- UPDATED: Google Cloud Vertex AI Configuration ---
+// The SDK will automatically use the environment variables and secret file
+// you set up in Render (GOOGLE_PROJECT_ID, GOOGLE_LOCATION, GOOGLE_APPLICATION_CREDENTIALS)
+let vertex_ai;
+if (process.env.GOOGLE_PROJECT_ID && process.env.GOOGLE_LOCATION) {
+  vertex_ai = new VertexAI({
+    project: process.env.GOOGLE_PROJECT_ID,
+    location: process.env.GOOGLE_LOCATION,
+  });
+} else {
+  console.warn("⚠️  Google Cloud credentials are not fully configured. API calls will fail.");
 }
 
-// Define the Google API URL
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent`;
+// --- Health Check Route (Unchanged) ---
+app.get("/", (req, res) => {
+  res.json({
+    message: "J.B.A.I. Backend is alive!",
+    // Check if the VertexAI instance was created successfully
+    vertexAiInitialized: !!vertex_ai,
+    timestamp: new Date().toISOString()
+  });
+});
 
-// Create a POST endpoint to proxy requests to the Google Gemini API
+// --- UPDATED: Text Generation API Route ---
+// This now uses the Vertex AI SDK for better security and simplicity.
 app.post('/api/generate', async (req, res) => {
+  if (!vertex_ai) {
+    return res.status(500).json({ message: "Server is not configured for AI requests." });
+  }
+
   try {
-    // The client will send the 'contents' and 'systemInstruction' in the request body
     const { contents, systemInstruction } = req.body;
 
-    // Make a POST request to the actual Google API
-    const response = await axios.post(
-      `${GOOGLE_API_URL}?key=${API_KEY}`,
-      {
-        contents,
-        systemInstruction,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    // Select the text generation model
+    const generativeModel = vertex_ai.preview.getGenerativeModel({
+      model: "gemini-1.5-flash-preview-05-20", // Your specified text model
+      systemInstruction: systemInstruction,
+    });
 
-    // Send the response from the Google API back to our client
-    res.json(response.data);
+    const result = await generativeModel.generateContent({ contents });
+
+    // The SDK provides a clean response object
+    res.json(result.response);
 
   } catch (error) {
-    console.error("Error proxying to Google API:", error.response ? error.response.data : error.message);
-    // Send a detailed error back to the client
-    res.status(error.response?.status || 500).json({
-      message: "Failed to fetch response from the AI model.",
-      error: error.response?.data?.error || "An internal server error occurred.",
+    console.error("Error in /api/generate:", error);
+    res.status(500).json({
+      message: "Failed to fetch text response from the AI model.",
+      error: error.message,
     });
   }
 });
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`✅ Backend server is running on http://localhost:${PORT}`);
+
+// --- NEW: Image Generation API Route ---
+app.post('/api/generate-image', async (req, res) => {
+  if (!vertex_ai) {
+    return res.status(500).json({ message: "Server is not configured for AI requests." });
+  }
+
+  try {
+    // Get the prompt and model from the request body
+    const { prompt, model } = req.body;
+
+    if (!prompt || !model) {
+      return res.status(400).json({ message: "Missing 'prompt' or 'model' in request body." });
+    }
+
+    // Initialize the Imagen model
+    const imageModel = vertex_ai.preview.getGenerativeModel({ model: model });
+
+    // Send the prompt to the model
+    const imageResult = await imageModel.generateContent({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+    });
+
+    // Extract the base64-encoded image data from the response
+    const b64Json = imageResult.response.candidates[0].content.parts[0].fileData.data;
+
+    if (!b64Json) {
+      throw new Error("No image data found in API response.");
+    }
+
+    // Send the base64 data back to the frontend
+    res.json({ b64Json: b64Json });
+
+  } catch (error) {
+    console.error("Error in /api/generate-image:", error);
+    res.status(500).json({
+      message: "Failed to generate image.",
+      error: error.message,
+    });
+  }
+});
+
+
+// --- Start the Server ---
+app.listen(port, () => {
+  console.log(`✅ J.B.A.I. Backend server is running on port ${port}`);
 });
