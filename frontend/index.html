@@ -415,7 +415,7 @@
         </div>
     </div>
     <script>
-        // --- Global State ---
+           // --- Global State ---
 let currentConversation = [];
 let allConversations = [];
 let currentChatId = null;
@@ -425,14 +425,9 @@ let ttsVolume = 1;
 let filteredVoices = [];
 let isGenerating = false;
 
-// --- Backend API Endpoints ---
+// --- Backend API Endpoint ---
+const API_URL = 'https://jbai-app.onrender.com/api/generate';
 
-// PASTE THE REAL URL YOU COPIED FROM YOUR RENDER WEB SERVICE DASHBOARD HERE
-const BACKEND_BASE_URL = 'https://jbai-backend.onrender.com'; 
-
-// The rest of the URLs will be built from your base URL
-const API_URL = `${BACKEND_BASE_URL}/api/generate`;
-const IMAGE_API_URL = `${BACKEND_BASE_URL}/api/generate-image`;
 // --- Core Application Logic ---
 function initApp() {
     const savedTheme = localStorage.getItem('jbai_theme') || 'light';
@@ -448,29 +443,10 @@ function initApp() {
             localStorage.removeItem('jbai_conversations');
         }
     }
-    
-    injectDynamicStyles(); // Inject CSS for new features
+
     loadSidebar();
     startNewChat();
     setupEventListeners();
-}
-
-/**
- * NEW: Injects necessary CSS for features like generated images
- * without needing to modify a separate CSS file.
- */
-function injectDynamicStyles() {
-    const style = document.createElement('style');
-    style.innerHTML = `
-        .generated-image {
-            max-width: 100%;
-            border-radius: 8px;
-            margin-top: 10px;
-            border: 1px solid var(--border-color);
-            display: block; /* Ensures proper spacing */
-        }
-    `;
-    document.head.appendChild(style);
 }
 
 function setupEventListeners() {
@@ -561,12 +537,6 @@ function saveAllConversations() {
 }
 
 async function generateTitle(chatHistory) {
-    // Check if the first message was an image command to create a better title
-    const firstUserMessage = chatHistory[0].parts[0].text;
-    if (firstUserMessage.toLowerCase().startsWith('/image') || firstUserMessage.toLowerCase().startsWith('generate an image of')) {
-        return `Image: ${firstUserMessage.substring(firstUserMessage.indexOf(' ')).trim()}`;
-    }
-
     const titlePromptContent = `Based on this conversation, create a short, concise title (4-5 words max). Output only the title, with no extra text or quotes.
             User: ${chatHistory[0].parts[0].text}
             AI: ${chatHistory[1].parts[0].text}`;
@@ -621,7 +591,7 @@ function escapeHTML(text) {
 
 /**
  * POWERFUL MARKDOWN-TO-HTML CONVERTER
- * This function correctly parses markdown for headings, lists, bold, italics, code blocks, and now images.
+ * This function correctly parses markdown for headings, lists, bold, italics, and code blocks.
  * @param {string} text - The raw text from the AI.
  * @returns {string} - HTML formatted string.
  */
@@ -629,15 +599,7 @@ function formatMessageContent(text) {
     if (!text) return '';
     let html = text;
 
-    // 0. Images `![alt](src)` - Must be early
-    html = html.replace(/!\[(.*?)\]\((data:image\/[a-zA-Z]+;base64,[A-Za-z0-9+/=]+|[a-zA-Z0-9]+)\)/g, (match, alt, src) => {
-        const sanitizedAlt = escapeHTML(alt);
-        // The regex ensures `src` is either a data URI or a simple string (less secure, but for the sake of example).
-        // For production, you'd want a more robust URL validator.
-        return `<img src="${src}" alt="${sanitizedAlt}" class="generated-image" loading="lazy">`;
-    });
-
-    // 1. Code blocks (```...```)
+    // 1. Code blocks (```...```) - Must be first
     html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
         const languageClass = lang ? `language-${lang.trim()}` : 'plaintext';
         const escapedCode = escapeHTML(code);
@@ -670,7 +632,7 @@ function formatMessageContent(text) {
 
     // 7. Paragraphs - Wrap remaining lines in <p> tags, avoiding double-wrapping
     html = html.split('\n').map(line => line.trim()).filter(line => line).map(line => {
-        if (line.startsWith('<h') || line.startsWith('<ul') || line.startsWith('<ol') || line.startsWith('<pre') || line.startsWith('<img')) {
+        if (line.startsWith('<h') || line.startsWith('<ul') || line.startsWith('<ol') || line.startsWith('<pre')) {
             return line;
         }
         return `<p>${line}</p>`;
@@ -678,7 +640,6 @@ function formatMessageContent(text) {
 
     return html;
 }
-
 
 function addCodeCopyButtons(messageContentElement) {
     const codeBlocks = messageContentElement.querySelectorAll('pre');
@@ -706,6 +667,7 @@ function addCodeCopyButtons(messageContentElement) {
 }
 
 async function getSystemContext() {
+    // This function remains the same as before
     let contextParts = [];
     const now = new Date();
     contextParts.push(`- Current Date & Time: ${now.toLocaleString()}`);
@@ -716,6 +678,14 @@ async function getSystemContext() {
     return `You have access to the user's real-time information. Use it to answer relevant questions (like "what time is it?" or "what is my battery level?"). When asked, present the information in a user-friendly way.\nHere is the current real-time context:\n${contextParts.join('\n')}\n---`;
 }
 
+
+/**
+ * Displays a message in the chat area.
+ * @param {string} content - The text or HTML content of the message.
+ * @param {string} sender - 'user' or 'bot'.
+ * @param {string[]} classes - An array of additional CSS classes to add.
+ * @returns {HTMLElement} The created message element.
+ */
 function displayMessage(content, sender, classes = []) {
     const messageArea = document.getElementById('message-area');
     const messageEl = document.createElement('div');
@@ -731,6 +701,7 @@ function displayMessage(content, sender, classes = []) {
     
     messageEl.appendChild(contentEl);
 
+    // Add copy buttons only for final bot messages, not for "thinking" messages
     if (sender === 'bot' && !classes.includes('thinking')) {
         addCodeCopyButtons(contentEl);
         const copyBtn = document.createElement('button');
@@ -754,12 +725,17 @@ function displayMessage(content, sender, classes = []) {
     return messageEl;
 }
 
+/**
+ * REBUILT: This function now uses a stable fetch and simulates a typing animation.
+ * @param {string} userMessage - The message sent by the user.
+ */
 const generateResponse = async (userMessage) => {
     if (isGenerating) return;
     isGenerating = true;
 
     currentConversation.push({ role: "user", parts: [{ text: userMessage }] });
 
+    // Show a "thinking" indicator immediately
     const thinkingMessage = displayMessage("●", 'bot', ['thinking']);
     
     const realTimeContext = await getSystemContext();
@@ -767,6 +743,7 @@ const generateResponse = async (userMessage) => {
     const systemInstruction = { parts: [{ text: realTimeContext + baseSystemPrompt }] };
 
     try {
+        // REVERTED to a simple, non-streaming fetch for stability
         const response = await fetch(API_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -789,107 +766,54 @@ const generateResponse = async (userMessage) => {
              throw new Error("Invalid or empty response from the API.");
         }
         
+        // Remove the "thinking" message before typing
         thinkingMessage.remove();
-        const botMessageEl = displayMessage("", 'bot');
+
+        // NEW: Simulate typing animation
+        const botMessageEl = displayMessage("", 'bot'); // Create an empty message bubble
         const contentEl = botMessageEl.querySelector('.message-content');
-        
-        // Simulating typing effect
         let i = 0;
         const typingInterval = setInterval(() => {
             if (i < botResponseText.length) {
+                // To show markdown characters as they type, we need to handle HTML entities
                 contentEl.innerHTML += escapeHTML(botResponseText[i]);
                 i++;
                 botMessageEl.scrollIntoView({ behavior: 'smooth', block: 'end' });
             } else {
                 clearInterval(typingInterval);
+                // Now, format the final content with full markdown
                 contentEl.innerHTML = formatMessageContent(botResponseText);
-                addCodeCopyButtons(contentEl); // Add buttons after final format
-                // Add full message copy button
+                
+                // Add copy buttons after the final render
+                addCodeCopyButtons(contentEl);
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button';
                 copyBtn.title = 'Copy full message';
                 copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
-                copyBtn.addEventListener('click', () => { /* ... copy logic ... */ });
+                copyBtn.addEventListener('click', () => {
+                    navigator.clipboard.writeText(botResponseText).then(() => {
+                        copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+                        setTimeout(() => { copyBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`; }, 2000);
+                    });
+                });
                 contentEl.appendChild(copyBtn);
-
+                
+                // Final save and TTS
                 currentConversation.push({ role: "model", parts: [{ text: botResponseText }] });
                 saveCurrentChat();
                 speakTTS(botResponseText);
             }
-        }, 10);
+        }, 10); // Adjust typing speed (milliseconds per character)
 
     } catch (error) {
         if (thinkingMessage) thinkingMessage.remove();
         displayMessage(`Error: ${error.message}`, 'bot', ['error']);
-        currentConversation.pop();
+        currentConversation.pop(); // Remove the user's message if the call failed
     } finally {
         isGenerating = false;
     }
 };
 
-/**
- * NEW: Handles the request to generate an image from a text prompt.
- * @param {string} prompt - The user's description of the image.
- * @param {string} originalUserMessage - The full message typed by the user.
- */
-async function generateImage(prompt, originalUserMessage) {
-    if (isGenerating) return;
-    isGenerating = true;
-
-    currentConversation.push({ role: "user", parts: [{ text: originalUserMessage }] });
-
-    const generatingMessage = displayMessage(`Generating an image of: "${prompt}"...`, 'bot', ['thinking']);
-
-    try {
-        const response = await fetch(IMAGE_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                prompt: prompt,
-                model: "imagen-3.0-generate-002"
-            })
-        });
-
-        generatingMessage.remove();
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            const errorMessage = errorData?.error?.message || `Image generation failed with status ${response.status}.`;
-            throw new Error(errorMessage);
-        }
-
-        const data = await response.json();
-        // Assuming the backend returns a base64 string, as is common with Vertex AI
-        if (data && data.b64Json) {
-            const imageUrl = `data:image/png;base64,${data.b64Json}`;
-            
-            // We use markdown format to store and display the image
-            const botResponseContent = `Here's the image you requested:\n![${escapeHTML(prompt)}](${imageUrl})`;
-
-            displayMessage(botResponseContent, 'bot');
-            
-            currentConversation.push({ role: "model", parts: [{ text: botResponseContent }] });
-            await saveCurrentChat();
-            speakTTS(`Here is the image of ${prompt}`);
-
-        } else {
-            throw new Error("Received an invalid response from the image generation API.");
-        }
-
-    } catch (error) {
-        if (generatingMessage) generatingMessage.remove();
-        displayMessage(`Sorry, I couldn't create that image. ${error.message}`, 'bot', ['error']);
-        // Don't pop the user's message so they can see what failed.
-    } finally {
-        isGenerating = false;
-        const messageArea = document.getElementById('message-area');
-        messageArea.scrollTop = messageArea.scrollHeight;
-    }
-}
-
-/**
- * UPDATED: This function now routes requests to either the text or image generator.
- */
 const handleChat = () => {
     const chatInput = document.getElementById('chat-input');
     const userMessage = chatInput.value.trim();
@@ -898,32 +822,14 @@ const handleChat = () => {
     chatInput.value = "";
     chatInput.style.height = '40px';
     displayMessage(userMessage, 'user');
-
-    const imageKeywords = ['/image ', 'generate an image of', 'create an image of', 'draw a picture of', 'make an image of'];
-    const lowerCaseMessage = userMessage.toLowerCase();
-    let prompt = '';
-    let isImageRequest = false;
-
-    for (const keyword of imageKeywords) {
-        if (lowerCaseMessage.startsWith(keyword)) {
-            prompt = userMessage.substring(keyword.length).trim();
-            isImageRequest = true;
-            break;
-        }
-    }
-
-    if (isImageRequest && prompt) {
-        generateImage(prompt, userMessage);
-    } else if (isImageRequest && !prompt) {
-        displayMessage("Please provide a description for the image. For example: `/image a futuristic city at sunset`", 'bot', ['error']);
-    } else {
-        generateResponse(userMessage);
-    }
+    generateResponse(userMessage);
 };
 
 // --- Settings, Theme, and TTS Functions (Unchanged) ---
 function applyTheme(themeName) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('jbai_theme', themeName); }
-
+function showSettingsModal() { /* ... unchanged ... */ }
+function speakTTS(text) { /* ... unchanged ... */ }
+function populateVoiceList() { /* ... unchanged ... */ }
 function showSettingsModal() {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -980,19 +886,15 @@ function showSettingsModal() {
     document.getElementById('closeSettingsBtn').addEventListener('click', () => overlay.remove());
     populateVoiceList();
 }
-
 function speakTTS(text) {
     if (window.speechSynthesis && ttsEnabled && text.trim() !== '') {
         window.speechSynthesis.cancel();
-        // Don't speak image data or long code blocks
-        const cleanText = text.replace(/!\[.*?\]\(data:.*?\)/g, '').replace(/```[\s\S]*?```/g, 'Code block.');
-        const utterance = new SpeechSynthesisUtterance(cleanText);
+        const utterance = new SpeechSynthesisUtterance(text.replace(/```[\s\S]*?```/g, 'Code block.'));
         utterance.volume = ttsVolume;
         if (selectedVoice) utterance.voice = selectedVoice;
         window.speechSynthesis.speak(utterance);
     }
 }
-
 function populateVoiceList() {
     const voiceSelect = document.getElementById('voiceSelect');
     if (!voiceSelect || typeof speechSynthesis === 'undefined') return;
@@ -1027,6 +929,7 @@ function populateVoiceList() {
         speechSynthesis.onvoiceschanged = setVoices;
     }
 }
+
 
 document.addEventListener('DOMContentLoaded', initApp);
     </script>
