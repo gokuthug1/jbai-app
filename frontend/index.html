@@ -252,7 +252,6 @@
             padding: 8px 12px; border-radius: 16px; max-width: 800px;
             word-wrap: break-word; white-space: pre-wrap; box-sizing: border-box;
             line-height: 1.45; position: relative;
-            /* FIXED: Ensure pointer cursor appears on hover over the message content bubble */
             cursor: pointer;
         }
         .message.user .message-content { background-color: var(--message-user-bg); }
@@ -373,14 +372,14 @@
     </style>
 </head>
 <body>
-    <button id="sidebar-toggle" title="Toggle Sidebar">
+    <button id="sidebar-toggle" title="Toggle Sidebar" type="button">
         <svg class="close-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
         <svg class="open-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
     </button>
     <div class="sidebar">
         <div class="sidebar-header">
             <h2>History</h2>
-            <button id="new-chat-btn">New Chat</button>
+            <button id="new-chat-btn" type="button">New Chat</button>
         </div>
         <div class="conversation-list" id="conversation-list"></div>
     </div>
@@ -389,11 +388,11 @@
         <div id="message-area" class="message-area"></div>
         <div class="chat-input-container">
             <div class="chat-input-wrapper">
-                <button id="toggle-options-button" title="Settings">
+                <button id="toggle-options-button" title="Settings" type="button">
                     <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19.14,12.94c0-.32.06-.63.06-.94s-.06-.63-.06-.94l2.03-1.58a.5.5,0,0,0,.12-.59l-1.92-3.32a.5.5,0,0,0-.57-.2l-2.39.96a7.007,7.007,0,0,0-1.63-.94L14,2.5a.5.5,0,0,0-.5-.5h-3a.5.5,0,0,0-.5.5L9,5.08a7.007,7.007,0,0,0-1.63.94l-2.39-.96a.5.5,0,0,0-.57.2L2.49,8.52a.5.5,0,0,0,.12.59l2.03,1.58c0,.32-.06.63-.06-.94s.06.63.06.94L2.61,14.5a.5.5,0,0,0-.12.59l1.92,3.32a.5.5,0,0,0,.57.2l2.39-.96a7.007,7.007,0,0,0,1.63.94l.5,2.58a.5.5,0,0,0,.5.42h3a.5.5,0,0,0,.5-.42l.5-2.58a7.007,7.007,0,0,0,1.63-.94l2.39.96a.5.5,0,0,0,.57-.2l1.92-3.32a.5.5,0,0,0-.12-.59ZM12,15.5A3.5,3.5,0,1,1,15.5,12,3.5,3.5,0,0,1,12,15.5Z" fill="currentColor" stroke="none"/></svg>
                 </button>
                 <textarea id="chat-input" placeholder="Type your message..." rows="1"></textarea>
-                <button id="send-button" title="Send Message">
+                <button id="send-button" title="Send Message" type="button">
                     <svg viewBox="0 0 24 24"><path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path></svg>
                 </button>
             </div>
@@ -436,6 +435,7 @@ function initApp() {
     loadSidebar();
     startNewChat();
     setupEventListeners();
+    setupUploadListener(); // <-- Add listener for data upload
 }
 
 function setupEventListeners() {
@@ -479,6 +479,7 @@ function loadSidebar() {
         titleSpan.textContent = chat.title || 'Untitled Chat';
         titleSpan.title = chat.title || 'Untitled Chat';
         const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
         deleteBtn.className = 'delete-btn';
         deleteBtn.title = 'Delete Chat';
         deleteBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`;
@@ -611,6 +612,7 @@ function addCopyButtons(contentEl, rawText) {
     
     if (!contentEl.querySelector('.copy-button')) {
         const copyBtn = document.createElement('button');
+        copyBtn.type = 'button';
         copyBtn.className = 'copy-button';
         copyBtn.title = 'Copy full message';
         copyBtn.innerHTML = copyIcon;
@@ -628,6 +630,7 @@ function addCopyButtons(contentEl, rawText) {
         if (pre.querySelector('.copy-code-button')) return;
         const code = pre.querySelector('code');
         const copyCodeBtn = document.createElement('button');
+        copyCodeBtn.type = 'button';
         copyCodeBtn.className = 'copy-code-button';
         copyCodeBtn.innerHTML = copyIcon + 'Copy';
         copyCodeBtn.addEventListener('click', e => {
@@ -665,6 +668,7 @@ function displayMessage(content, sender, messageId, isTyping = false) {
         messageEl.classList.add('thinking');
         contentEl.innerHTML = "●";
     } else {
+        messageEl.title = 'Shift+Click or Long Press to delete'; // <-- Add title for discoverability
         contentEl.innerHTML = (sender === 'bot') ? formatMessageContent(content) : escapeHTML(content);
     }
     
@@ -782,6 +786,47 @@ function downloadAllData() {
     URL.revokeObjectURL(url);
 }
 
+function handleDataUpload() {
+    const fileInput = document.getElementById('upload-data-input');
+    if(fileInput) fileInput.click();
+}
+
+function setupUploadListener() {
+    let fileInput = document.getElementById('upload-data-input');
+    if (!fileInput) {
+        fileInput = document.createElement('input');
+        fileInput.id = 'upload-data-input';
+        fileInput.type = 'file';
+        fileInput.accept = '.json,application/json';
+        fileInput.style.display = 'none';
+        document.body.appendChild(fileInput);
+    }
+    fileInput.addEventListener('change', (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const importedData = JSON.parse(e.target.result);
+                if (!Array.isArray(importedData)) throw new Error("Data is not a valid array.");
+                const isValid = importedData.every(c => c.id && c.title && Array.isArray(c.history));
+                if (!isValid) throw new Error("JSON has incorrect format. Each item must have id, title, and history.");
+                if (confirm('Successfully validated backup file. Overwrite all current conversations with this data? This cannot be undone.')) {
+                    localStorage.setItem('jbai_conversations', JSON.stringify(importedData));
+                    alert('Data successfully imported. The application will now reload.');
+                    location.reload();
+                }
+            } catch (error) {
+                alert(`Error importing data: ${error.message}`);
+            } finally {
+                event.target.value = '';
+            }
+        };
+        reader.onerror = () => { alert('Error reading the file.'); event.target.value = ''; };
+        reader.readAsText(file);
+    });
+}
+
 function deleteAllData() {
     if (confirm('Are you absolutely sure you want to delete ALL your chat data?\nThis action cannot be undone.')) {
         localStorage.removeItem('jbai_conversations');
@@ -802,9 +847,10 @@ function showSettingsModal() {
         <div class="settings-row"><label>Voice Volume</label><input type="range" min="0" max="1" step="0.1" value="${ttsVolume}" id="volumeSlider"></div>
         <div class="settings-row"><label for="voiceSelect">Bot Voice</label><select id="voiceSelect" disabled></select></div>
         <hr>
-        <button id="download-data-btn">Download Data</button>
-        <button id="delete-data-btn" class="btn-danger">Delete All Data</button>
-        <button id="closeSettingsBtn" class="btn-primary" style="margin-top: 20px;">Close</button>`;
+        <button id="upload-data-btn" type="button">Upload Data</button>
+        <button id="download-data-btn" type="button">Download Data</button>
+        <button id="delete-data-btn" type="button" class="btn-danger">Delete All Data</button>
+        <button id="closeSettingsBtn" type="button" class="btn-primary" style="margin-top: 20px;">Close</button>`;
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
@@ -815,7 +861,7 @@ function showSettingsModal() {
     document.getElementById('volumeSlider').addEventListener('input', (e) => { ttsVolume = parseFloat(e.target.value); });
     document.getElementById('voiceSelect').addEventListener('change', (e) => { if(filteredVoices[e.target.value]) selectedVoice = filteredVoices[e.target.value]; });
     
-    // Add listeners for new buttons
+    document.getElementById('upload-data-btn').addEventListener('click', handleDataUpload);
     document.getElementById('download-data-btn').addEventListener('click', downloadAllData);
     document.getElementById('delete-data-btn').addEventListener('click', deleteAllData);
     document.getElementById('closeSettingsBtn').addEventListener('click', () => overlay.remove());
