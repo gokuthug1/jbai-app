@@ -40,6 +40,8 @@
             --modal-shadow: rgba(0, 0, 0, 0.15);
             --switch-bg: #ccc;
             --switch-handle-bg: #fff;
+            --danger-color: #e53e3e;
+            --danger-bg: rgba(229, 62, 62, 0.1);
         }
 
         [data-theme="dark"] {
@@ -66,6 +68,8 @@
             --modal-shadow: rgba(0, 0, 0, 0.5);
             --switch-bg: #555;
             --switch-handle-bg: #e0e0e0;
+            --danger-color: #f56565;
+            --danger-bg: rgba(245, 101, 101, 0.15);
         }
 
         [data-theme="midnight"] {
@@ -92,6 +96,8 @@
             --modal-shadow: rgba(0, 0, 0, 0.5);
             --switch-bg: #30363d;
             --switch-handle-bg: #c9d1d9;
+            --danger-color: #da3633;
+            --danger-bg: rgba(218, 54, 51, 0.15);
         }
         
         [data-theme="dracula"] {
@@ -118,6 +124,8 @@
             --modal-shadow: rgba(0, 0, 0, 0.5);
             --switch-bg: #6272a4;
             --switch-handle-bg: #f8f8f2;
+            --danger-color: #ff5555;
+            --danger-bg: rgba(255, 85, 85, 0.15);
         }
         
         [data-theme="solarized-light"] {
@@ -144,6 +152,8 @@
             --modal-shadow: rgba(0, 0, 0, 0.15);
             --switch-bg: #93a1a1;
             --switch-handle-bg: #fdf6e3;
+            --danger-color: #dc322f;
+            --danger-bg: rgba(220, 50, 47, 0.1);
         }
 
         /* Base Styles */
@@ -214,7 +224,7 @@
             opacity: 0; transition: opacity 0.2s; color: var(--text-muted); flex-shrink: 0;
         }
         .conversation-item:hover .delete-btn { opacity: 0.6; }
-        .delete-btn:hover { opacity: 1; color: #e53e3e; }
+        .delete-btn:hover { opacity: 1; color: var(--danger-color); }
         .conversation-list::-webkit-scrollbar { width: 6px; }
         .conversation-list::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb); border-radius: 3px; }
         
@@ -235,7 +245,6 @@
         /* Message Styles */
         .message {
             display: flex; max-width: 100%; align-items: flex-start; box-sizing: border-box;
-            cursor: pointer; 
         }
         .message.user { justify-content: flex-end; }
         .message.bot { justify-content: flex-start; }
@@ -243,6 +252,8 @@
             padding: 8px 12px; border-radius: 16px; max-width: 800px;
             word-wrap: break-word; white-space: pre-wrap; box-sizing: border-box;
             line-height: 1.45; position: relative;
+            /* FIXED: Ensure pointer cursor appears on hover over the message content bubble */
+            cursor: pointer;
         }
         .message.user .message-content { background-color: var(--message-user-bg); }
         .message.bot .message-content { background-color: var(--message-bot-bg); }
@@ -324,10 +335,22 @@
             color: var(--text-color); border: 1px solid var(--border-color); border-radius: 6px;
         }
         .settings-card button {
-            width: 100%; padding: 12px; margin-top: 10px; border: none; border-radius: 8px;
-            background-color: var(--button-bg); color: var(--button-text);
-            font-size: 16px; font-weight: bold; cursor: pointer;
+            width: 100%; padding: 12px; margin-top: 10px; border: 1px solid var(--border-color); border-radius: 8px;
+            background-color: var(--input-bg); color: var(--text-color);
+            font-size: 16px; font-weight: bold; cursor: pointer; transition: background-color 0.2s, border-color 0.2s;
         }
+        .settings-card button:hover { background-color: var(--sidebar-hover); }
+        .settings-card .btn-primary {
+            background-color: var(--button-bg); color: var(--button-text); border-color: var(--button-bg);
+        }
+        .settings-card .btn-danger {
+            color: var(--danger-color); border-color: var(--danger-color);
+        }
+        .settings-card .btn-danger:hover {
+            background-color: var(--danger-bg);
+        }
+        .settings-card hr { border: none; border-top: 1px solid var(--border-color); margin: 25px 0; }
+
         .switch { position: relative; display: inline-block; width: 50px; height: 24px; }
         .switch input { opacity: 0; width: 0; height: 0; }
         .slider {
@@ -378,7 +401,7 @@
     </div>
     <script>
 // --- Global State ---
-let currentConversation = []; // Stores messages. Structure: { id, content: { role: 'user' | 'model', parts: [{text}] } }
+let currentConversation = [];
 let allConversations = [];
 let currentChatId = null;
 let ttsEnabled = false;
@@ -476,14 +499,8 @@ function deleteConversation(chatId) {
     }
 }
 
-/**
- * FIXED: This function is updated to be robust against old data formats
- * stored in localStorage, preventing the "Cannot read properties of undefined" error.
- * It now automatically migrates old message structures to the new format.
- */
 function loadChat(chatId) {
     const chat = allConversations.find(c => c.id === chatId);
-    // Add robustness: check if chat or its history exists
     if (!chat || !Array.isArray(chat.history)) {
         console.error("Chat not found or is corrupted:", chatId);
         return;
@@ -495,19 +512,14 @@ function loadChat(chatId) {
     }
     currentChatId = chat.id;
 
-    // --- FIX & DATA MIGRATION ---
-    // Convert any old-format messages to the new format to prevent errors.
     const originalLength = chat.history.length;
     const migratedHistory = chat.history.map((msg, index) => {
-        // Already in new format: { content: { parts: [...] } }
         if (msg && msg.content && Array.isArray(msg.content.parts)) {
-            // Standardize role: 'bot' -> 'model'
             if (msg.content.role === 'bot') {
                 msg.content.role = 'model';
             }
             return msg;
         }
-        // Check for plausible old format: { role: '...', text: '...' }
         if (msg && msg.role && typeof msg.text !== 'undefined') {
             return {
                 id: msg.id || (Date.now() + index),
@@ -517,41 +529,35 @@ function loadChat(chatId) {
                 }
             };
         }
-        // Malformed data, log and remove it
         console.warn("Removing malformed message from history:", msg);
         return null;
-    }).filter(Boolean); // .filter(Boolean) removes any null entries
+    }).filter(Boolean);
 
     currentConversation = migratedHistory;
     
-    // If migration changed the history, update the master list and save.
     if (migratedHistory.length !== originalLength) {
         chat.history = migratedHistory;
         saveAllConversations();
     }
-    // --- END FIX ---
-
+    
     const messageArea = document.getElementById('message-area');
     messageArea.innerHTML = '';
     
     currentConversation.forEach(msg => {
-        // This is now safe because of the migration logic above
         const text = msg.content.parts[0]?.text || '';
-        const sender = msg.content.role === 'model' ? 'bot' : 'user'; // 'model' is the AI
+        const sender = msg.content.role === 'model' ? 'bot' : 'user';
         displayMessage(text, sender, msg.id);
     });
 
     setTimeout(() => { messageArea.scrollTop = messageArea.scrollHeight; }, 0);
-    loadSidebar(); // Redraw sidebar to correctly show the 'active' state
+    loadSidebar();
 }
-
 
 function saveAllConversations() {
     localStorage.setItem('jbai_conversations', JSON.stringify(allConversations));
 }
 
 async function generateTitle(chatHistory) {
-    // Ensure chatHistory has the correct format before sending to API
     const safeHistory = chatHistory.filter(h => h.content && h.content.parts && h.content.parts[0]);
     if (safeHistory.length < 2) return "New Chat";
 
@@ -691,17 +697,12 @@ async function getSystemContext() {
     return `You are a helpful assistant named J.B.A.I. Use standard markdown. You have access to the user's real-time context. Use it to answer relevant questions.\nCurrent Context:\n${context.join('\n')}\n---`;
 }
 
-/**
- * FIXED: This function is updated to only handle the AI's response generation.
- * The user's message is now handled by handleChat() for better UX.
- */
 const generateResponse = async () => {
     isGenerating = true;
     const thinkingMessage = displayMessage(null, 'bot', null, true);
     const messageArea = document.getElementById('message-area');
     
     const systemInstruction = { parts: [{ text: await getSystemContext() }] };
-    // The conversation history already contains the user's latest message.
     const apiContents = currentConversation.map(msg => msg.content);
 
     try {
@@ -745,33 +746,50 @@ const generateResponse = async () => {
     }
 };
 
-/**
- * FIXED: This function is updated to display the user's message immediately
- * for a better user experience, before waiting for the AI response.
- */
 const handleChat = () => {
     const chatInput = document.getElementById('chat-input');
     const userMessage = chatInput.value.trim();
     if (!userMessage || isGenerating) return;
 
-    // 1. Add user message to the conversation state
     const userMessageId = Date.now();
     currentConversation.push({ id: userMessageId, content: { role: "user", parts: [{ text: userMessage }] } });
 
-    // 2. Display user message immediately in the UI
     displayMessage(userMessage, 'user', userMessageId);
     
-    // 3. Clear the input and reset its height
     chatInput.value = ""; 
     chatInput.style.height = 'auto';
 
-    // 4. Start generating the bot's response
     generateResponse();
 };
 
-
-// --- Settings, Theme, and TTS Functions (Unchanged) ---
+// --- Settings, Theme, and Data Functions ---
 function applyTheme(themeName) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('jbai_theme', themeName); }
+
+function downloadAllData() {
+    const dataStr = localStorage.getItem('jbai_conversations');
+    if (!dataStr || dataStr === '[]') {
+        alert('No conversation data to download.');
+        return;
+    }
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'jbai_conversations_backup.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function deleteAllData() {
+    if (confirm('Are you absolutely sure you want to delete ALL your chat data?\nThis action cannot be undone.')) {
+        localStorage.removeItem('jbai_conversations');
+        alert('All chat data has been deleted.');
+        location.reload();
+    }
+}
+
 function showSettingsModal() {
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
@@ -783,18 +801,28 @@ function showSettingsModal() {
         <div class="settings-row"><label>Enable TTS</label><label class="switch"><input type="checkbox" id="ttsToggle"><span class="slider"></span></label></div>
         <div class="settings-row"><label>Voice Volume</label><input type="range" min="0" max="1" step="0.1" value="${ttsVolume}" id="volumeSlider"></div>
         <div class="settings-row"><label for="voiceSelect">Bot Voice</label><select id="voiceSelect" disabled></select></div>
-        <button id="closeSettingsBtn">Close</button>`;
+        <hr>
+        <button id="download-data-btn">Download Data</button>
+        <button id="delete-data-btn" class="btn-danger">Delete All Data</button>
+        <button id="closeSettingsBtn" class="btn-primary" style="margin-top: 20px;">Close</button>`;
     overlay.appendChild(card);
     document.body.appendChild(overlay);
+
     document.getElementById('themeSelect').value = localStorage.getItem('jbai_theme') || 'light';
     document.getElementById('themeSelect').addEventListener('change', (e) => applyTheme(e.target.value));
     document.getElementById('ttsToggle').checked = ttsEnabled;
     document.getElementById('ttsToggle').addEventListener('change', (e) => { ttsEnabled = e.target.checked; });
     document.getElementById('volumeSlider').addEventListener('input', (e) => { ttsVolume = parseFloat(e.target.value); });
     document.getElementById('voiceSelect').addEventListener('change', (e) => { if(filteredVoices[e.target.value]) selectedVoice = filteredVoices[e.target.value]; });
+    
+    // Add listeners for new buttons
+    document.getElementById('download-data-btn').addEventListener('click', downloadAllData);
+    document.getElementById('delete-data-btn').addEventListener('click', deleteAllData);
     document.getElementById('closeSettingsBtn').addEventListener('click', () => overlay.remove());
+    
     populateVoiceList();
 }
+
 function speakTTS(text) {
     if (!window.speechSynthesis || !ttsEnabled || !text.trim()) return;
     window.speechSynthesis.cancel();
@@ -803,6 +831,7 @@ function speakTTS(text) {
     if (selectedVoice) utterance.voice = selectedVoice;
     window.speechSynthesis.speak(utterance);
 }
+
 function populateVoiceList() {
     const voiceSelect = document.getElementById('voiceSelect');
     if (!voiceSelect || typeof speechSynthesis === 'undefined') return;
