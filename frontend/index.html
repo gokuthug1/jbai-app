@@ -363,6 +363,53 @@
         input:checked + .slider { background-color: var(--button-bg); }
         input:checked + .slider:before { transform: translateX(26px); }
         
+        /* New styles for image container and download button */
+        .generated-image-wrapper {
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+        .image-prompt-text {
+            margin-bottom: 8px;
+            font-size: 0.9em;
+            color: var(--text-muted);
+        }
+        .image-container {
+            position: relative;
+            max-width: 100%;
+            display: inline-block;
+        }
+        .generated-image {
+            max-width: 100%;
+            border-radius: 8px;
+            display: block; 
+        }
+        .download-image-button {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            padding: 5px;
+            opacity: 0;
+            transition: opacity 0.2s, background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .image-container:hover .download-image-button {
+            opacity: 0.9;
+        }
+        .download-image-button:hover {
+            background: rgba(0, 0, 0, 0.6);
+        }
+        .download-image-button svg {
+            width: 18px;
+            height: 18px;
+        }
+        
         /* Mobile adjustments */
         @media (max-width: 768px) {
             .message-content { max-width: 90%; }
@@ -411,7 +458,7 @@ let isGenerating = false;
 let typingInterval = null;
 
 const TEXT_API_URL = 'https://jbai-app.onrender.com/api/generate';
-const IMAGE_API_URL = '/api/img-gen'; // Set to your chosen endpoint
+const IMAGE_API_URL = '/img'; // Set to your chosen endpoint
 
 // --- Helper Functions ---
 function escapeHTML(str) {
@@ -598,15 +645,32 @@ async function saveCurrentChat() {
 function formatMessageContent(text) {
     let html = escapeHTML(text);
 
-    // Render our special image markdown
-    // Format: [IMAGE: A cat wearing a hat](https://.../image.png)
+    // Render our special image markdown with a download button
+    // Format: [IMAGE: A cat wearing a hat](blob:https://.../uuid)
     html = html.replace(
         /\[IMAGE: (.*?)\]\((.*?)\)/g,
         (match, altText, url) => {
-            return `<p><em>Image Prompt: ${escapeHTML(altText)}</em><br><a href="${url}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${escapeHTML(altText)}" style="max-width: 100%; border-radius: 8px; margin-top: 8px;"></a></p>`;
+            const escapedAlt = escapeHTML(altText);
+            // Create a somewhat safe filename from the prompt
+            const safeFilename = escapedAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_').substring(0, 50) || 'generated-image';
+            return `
+            <div class="generated-image-wrapper">
+                <p class="image-prompt-text"><em>Image Prompt: ${escapedAlt}</em></p>
+                <div class="image-container">
+                    <img src="${url}" alt="${escapedAlt}" class="generated-image">
+                    <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                        </svg>
+                    </a>
+                </div>
+            </div>`;
         }
     );
 
+    // Continue with other markdown processing
     html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
     html = html.replace(/^((\s*[-*] .*\n?)+)/gm, match => `<ul>${match.trim().split('\n').map(item => `<li>${item.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
@@ -614,7 +678,9 @@ function formatMessageContent(text) {
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    return html.split('\n').map(line => line.trim()).filter(line => line).map(line => (!line.match(/^<(p|h[1-3]|ul|ol|pre|li|strong|em|code)/)) ? `<p>${line}</p>` : line).join('');
+
+    // Smartly wrap lines in <p> tags, avoiding elements that are already blocks (including our new <div>)
+    return html.split('\n').map(line => line.trim()).filter(line => line).map(line => (!line.match(/^<(p|h[1-3]|ul|ol|pre|li|strong|em|code|div)/)) ? `<p>${line}</p>` : line).join('');
 }
 
 
@@ -967,5 +1033,4 @@ function populateVoiceList() {
 document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
-</html>
-
+</html>```
