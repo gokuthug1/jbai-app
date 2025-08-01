@@ -17,3 +17,11 @@
     "express": "^5.1.0"
   }
 }
+{
+  "name": "jbai-img-gen",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "replicate": "^0.28.0" 
+  }
+}
