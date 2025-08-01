@@ -1,0 +1,9 @@
+{
+  "name": "jbai-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend and image generation for J.B.A.I.",
+  "dependencies": {
+    "replicate": "^0.28.0"
+  }
+}
