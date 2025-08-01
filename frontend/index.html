@@ -458,7 +458,7 @@ let isGenerating = false;
 let typingInterval = null;
 
 const TEXT_API_URL = 'https://jbai-app.onrender.com/api/generate';
-const IMAGE_API_URL = 'api\img-gen'; // Set to your chosen endpoint
+const IMAGE_API_URL = '/api/img-gen'; // CORRECTED: Use forward slash
 
 // --- Helper Functions ---
 function escapeHTML(str) {
@@ -646,12 +646,10 @@ function formatMessageContent(text) {
     let html = escapeHTML(text);
 
     // Render our special image markdown with a download button
-    // Format: [IMAGE: A cat wearing a hat](blob:https://.../uuid)
     html = html.replace(
         /\[IMAGE: (.*?)\]\((.*?)\)/g,
         (match, altText, url) => {
             const escapedAlt = escapeHTML(altText);
-            // Create a somewhat safe filename from the prompt
             const safeFilename = escapedAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_').substring(0, 50) || 'generated-image';
             return `
             <div class="generated-image-wrapper">
@@ -670,7 +668,6 @@ function formatMessageContent(text) {
         }
     );
 
-    // Continue with other markdown processing
     html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
     html = html.replace(/^((\s*[-*] .*\n?)+)/gm, match => `<ul>${match.trim().split('\n').map(item => `<li>${item.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
@@ -678,8 +675,6 @@ function formatMessageContent(text) {
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-
-    // Smartly wrap lines in <p> tags, avoiding elements that are already blocks (including our new <div>)
     return html.split('\n').map(line => line.trim()).filter(line => line).map(line => (!line.match(/^<(p|h[1-3]|ul|ol|pre|li|strong|em|code|div)/)) ? `<p>${line}</p>` : line).join('');
 }
 
@@ -839,10 +834,7 @@ const generateImageResponse = async (prompt) => {
             throw new Error(errorData.error || `Server error: ${response.status}`);
         }
         
-        // The server now sends back a raw image (a "blob").
         const imageBlob = await response.blob();
-        
-        // We create a temporary URL for the browser to display the image.
         const imageUrl = URL.createObjectURL(imageBlob);
 
         if (!imageUrl) {
@@ -852,7 +844,6 @@ const generateImageResponse = async (prompt) => {
         thinkingMessage.remove();
 
         const botMessageId = Date.now() + 1;
-        // The markdown format stays the same!
         const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
         currentConversation.push({ id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } });
         
@@ -881,7 +872,7 @@ const handleChat = () => {
     chatInput.style.height = 'auto';
 
     if (userMessage.toLowerCase().startsWith('/img ')) {
-        const prompt = userMessage.substring(8).trim();
+        const prompt = userMessage.substring(5).trim(); // CORRECTED: Use 5 for '/img '
         if (prompt) {
             generateImageResponse(prompt);
         } else {
@@ -905,7 +896,7 @@ function downloadAllData() {
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-a.href = url;
+    a.href = url;
     a.download = 'jbai_conversations_backup.json';
     document.body.appendChild(a);
     a.click();
@@ -1034,4 +1025,3 @@ document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
-
