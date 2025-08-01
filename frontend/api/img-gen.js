@@ -1,47 +1,60 @@
-// api/img-gen.js
-import Replicate from "replicate";
+// frontend/api/img-gen.js
 
-// Instantiate the Replicate client with your API token
-const replicate = new Replicate({
-  auth: process.env.REPLICATE_API_TOKEN,
-});
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
-  }
-
-  // Ensure the API token is configured
-  if (!process.env.REPLICATE_API_TOKEN) {
-    return res.status(500).json({ error: "REPLICATE_API_TOKEN is not configured." });
-  }
-
-  try {
-    const { prompt } = req.body;
-    if (!prompt) {
-      return res.status(400).json({ error: "Prompt is required." });
+// This function now calls the Hugging Face API
+async function queryHuggingFace(data) {
+    const API_TOKEN = process.env.HUGGINGFACE_API_TOKEN;
+    if (!API_TOKEN) {
+        throw new Error("HUGGINGFACE_API_TOKEN is not configured.");
     }
-
-    // We are using the Stable Diffusion XL model here.
-    // You can find more models on replicate.com/explore
-    const model = "stability-ai/sdxl:39ed52f2a78e934b3ba6e2a89f5b1c712de7dfea535525255b1aa35c5565e08b";
     
-    const output = await replicate.run(model, {
-      input: {
-        prompt: prompt,
-        // You can add other parameters here, like negative_prompt, width, height, etc.
-      }
+    // We're switching to a free, fast model on Hugging Face.
+    // This one is great for getting started.
+    const API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0";
+
+    const response = await fetch(API_URL, {
+        headers: {
+            "Authorization": `Bearer ${API_TOKEN}`,
+            "Content-Type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify(data),
     });
 
-    // The model returns an array of image URLs. We'll send the first one.
-    if (output && output.length > 0) {
-      res.status(200).json({ imageUrl: output[0] });
-    } else {
-      throw new Error("Failed to generate image.");
+    // Hugging Face returns the image directly, not as JSON.
+    // If it's not successful, it returns JSON with an error.
+    if (!response.ok) {
+        const errorResult = await response.json();
+        throw new Error(errorResult.error || "Failed to query Hugging Face API.");
     }
 
-  } catch (error) {
-    console.error("Error calling Replicate API:", error);
-    res.status(500).json({ error: "Failed to generate image. " + error.message });
-  }
+    const result = await response.blob();
+    return result;
+}
+
+
+export default async function handler(req, res) {
+    if (req.method !== 'POST') {
+        return res.status(405).json({ message: 'Method not allowed' });
+    }
+
+    try {
+        const { prompt } = req.body;
+        if (!prompt) {
+            return res.status(400).json({ error: "Prompt is required." });
+        }
+
+        const imageBlob = await queryHuggingFace({ "inputs": prompt });
+        
+        // We need to send the image back to the browser.
+        // We set the correct content type and send the image data.
+        res.setHeader('Content-Type', 'image/jpeg');
+        const imageBuffer = Buffer.from(await imageBlob.arrayBuffer());
+        res.status(200).send(imageBuffer);
+
+    } catch (error) {
+        console.error("Error calling Hugging Face API:", error);
+        // Ensure we send back a JSON error if something goes wrong
+        res.setHeader('Content-Type', 'application/json');
+        res.status(500).json({ error: "Failed to generate image. " + error.message });
+    }
 }
