@@ -458,7 +458,7 @@ let isGenerating = false;
 let typingInterval = null;
 
 const TEXT_API_URL = 'https://jbai-app.onrender.com/api/generate';
-const IMAGE_API_URL = '/img'; // Set to your chosen endpoint
+const IMAGE_API_URL = 'api\img-gen'; // Set to your chosen endpoint
 
 // --- Helper Functions ---
 function escapeHTML(str) {
@@ -880,12 +880,12 @@ const handleChat = () => {
     chatInput.value = ""; 
     chatInput.style.height = 'auto';
 
-    if (userMessage.toLowerCase().startsWith('/imagine ')) {
+    if (userMessage.toLowerCase().startsWith('/img ')) {
         const prompt = userMessage.substring(8).trim();
         if (prompt) {
             generateImageResponse(prompt);
         } else {
-            displayMessage("Please provide a prompt after `/imagine`. For example: `/imagine a cat in a spaceship`", 'bot', Date.now() + 1);
+            displayMessage("Please provide a prompt after `/img`. For example: `/img a cat in a spaceship`", 'bot', Date.now() + 1);
         }
     } else {
         generateTextResponse();
@@ -1034,3 +1034,4 @@ document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
+
