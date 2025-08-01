@@ -178,7 +178,6 @@
             flex-shrink: 0; transition: margin-left 0.35s ease-in-out;
             height: 100%; box-sizing: border-box;
             z-index: 1000;
-            /* FIX: Sidebar is hidden by default */
             margin-left: -281px;
         }
         body.sidebar-open .sidebar {
@@ -236,7 +235,6 @@
         /* Message Styles */
         .message {
             display: flex; max-width: 100%; align-items: flex-start; box-sizing: border-box;
-            /* NEW: Add cursor pointer to indicate interactivity for deletion */
             cursor: pointer; 
         }
         .message.user { justify-content: flex-end; }
@@ -347,7 +345,7 @@
         @media (max-width: 768px) {
             .message-content { max-width: 90%; }
             .chat-input-container { padding: 10px; }
-            body.sidebar-open #sidebar-toggle { left: 271px; /* 260 sidebar + 10 padding + 1 border */ }
+            body.sidebar-open #sidebar-toggle { left: 271px; }
         }
     </style>
 </head>
@@ -380,7 +378,7 @@
     </div>
     <script>
 // --- Global State ---
-let currentConversation = []; // Now stores { id, content: { role, parts } }
+let currentConversation = []; // Stores messages. Structure: { id, content: { role: 'user' | 'model', parts: [{text}] } }
 let allConversations = [];
 let currentChatId = null;
 let ttsEnabled = false;
@@ -478,28 +476,87 @@ function deleteConversation(chatId) {
     }
 }
 
+/**
+ * FIXED: This function is updated to be robust against old data formats
+ * stored in localStorage, preventing the "Cannot read properties of undefined" error.
+ * It now automatically migrates old message structures to the new format.
+ */
 function loadChat(chatId) {
     const chat = allConversations.find(c => c.id === chatId);
-    if (!chat) return;
-    if (isGenerating) { clearInterval(typingInterval); isGenerating = false; }
+    // Add robustness: check if chat or its history exists
+    if (!chat || !Array.isArray(chat.history)) {
+        console.error("Chat not found or is corrupted:", chatId);
+        return;
+    }
+
+    if (isGenerating) {
+        clearInterval(typingInterval);
+        isGenerating = false;
+    }
     currentChatId = chat.id;
-    currentConversation = chat.history;
+
+    // --- FIX & DATA MIGRATION ---
+    // Convert any old-format messages to the new format to prevent errors.
+    const originalLength = chat.history.length;
+    const migratedHistory = chat.history.map((msg, index) => {
+        // Already in new format: { content: { parts: [...] } }
+        if (msg && msg.content && Array.isArray(msg.content.parts)) {
+            // Standardize role: 'bot' -> 'model'
+            if (msg.content.role === 'bot') {
+                msg.content.role = 'model';
+            }
+            return msg;
+        }
+        // Check for plausible old format: { role: '...', text: '...' }
+        if (msg && msg.role && typeof msg.text !== 'undefined') {
+            return {
+                id: msg.id || (Date.now() + index),
+                content: {
+                    role: msg.role === 'user' ? 'user' : 'model',
+                    parts: [{ text: msg.text }]
+                }
+            };
+        }
+        // Malformed data, log and remove it
+        console.warn("Removing malformed message from history:", msg);
+        return null;
+    }).filter(Boolean); // .filter(Boolean) removes any null entries
+
+    currentConversation = migratedHistory;
+    
+    // If migration changed the history, update the master list and save.
+    if (migratedHistory.length !== originalLength) {
+        chat.history = migratedHistory;
+        saveAllConversations();
+    }
+    // --- END FIX ---
+
     const messageArea = document.getElementById('message-area');
     messageArea.innerHTML = '';
+    
     currentConversation.forEach(msg => {
-        displayMessage(msg.content.parts[0].text, msg.content.role === 'user' ? 'user' : 'bot', msg.id);
+        // This is now safe because of the migration logic above
+        const text = msg.content.parts[0]?.text || '';
+        const sender = msg.content.role === 'model' ? 'bot' : 'user'; // 'model' is the AI
+        displayMessage(text, sender, msg.id);
     });
+
     setTimeout(() => { messageArea.scrollTop = messageArea.scrollHeight; }, 0);
-    loadSidebar();
+    loadSidebar(); // Redraw sidebar to correctly show the 'active' state
 }
+
 
 function saveAllConversations() {
     localStorage.setItem('jbai_conversations', JSON.stringify(allConversations));
 }
 
 async function generateTitle(chatHistory) {
+    // Ensure chatHistory has the correct format before sending to API
+    const safeHistory = chatHistory.filter(h => h.content && h.content.parts && h.content.parts[0]);
+    if (safeHistory.length < 2) return "New Chat";
+
     const promptContent = `Based on this conversation, create a short, concise title (4-5 words max). Output only the title, no quotes.
-        User: ${chatHistory[0].content.parts[0].text}\nAI: ${chatHistory[1].content.parts[0].text}`;
+        User: ${safeHistory[0].content.parts[0].text}\nAI: ${safeHistory[1].content.parts[0].text}`;
     try {
         const response = await fetch(API_URL, {
             method: "POST",
@@ -513,9 +570,13 @@ async function generateTitle(chatHistory) {
 }
 
 async function saveCurrentChat() {
+    if (currentConversation.length === 0) return;
+
     if (currentChatId) {
         const chat = allConversations.find(c => c.id === currentChatId);
-        if (chat) chat.history = currentConversation;
+        if (chat) {
+            chat.history = currentConversation;
+        }
     } else if (currentConversation.length >= 2) {
         const newTitle = await generateTitle(currentConversation);
         currentChatId = Date.now();
@@ -542,14 +603,13 @@ function addCopyButtons(contentEl, rawText) {
     const copyIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`;
     const checkIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
     
-    // Add copy button for full message
     if (!contentEl.querySelector('.copy-button')) {
         const copyBtn = document.createElement('button');
         copyBtn.className = 'copy-button';
         copyBtn.title = 'Copy full message';
         copyBtn.innerHTML = copyIcon;
         copyBtn.addEventListener('click', e => {
-            e.stopPropagation(); // Prevent message deletion trigger
+            e.stopPropagation();
             navigator.clipboard.writeText(rawText).then(() => {
                 copyBtn.innerHTML = checkIcon;
                 setTimeout(() => { copyBtn.innerHTML = copyIcon; }, 2000);
@@ -558,7 +618,6 @@ function addCopyButtons(contentEl, rawText) {
         contentEl.appendChild(copyBtn);
     }
     
-    // Add copy buttons for code blocks
     contentEl.querySelectorAll('pre').forEach(pre => {
         if (pre.querySelector('.copy-code-button')) return;
         const code = pre.querySelector('code');
@@ -566,7 +625,7 @@ function addCopyButtons(contentEl, rawText) {
         copyCodeBtn.className = 'copy-code-button';
         copyCodeBtn.innerHTML = copyIcon + 'Copy';
         copyCodeBtn.addEventListener('click', e => {
-            e.stopPropagation(); // Prevent message deletion trigger
+            e.stopPropagation();
             navigator.clipboard.writeText(code.textContent).then(() => {
                 copyCodeBtn.textContent = 'Copied!';
                 setTimeout(() => { copyCodeBtn.innerHTML = copyIcon + 'Copy'; }, 2000);
@@ -607,7 +666,6 @@ function displayMessage(content, sender, messageId, isTyping = false) {
 
     if (!isTyping) {
         addCopyButtons(contentEl, content);
-        // Add deletion handlers
         let pressTimer = null;
         messageEl.addEventListener('click', e => { if (e.shiftKey) { e.preventDefault(); deleteMessage(messageId); } });
         messageEl.addEventListener('touchstart', () => { pressTimer = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); deleteMessage(messageId); }, 800); }, { passive: true });
@@ -633,14 +691,18 @@ async function getSystemContext() {
     return `You are a helpful assistant named J.B.A.I. Use standard markdown. You have access to the user's real-time context. Use it to answer relevant questions.\nCurrent Context:\n${context.join('\n')}\n---`;
 }
 
-const generateResponse = async (userMessage) => {
+/**
+ * FIXED: This function is updated to only handle the AI's response generation.
+ * The user's message is now handled by handleChat() for better UX.
+ */
+const generateResponse = async () => {
     isGenerating = true;
     const thinkingMessage = displayMessage(null, 'bot', null, true);
     const messageArea = document.getElementById('message-area');
     
     const systemInstruction = { parts: [{ text: await getSystemContext() }] };
+    // The conversation history already contains the user's latest message.
     const apiContents = currentConversation.map(msg => msg.content);
-    apiContents.push({ role: "user", parts: [{ text: userMessage }] });
 
     try {
         const response = await fetch(API_URL, {
@@ -652,11 +714,6 @@ const generateResponse = async (userMessage) => {
         const data = await response.json();
         const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (!botResponseText) throw new Error("Invalid or empty API response.");
-
-        // Add user message to state AFTER successful API call
-        const userMessageId = Date.now();
-        currentConversation.push({ id: userMessageId, content: { role: "user", parts: [{ text: userMessage }] } });
-        displayMessage(userMessage, 'user', userMessageId);
 
         thinkingMessage.remove();
         
@@ -688,13 +745,30 @@ const generateResponse = async (userMessage) => {
     }
 };
 
+/**
+ * FIXED: This function is updated to display the user's message immediately
+ * for a better user experience, before waiting for the AI response.
+ */
 const handleChat = () => {
     const chatInput = document.getElementById('chat-input');
     const userMessage = chatInput.value.trim();
     if (!userMessage || isGenerating) return;
-    chatInput.value = ""; chatInput.style.height = 'auto';
-    generateResponse(userMessage);
+
+    // 1. Add user message to the conversation state
+    const userMessageId = Date.now();
+    currentConversation.push({ id: userMessageId, content: { role: "user", parts: [{ text: userMessage }] } });
+
+    // 2. Display user message immediately in the UI
+    displayMessage(userMessage, 'user', userMessageId);
+    
+    // 3. Clear the input and reset its height
+    chatInput.value = ""; 
+    chatInput.style.height = 'auto';
+
+    // 4. Start generating the bot's response
+    generateResponse();
 };
+
 
 // --- Settings, Theme, and TTS Functions (Unchanged) ---
 function applyTheme(themeName) { document.documentElement.setAttribute('data-theme', themeName); localStorage.setItem('jbai_theme', themeName); }
