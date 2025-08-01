@@ -668,7 +668,6 @@ function displayMessage(content, sender, messageId, isTyping = false) {
         messageEl.classList.add('thinking');
         contentEl.innerHTML = "●";
     } else {
-        messageEl.title = 'Shift+Click or Long Press to delete'; // <-- Add title for discoverability
         contentEl.innerHTML = (sender === 'bot') ? formatMessageContent(content) : escapeHTML(content);
     }
     
