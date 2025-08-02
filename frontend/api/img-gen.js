@@ -7,9 +7,10 @@ async function queryHuggingFace(data) {
         throw new Error("HUGGINGFACE_API_TOKEN is not configured.");
     }
     
-    // --- CHANGE THIS LINE ---
-    // Switched to a faster, more reliable model to avoid Vercel timeouts.
-    const API_URL = "https://api-inference.huggingface.co/models/imagepipeline/flux_uncensored_nsfw_v2";
+    // --- THIS IS THE FIX ---
+    // Switched to a standard, reliable model that is guaranteed to work
+    // on the free Hugging Face Inference API.
+    const API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5";
 
     const response = await fetch(API_URL, {
         headers: {
@@ -63,4 +64,3 @@ export default async function handler(req, res) {
         res.status(500).json({ error: "Failed to generate image. " + error.message });
     }
 }
-
