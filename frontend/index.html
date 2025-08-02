@@ -837,14 +837,16 @@ const generateImageResponse = async (prompt) => {
         });
 
         if (!response.ok) {
+            // The backend now reliably sends a JSON error
             const errorData = await response.json();
             throw new Error(errorData.error || `Server error: ${response.status}`);
         }
         
-        // The server now sends back a raw image (a "blob").
+        // --- KEY CHANGE ---
+        // Instead of parsing JSON, we get the raw image data as a "blob".
         const imageBlob = await response.blob();
         
-        // We create a temporary URL for the browser to display the image.
+        // We create a temporary, local URL for the browser to display the image.
         const imageUrl = URL.createObjectURL(imageBlob);
 
         if (!imageUrl) {
@@ -854,7 +856,7 @@ const generateImageResponse = async (prompt) => {
         thinkingMessage.remove();
 
         const botMessageId = Date.now() + 1;
-        // The markdown format stays the same!
+        // The markdown format for display remains the same!
         const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
         currentConversation.push({ id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } });
         
@@ -1036,3 +1038,4 @@ document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
+
