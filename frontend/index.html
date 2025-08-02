@@ -646,27 +646,34 @@ function formatMessageContent(text) {
     let html = escapeHTML(text);
 
     // Render our special image markdown with a download button
-    html = html.replace(
-        /\[IMAGE: (.*?)\]\((.*?)\)/g,
-        (match, altText, url) => {
-            const escapedAlt = escapeHTML(altText);
-            const safeFilename = escapedAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_').substring(0, 50) || 'generated-image';
-            return `
-            <div class="generated-image-wrapper">
-                <p class="image-prompt-text"><em>Image Prompt: ${escapedAlt}</em></p>
-                <div class="image-container">
-                    <img src="${url}" alt="${escapedAlt}" class="generated-image">
-                    <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
-                        </svg>
-                    </a>
-                </div>
-            </div>`;
-        }
-    );
+html = html.replace(
+    /\[IMAGE: (.*?)\]\((.*?)\)/g,
+    (match, altText, url) => {
+        const escapedAlt = escapeHTML(altText);
+        const safeFilename = escapedAlt
+            .replace(/[^a-z0-9_.-]/gi, ' ')
+            .trim()
+            .replace(/\s+/g, '_')
+            .substring(0, 50) || 'generated-image';
+
+        return `
+<div class="generated-image-wrapper">
+    <p class="image-prompt-text"><em>Image Prompt: ${escapedAlt}</em></p>
+    <div class="image-container">
+        <img src="${url}" alt="${escapedAlt}" class="generated-image">
+        <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
+                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+        </a>
+    </div>
+</div>`;
+    }
+);
 
     html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
@@ -1025,3 +1032,4 @@ document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
+
