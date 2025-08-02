@@ -283,8 +283,29 @@ const ChatApp = {
             overlay.innerHTML = `
             <div class="settings-card">
                 <h2>Settings</h2>
-                <div class="settings-row"><label for="themeSelect">Theme</label><select id="themeSelect"><option value="light">Light</option><option value="dark">Dark</option><option value="midnight">Midnight</option><option value="dracula">Dracula</option><option value="solarized-light">Solarized Light</option></select></div>
-                <div class="settings-row"><label>Enable TTS</label><label class="switch"><input type="checkbox" id="ttsToggle"><span class="slider"></span></label></div>
+<div class="settings-row">
+    <label for="themeSelect">Theme</label>
+    <select id="themeSelect">
+        <optgroup label="Light Themes">
+            <option value="light">Light</option>
+            <option value="github-light">GitHub Light</option>
+            <option value="paper">Paper</option>
+            <option value="solarized-light">Solarized Light</option>
+        </optgroup>
+        <optgroup label="Dark Themes">
+            <option value="ayu-mirage">Ayu Mirage</option>
+            <option value="cobalt2">Cobalt2</option>
+            <option value="dark">Dark</option>
+            <option value="dracula">Dracula</option>
+            <option value="gruvbox-dark">Gruvbox Dark</option>
+            <option value="midnight">Midnight</option>
+            <option value="monokai">Monokai</option>
+            <option value="nord">Nord</option>
+            <option value="oceanic-next">Oceanic Next</option>
+            <option value="tomorrow-night-eighties">Tomorrow Night</option>
+        </optgroup>
+    </select>
+</div>                <div class="settings-row"><label>Enable TTS</label><label class="switch"><input type="checkbox" id="ttsToggle"><span class="slider"></span></label></div>
                 <div class="settings-row"><label>Voice Volume</label><input type="range" min="0" max="1" step="0.1" value="${ChatApp.State.ttsVolume}" id="volumeSlider"></div>
                 <div class="settings-row"><label for="voiceSelect">Bot Voice</label><select id="voiceSelect" disabled></select></div>
                 <hr>
