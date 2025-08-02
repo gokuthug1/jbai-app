@@ -1,19 +1,3 @@
-/**
- * Refactored Single-Page Chat Application.
- *
- * This application is structured using the Module Pattern to encapsulate all logic
- * within a single `ChatApp` object. This avoids polluting the global scope and
- * organizes the code into distinct, manageable modules:
- *
- * - Config: Holds static constants and configuration.
- * - State: Manages the application's dynamic state.
- * - Utils: Contains utility helper functions.
- * - Store: Handles all interactions with localStorage for data persistence.
- * - UI: Responsible for all DOM manipulation, rendering, and UI-related logic.
- * - Api: Manages all network requests to external services.
- * - Controller: The central orchestrator that connects user actions to application logic.
- * - init: The main entry point that initializes the application.
- */
 const ChatApp = {
     // --- Configuration Module ---
     Config: {
