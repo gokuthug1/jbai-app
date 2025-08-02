@@ -1,7 +1,7 @@
 /* ==========================================================================
    Core & Setup
    - Animations
-   - Theme Variables (Including 9 New Themes)
+   - Theme Variables
    - Base Body Styles
    ========================================================================== */
 
@@ -494,7 +494,7 @@ body.sidebar-open .sidebar {
     color: var(--text-color);
     background: var(--input-bg);
     border: 1px solid var(--border-color);
-    border-radius: 8px;
+    border-radius: 50%; /* <-- UPDATED FROM 8px */
     transition: left 0.35s ease-in-out;
 }
 #sidebar-toggle svg { stroke: currentColor; }
