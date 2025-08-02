@@ -9,7 +9,7 @@ async function queryHuggingFace(data) {
     
     // We're switching to a free, fast model on Hugging Face.
     // This one is great for getting started.
-    const API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0";
+    const API_URL = "https://api-inference.huggingface.co/models/SG161222/Realistic_Vision_V5.1_noVAE";
 
     const response = await fetch(API_URL, {
         headers: {
@@ -58,3 +58,4 @@ export default async function handler(req, res) {
         res.status(500).json({ error: "Failed to generate image. " + error.message });
     }
 }
+
