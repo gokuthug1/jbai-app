@@ -252,7 +252,11 @@
             padding: 8px 12px; border-radius: 16px; max-width: 800px;
             word-wrap: break-word; white-space: pre-wrap; box-sizing: border-box;
             line-height: 1.45; position: relative;
-            cursor: pointer;
+            cursor: default; /* Changed from pointer to default */
+        }
+        /* New Rule: Set cursor to text for text-based elements */
+        .message-content p, .message-content h1, .message-content h2, .message-content h3, .message-content li {
+            cursor: text;
         }
         .message.user .message-content { background-color: var(--message-user-bg); }
         .message.bot .message-content { background-color: var(--message-bot-bg); }
@@ -278,6 +282,7 @@
             padding: 12px; border-radius: 8px; overflow-x: auto;
             font-family: 'SF Mono', 'Fira Code', 'Courier New', Courier, monospace;
             font-size: 0.9em; white-space: pre; padding-top: 35px;
+            cursor: text;
         }
         .copy-code-button {
             position: absolute; top: 8px; right: 8px; background: rgba(255, 255, 255, 0.1);
@@ -458,7 +463,7 @@ let isGenerating = false;
 let typingInterval = null;
 
 const TEXT_API_URL = 'https://jbai-app.onrender.com/api/generate';
-const IMAGE_API_URL = '/api/img-gen'; // CORRECTED: Use forward slash
+const IMAGE_API_URL = 'api\img-gen'; // Set to your chosen endpoint
 
 // --- Helper Functions ---
 function escapeHTML(str) {
@@ -646,35 +651,28 @@ function formatMessageContent(text) {
     let html = escapeHTML(text);
 
     // Render our special image markdown with a download button
-html = html.replace(
-    /\[IMAGE: (.*?)\]\((.*?)\)/g,
-    (match, altText, url) => {
-        const escapedAlt = escapeHTML(altText);
-        const safeFilename = escapedAlt
-            .replace(/[^a-z0-9_.-]/gi, ' ')
-            .trim()
-            .replace(/\s+/g, '_')
-            .substring(0, 50) || 'generated-image';
+    // Format: [IMAGE: A cat wearing a hat](blob:https://.../uuid)
+    html = html.replace(
+        /\[IMAGE: (.*?)\]\((.*?)\)/g,
+        (match, altText, url) => {
+            const escapedAlt = escapeHTML(altText);
+            // Create a somewhat safe filename from the prompt
+            const safeFilename = escapedAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_').substring(0, 50) || 'generated-image';
+            // Changed SVG for the download button
+            return `
+            <div class="generated-image-wrapper">
+                <p class="image-prompt-text"><em>Image Prompt: ${escapedAlt}</em></p>
+                <div class="image-container">
+                    <img src="${url}" alt="${escapedAlt}" class="generated-image">
+                    <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3m0 12l-4-4m4 4l4-4M19 21H5" /></svg>
+                    </a>
+                </div>
+            </div>`;
+        }
+    );
 
-        return `
-<div class="generated-image-wrapper">
-    <p class="image-prompt-text"><em>Image Prompt: ${escapedAlt}</em></p>
-    <div class="image-container">
-        <img src="${url}" alt="${escapedAlt}" class="generated-image">
-        <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"
-                 viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-        </a>
-    </div>
-</div>`;
-    }
-);
-
+    // Continue with other markdown processing
     html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
     html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
     html = html.replace(/^((\s*[-*] .*\n?)+)/gm, match => `<ul>${match.trim().split('\n').map(item => `<li>${item.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
@@ -682,6 +680,8 @@ html = html.replace(
     html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
     html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+    // Smartly wrap lines in <p> tags, avoiding elements that are already blocks (including our new <div>)
     return html.split('\n').map(line => line.trim()).filter(line => line).map(line => (!line.match(/^<(p|h[1-3]|ul|ol|pre|li|strong|em|code|div)/)) ? `<p>${line}</p>` : line).join('');
 }
 
@@ -841,7 +841,10 @@ const generateImageResponse = async (prompt) => {
             throw new Error(errorData.error || `Server error: ${response.status}`);
         }
         
+        // The server now sends back a raw image (a "blob").
         const imageBlob = await response.blob();
+        
+        // We create a temporary URL for the browser to display the image.
         const imageUrl = URL.createObjectURL(imageBlob);
 
         if (!imageUrl) {
@@ -851,6 +854,7 @@ const generateImageResponse = async (prompt) => {
         thinkingMessage.remove();
 
         const botMessageId = Date.now() + 1;
+        // The markdown format stays the same!
         const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
         currentConversation.push({ id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } });
         
@@ -879,7 +883,7 @@ const handleChat = () => {
     chatInput.style.height = 'auto';
 
     if (userMessage.toLowerCase().startsWith('/img ')) {
-        const prompt = userMessage.substring(5).trim(); // CORRECTED: Use 5 for '/img '
+        const prompt = userMessage.substring(8).trim();
         if (prompt) {
             generateImageResponse(prompt);
         } else {
@@ -903,7 +907,7 @@ function downloadAllData() {
     const blob = new Blob([dataStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = url;
+a.href = url;
     a.download = 'jbai_conversations_backup.json';
     document.body.appendChild(a);
     a.click();
@@ -1032,4 +1036,3 @@ document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
-
