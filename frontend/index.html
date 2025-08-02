@@ -883,7 +883,7 @@ const handleChat = () => {
     chatInput.style.height = 'auto';
 
     if (userMessage.toLowerCase().startsWith('/img ')) {
-        const prompt = userMessage.substring(8).trim();
+        const prompt = userMessage.substring(5).trim();
         if (prompt) {
             generateImageResponse(prompt);
         } else {
@@ -1036,4 +1036,3 @@ document.addEventListener('DOMContentLoaded', initApp);
 </script>
 </body>
 </html>
-
