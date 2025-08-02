@@ -9,7 +9,7 @@ async function queryHuggingFace(data) {
     
     // --- CHANGE THIS LINE ---
     // Switched to a faster, more reliable model to avoid Vercel timeouts.
-    const API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5";
+    const API_URL = "https://api-inference.huggingface.co/models/imagepipeline/flux_uncensored_nsfw_v2";
 
     const response = await fetch(API_URL, {
         headers: {
@@ -63,3 +63,4 @@ export default async function handler(req, res) {
         res.status(500).json({ error: "Failed to generate image. " + error.message });
     }
 }
+
