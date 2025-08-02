@@ -1,59 +1,58 @@
-// frontend/api/img-gen.js
-// This function now calls the Hugging Face API
-async function queryHuggingFace(data) {
-const API_TOKEN = process.env.HUGGINGFACE_API_TOKEN;
-if (!API_TOKEN) {
-throw new Error("HUGGINGFACE_API_TOKEN is not configured.");
-}
-    // We're switching to a free, fast model on Hugging Face.
-// This one is great for getting started.
-const API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0";
+// api/img-gen.js
+import { Readable } from 'stream';
 
-const response = await fetch(API_URL, {
-    headers: {
-        "Authorization": `Bearer ${API_TOKEN}`,
-        "Content-Type": "application/json",
-    },
-    method: "POST",
-    body: JSON.stringify(data),
-});
-
-// Hugging Face returns the image directly, not as JSON.
-// If it's not successful, it returns JSON with an error.
-if (!response.ok) {
-    const errorResult = await response.json();
-    throw new Error(errorResult.error || "Failed to query Hugging Face API.");
-}
-
-const result = await response.blob();
-return result;
-    }
 export default async function handler(req, res) {
-if (req.method !== 'POST') {
-return res.status(405).json({ message: 'Method not allowed' });
-}
-    try {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', ['POST']);
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  // Get Cloudflare credentials from environment variables
+  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+
+  // Ensure credentials are configured
+  if (!accountId || !apiToken) {
+    return res.status(500).json({ error: "Cloudflare credentials are not configured." });
+  }
+
+  try {
     const { prompt } = req.body;
     if (!prompt) {
-        return res.status(400).json({ error: "Prompt is required." });
+      return res.status(400).json({ error: "Prompt is required." });
     }
 
-    const imageBlob = await queryHuggingFace({ "inputs": prompt });
-    
-    // We need to send the image back to the browser.
-    // We set the correct content type and send the image data.
-    res.setHeader('Content-Type', 'image/jpeg');
-    const imageBuffer = Buffer.from(await imageBlob.arrayBuffer());
-    res.status(200).send(imageBuffer);
+    const model = "@cf/stabilityai/stable-diffusion-xl-base-1.0";
+    const url = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${model}`;
 
-} catch (error) {
-    console.error("Error calling Hugging Face API:", error);
-    // Ensure we send back a JSON error if something goes wrong
-    res.setHeader('Content-Type', 'application/json');
+    const cfResponse = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ prompt }),
+    });
+
+    // If Cloudflare returns an error, forward it to the client
+    if (!cfResponse.ok) {
+        const errorText = await cfResponse.text();
+        console.error("Cloudflare API Error:", errorText);
+        // Ensure the error response is JSON
+        return res.status(cfResponse.status).json({ error: `Failed to generate image. Upstream error: ${errorText}` });
+    }
+
+    // The response is the raw image data. We stream it back to the client.
+    res.setHeader('Content-Type', 'image/png');
+    // Vercel's environment supports web streams, so we can pipe it directly.
+    return new Response(cfResponse.body, {
+      headers: {
+        'Content-Type': 'image/png',
+      },
+    });
+
+  } catch (error) {
+    console.error("Error calling Cloudflare API:", error);
     res.status(500).json({ error: "Failed to generate image. " + error.message });
+  }
 }
-    }
-
-
-
-
