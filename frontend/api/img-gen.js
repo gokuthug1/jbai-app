@@ -7,7 +7,7 @@ throw new Error("HUGGINGFACE_API_TOKEN is not configured.");
 }
     // We're switching to a free, fast model on Hugging Face.
 // This one is great for getting started.
-const API_URL = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-Krea-dev";
+const API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0";
 
 const response = await fetch(API_URL, {
     headers: {
@@ -53,6 +53,7 @@ return res.status(405).json({ message: 'Method not allowed' });
     res.status(500).json({ error: "Failed to generate image. " + error.message });
 }
     }
+
 
 
 
