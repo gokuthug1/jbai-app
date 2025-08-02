@@ -7,9 +7,9 @@ async function queryHuggingFace(data) {
         throw new Error("HUGGINGFACE_API_TOKEN is not configured.");
     }
     
-    // We're switching to a free, fast model on Hugging Face.
-    // This one is great for getting started.
-    const API_URL = "https://api-inference.huggingface.co/models/SG161222/Realistic_Vision_V5.1_noVAE";
+    // --- CHANGE THIS LINE ---
+    // Switched to a faster, more reliable model to avoid Vercel timeouts.
+    const API_URL = "https://api-inference.huggingface.co/models/runwayml/stable-diffusion-v1-5";
 
     const response = await fetch(API_URL, {
         headers: {
@@ -24,6 +24,11 @@ async function queryHuggingFace(data) {
     // If it's not successful, it returns JSON with an error.
     if (!response.ok) {
         const errorResult = await response.json();
+        // Check for a specific "model is loading" error from Hugging Face
+        if (errorResult.error && errorResult.error.includes("is currently loading")) {
+            const estimatedTime = errorResult.estimated_time || 25;
+            throw new Error(`The model is currently loading, please try again in ${Math.round(estimatedTime)} seconds.`);
+        }
         throw new Error(errorResult.error || "Failed to query Hugging Face API.");
     }
 
@@ -58,4 +63,3 @@ export default async function handler(req, res) {
         res.status(500).json({ error: "Failed to generate image. " + error.message });
     }
 }
-
