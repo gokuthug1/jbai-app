@@ -15,6 +15,7 @@ const ChatApp = {
     Config: {
         API_URLS: {
             TEXT: 'https://jbai-app.onrender.com/api/generate',
+            // This now points to our secure serverless function on Vercel
             IMAGE: '/api/img-gen'
         },
         STORAGE_KEYS: {
@@ -661,16 +662,23 @@ Rules:
 
         async fetchImageResponse(prompt) {
             const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt })
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt })
             });
+            
+            const data = await response.json();
+
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
-                throw new Error(errorData.error || `Server error: ${response.status}`);
+                // The error message from our serverless function is in data.error
+                throw new Error(data.error || `Server error: ${response.status}`);
             }
-            const imageBlob = await response.blob();
-            const imageUrl = URL.createObjectURL(imageBlob);
-            if (!imageUrl) throw new Error("Could not create image URL from the API response.");
-            return imageUrl;
+
+            if (!data.imageUrl) {
+                 throw new Error("API returned a response but no image URL was found.");
+            }
+
+            return data.imageUrl;
         }
     },
     
@@ -743,7 +751,7 @@ Rules:
             
             ChatApp.State.setGenerating(true);
 
-            // 1. Process and prepare file data for local display
+            // Process and prepare file data for local display
             const fileDataPromises = files.map(file => {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
@@ -756,15 +764,14 @@ Rules:
                     reader.readAsDataURL(file);
                 });
             });
-
             const attachments = await Promise.all(fileDataPromises);
 
-            // 2. Clear inputs
+            // Clear inputs
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
             this.clearAttachedFiles();
 
-            // 3. Create and render the user's message
+            // Create and render the user's message
             const userMessageId = ChatApp.Utils.generateUUID();
             const userMessage = {
                 id: userMessageId,
@@ -774,7 +781,7 @@ Rules:
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
             
-            // 4. Handle different generation types
+            // Route to the correct generator based on the user's input
             if (userInput.toLowerCase().startsWith('/img ')) {
                 const prompt = userInput.substring(5).trim();
                 if (prompt) {
