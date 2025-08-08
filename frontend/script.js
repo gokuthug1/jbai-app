@@ -184,6 +184,7 @@ const ChatApp = {
             this.elements.messageArea.innerHTML = '';
             this.elements.chatInput.value = '';
             this.elements.chatInput.style.height = 'auto';
+            this.elements.sendButton.disabled = true;
         },
         
         renderSidebar() {
@@ -360,7 +361,7 @@ const ChatApp = {
                 messageEl.appendChild(copyBtn);
             }
             
-            // MODIFIED: Added icons to the code copy button for consistency.
+            // Code block copy buttons
             contentEl.querySelectorAll('pre').forEach(pre => {
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
@@ -411,7 +412,7 @@ const ChatApp = {
                 </div>
                 <div class="settings-row">
                     <label for="volumeSlider">Voice Volume</label>
-                    <input type="range" min="0" max="1" step="0.1" value="${ChatApp.State.ttsVolume}" id="volumeSlider">
+                    <input type="range" min="0" max="1" step="0.1" value="${ChatApp.State.ttsVolume}" id="volumeSlider" class="volume-slider">
                 </div>
                 <div class="settings-row">
                     <label for="voiceSelect">Bot Voice</label>
@@ -431,7 +432,7 @@ const ChatApp = {
             
             // Bind settings events
             const themeSelect = overlay.querySelector('#themeSelect');
-            themeSelect.value = ChatApp.Store.getTheme(); // Use Store.getTheme() instead of UI.getTheme()
+            themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
 
             overlay.querySelector('#ttsToggle').checked = ChatApp.State.ttsEnabled;
@@ -565,8 +566,8 @@ const ChatApp = {
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             if (!userInput || ChatApp.State.isGenerating) return;
 
-            ChatApp.UI.elements.chatInput.value = ""; 
-            ChatApp.UI.elements.chatInput.style.height = 'auto';
+            ChatApp.UI.elements.chatInput.value = "";
+            ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input')); // Trigger input event to resize and disable button
 
             const userMessageId = ChatApp.Utils.generateUUID();
             const userMessage = { id: userMessageId, content: { role: "user", parts: [{ text: userInput }] } };
@@ -591,7 +592,6 @@ const ChatApp = {
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
                 const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
                 
-                // The typing animation will handle the rest of the logic via a callback
                 ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
             } catch (error) {
                 console.error("Text generation failed:", error);
@@ -764,10 +764,16 @@ const ChatApp = {
                 this.Controller.handleChatSubmission(); 
             }
         });
+
         elements.chatInput.addEventListener('input', () => {
+            // Auto-resize the textarea
             elements.chatInput.style.height = 'auto';
             elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
+            
+            // Enable/disable the send button based on input
+            elements.sendButton.disabled = elements.chatInput.value.trim().length === 0;
         });
+
         elements.sendButton.addEventListener('click', () => this.Controller.handleChatSubmission());
         elements.settingsButton.addEventListener('click', () => this.UI.renderSettingsModal());
     },
