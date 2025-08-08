@@ -377,6 +377,7 @@ const ChatApp = {
         _formatMessageContent(text) {
              if (!text) return '';
             let html = ChatApp.Utils.escapeHTML(text)
+                // Custom Block: Image format
                 .replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
                     const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
                     return `
@@ -391,15 +392,21 @@ const ChatApp = {
                     </div>`;
                 });
             
+            // Process block-level Markdown first
             html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
-            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
-            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
             html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
-            html = html.replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote>${match.replace(/^> /gm, '').trim()}</blockquote>`);
+            html = html.replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
             html = html.replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
             html = html.replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
             
+            // Process inline-level Markdown
+            html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
+            html = html.replace(/~~(.*?)~~/g, '<s>$1</s>');
+            
+            // Final paragraph wrapping for remaining lines
             return html.split('\n').map(line => {
                 const trimmed = line.trim();
                 if (trimmed === '') return '';
@@ -895,60 +902,3 @@ Rules:
                     } catch (error) {
                         alert(`Error importing data: ${error.message}`);
                     }
-                };
-                reader.readAsText(file);
-            };
-            fileInput.click();
-        },
-
-        deleteAllData() {
-            if (confirm('DANGER: This will permanently delete ALL chat data from this browser. Are you absolutely sure?')) {
-                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
-                alert('All chat data has been deleted.');
-                location.reload();
-            }
-        }
-    },
-    
-    // --- Application Initialization ---
-    _bindEventListeners() {
-        const { elements } = this.UI;
-        elements.newChatBtn.addEventListener('click', () => this.Controller.startNewChat());
-        
-        elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
-        elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
-
-        elements.chatInput.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && !e.shiftKey) { 
-                e.preventDefault(); 
-                this.Controller.handleChatSubmission(); 
-            }
-        });
-
-        elements.chatInput.addEventListener('input', () => {
-            elements.chatInput.style.height = 'auto';
-            elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
-            this.UI.toggleSendButtonState();
-        });
-
-        elements.sendButton.addEventListener('click', () => this.Controller.handleChatSubmission());
-        elements.settingsButton.addEventListener('click', () => this.UI.renderSettingsModal());
-        elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
-        elements.fileInput.addEventListener('change', (e) => this.Controller.handleFileSelection(e));
-    },
-
-    /**
-     * Initializes the entire application.
-     */
-    init() {
-        this.UI.cacheElements();
-        this.UI.applyTheme(this.Store.getTheme());
-        this.Store.loadAllConversations();
-        
-        this.Controller.startNewChat();
-        this._bindEventListeners();
-        console.log("J.B.A.I. Chat Application Initialized.");
-    }
-};
-
-window.addEventListener('DOMContentLoaded', () => ChatApp.init());
