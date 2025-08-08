@@ -695,7 +695,8 @@ Rules:
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
 
-            elements.sendButton.addEventListener('click', Controller.handleChatSubmission);
+            // FIX: Bind 'this' to ensure the correct context inside the event handler
+            elements.sendButton.addEventListener('click', Controller.handleChatSubmission.bind(Controller));
             
             elements.chatInput.addEventListener('keydown', (e) => {
                 // Submit on Enter, but allow Shift+Enter for new lines
@@ -712,12 +713,13 @@ Rules:
                 ChatApp.UI.toggleSendButtonState();
             });
 
-            elements.newChatBtn.addEventListener('click', Controller.startNewChat);
-            elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal);
+            // FIX: Bind 'this' for these methods as well
+            elements.newChatBtn.addEventListener('click', Controller.startNewChat.bind(Controller));
+            elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
             
             // Wire up the file attachment functionality
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
-            elements.fileInput.addEventListener('change', Controller.handleFileSelection);
+            elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
             
             // Sidebar toggle for mobile
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
