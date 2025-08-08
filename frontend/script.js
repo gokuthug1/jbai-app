@@ -218,7 +218,7 @@ const ChatApp = {
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
                 item.innerHTML = `
                     <span class="conversation-title" title="${title}">${title}</span>
-                    <button type="button" class="delete-btn" title="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                    <button type="button" class="delete-btn" title="Delete Chat" aria-label="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
                 
                 item.addEventListener('click', () => ChatApp.Controller.loadChat(chat.id));
                 item.querySelector('.delete-btn').addEventListener('click', (e) => {
@@ -354,6 +354,7 @@ const ChatApp = {
         _addMessageInteractions(messageEl, rawText, messageId) {
             this._addCopyButtons(messageEl, rawText);
             
+            // Allow message deletion via long-press on touch devices or Shift+Click on desktop.
             let pressTimer = null;
             const startDeleteTimer = () => {
                 pressTimer = setTimeout(() => {
@@ -392,21 +393,21 @@ const ChatApp = {
                     </div>`;
                 });
             
-            // Process block-level Markdown first
+            // Process block-level Markdown first, as they have higher precedence.
             html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
             html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
             html = html.replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
             html = html.replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
             html = html.replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
             
-            // Process inline-level Markdown
+            // Process inline-level Markdown.
             html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
             html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
             html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
             html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
             html = html.replace(/~~(.*?)~~/g, '<s>$1</s>');
             
-            // Final paragraph wrapping for remaining lines
+            // Finally, wrap any remaining lines that aren't part of a larger block element in <p> tags.
             return html.split('\n').map(line => {
                 const trimmed = line.trim();
                 if (trimmed === '') return '';
@@ -511,13 +512,17 @@ const ChatApp = {
             overlay.querySelector('#ttsToggle').checked = ChatApp.State.ttsEnabled;
             overlay.querySelector('#ttsToggle').addEventListener('change', e => { ChatApp.State.ttsEnabled = e.target.checked; });
             overlay.querySelector('#volumeSlider').addEventListener('input', e => { ChatApp.State.ttsVolume = parseFloat(e.target.value); });
+            
+            // The value of the select is the index in the filteredVoices array.
             overlay.querySelector('#voiceSelect').addEventListener('change', e => { 
-                if(ChatApp.State.filteredVoices[e.target.value]) ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[e.target.value]; 
+                if(ChatApp.State.filteredVoices[e.target.value]) {
+                    ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[e.target.value];
+                }
             });
 
-            overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
-            overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
-            overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
+            overlay.querySelector('#upload-data-btn').addEventListener('click', () => ChatApp.Controller.handleDataUpload());
+            overlay.querySelector('#download-data-btn').addEventListener('click', () => ChatApp.Controller.downloadAllData());
+            overlay.querySelector('#delete-data-btn').addEventListener('click', () => ChatApp.Controller.deleteAllData());
             overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
             
             this._populateVoiceList();
@@ -691,12 +696,11 @@ Rules:
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState(); // Set initial button state
 
-            // 4. Connect UI elements to controller functions (THE CRITICAL STEP)
+            // 4. Connect UI elements to controller functions using arrow functions to preserve `this` context.
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
 
-            // FIX: Bind 'this' to ensure the correct context inside the event handler
-            elements.sendButton.addEventListener('click', Controller.handleChatSubmission.bind(Controller));
+            elements.sendButton.addEventListener('click', () => Controller.handleChatSubmission());
             
             elements.chatInput.addEventListener('keydown', (e) => {
                 // Submit on Enter, but allow Shift+Enter for new lines
@@ -713,13 +717,12 @@ Rules:
                 ChatApp.UI.toggleSendButtonState();
             });
 
-            // FIX: Bind 'this' for these methods as well
-            elements.newChatBtn.addEventListener('click', Controller.startNewChat.bind(Controller));
-            elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
+            elements.newChatBtn.addEventListener('click', () => Controller.startNewChat());
+            elements.settingsButton.addEventListener('click', () => ChatApp.UI.renderSettingsModal());
             
             // Wire up the file attachment functionality
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
-            elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
+            elements.fileInput.addEventListener('change', (e) => Controller.handleFileSelection(e));
             
             // Sidebar toggle for mobile
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
@@ -774,8 +777,9 @@ Rules:
             // 4. Handle different generation types
             if (userInput.toLowerCase().startsWith('/img ')) {
                 const prompt = userInput.substring(5).trim();
-                if (prompt) this._generateImage(prompt);
-                else {
+                if (prompt) {
+                    this._generateImage(prompt);
+                } else {
                     ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: "Please provide a prompt after `/img`." }] } });
                     ChatApp.State.setGenerating(false);
                 }
@@ -897,6 +901,7 @@ Rules:
         },
 
         deleteMessage(messageId) {
+            // The confirm dialog is blocking, but simple. For a better UX, a custom non-blocking modal could be used.
             if (!confirm('Are you sure you want to delete this message?')) return;
             ChatApp.State.removeMessage(messageId);
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
@@ -956,6 +961,18 @@ Rules:
                 reader.readAsText(file);
             };
             fileInput.click();
+        },
+
+        deleteAllData() {
+            if (confirm('DANGER: This will permanently delete ALL conversations. This action cannot be undone. Are you sure?')) {
+                ChatApp.State.allConversations = [];
+                ChatApp.Store.saveAllConversations();
+                this.startNewChat();
+                // Also close the settings modal if it's open
+                const settingsModal = document.querySelector('.modal-overlay');
+                if (settingsModal) settingsModal.remove();
+                alert('All conversation data has been deleted.');
+            }
         }
     }
 };
