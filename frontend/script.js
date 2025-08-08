@@ -342,9 +342,10 @@ const ChatApp = {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
             
+            const { COPY, CHECK } = ChatApp.Config.ICONS;
+            
             // Overall message copy button (only if not an image-only message)
             if (!rawText.startsWith('[IMAGE:')) {
-                const { COPY, CHECK } = ChatApp.Config.ICONS;
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button';
                 copyBtn.title = 'Copy message text';
@@ -359,16 +360,16 @@ const ChatApp = {
                 messageEl.appendChild(copyBtn);
             }
             
-            // Code block copy buttons
+            // MODIFIED: Added icons to the code copy button for consistency.
             contentEl.querySelectorAll('pre').forEach(pre => {
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
-                copyCodeBtn.innerHTML = `Copy Code`;
+                copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`;
                 copyCodeBtn.addEventListener('click', e => {
                     e.stopPropagation();
                     navigator.clipboard.writeText(pre.querySelector('code').textContent).then(() => {
-                        copyCodeBtn.textContent = 'Copied!';
-                        setTimeout(() => { copyCodeBtn.innerHTML = 'Copy Code'; }, 2000);
+                        copyCodeBtn.innerHTML = `${CHECK}<span>Copied!</span>`;
+                        setTimeout(() => { copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`; }, 2000);
                     });
                 });
                 pre.appendChild(copyCodeBtn);
@@ -430,7 +431,7 @@ const ChatApp = {
             
             // Bind settings events
             const themeSelect = overlay.querySelector('#themeSelect');
-            themeSelect.value = this.getTheme();
+            themeSelect.value = ChatApp.Store.getTheme(); // Use Store.getTheme() instead of UI.getTheme()
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
 
             overlay.querySelector('#ttsToggle').checked = ChatApp.State.ttsEnabled;
