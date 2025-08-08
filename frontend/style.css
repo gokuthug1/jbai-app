@@ -731,6 +731,33 @@ body.sidebar-open .open-icon { display: none; }
     margin-bottom: 0;
 }
 
+/* NEW: Message Formatting Styles */
+.message-content blockquote {
+    padding: 10px 15px;
+    margin: 8px 0;
+    border-left: 4px solid var(--border-color);
+    background-color: color-mix(in srgb, var(--message-bot-bg) 50%, var(--bg-color) 50%);
+    border-radius: 0 8px 8px 0;
+}
+.message.user .message-content blockquote {
+    background-color: color-mix(in srgb, var(--message-user-bg) 50%, var(--bg-color) 50%);
+}
+.message-content blockquote p {
+    margin: 0;
+}
+.message-content a {
+    color: var(--focus-color);
+    text-decoration: underline;
+    font-weight: 500;
+}
+.message-content a:hover {
+    text-decoration: none;
+}
+.message-content s {
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+
 /* NEW: Message Attachments */
 .message-attachments {
     display: grid;
