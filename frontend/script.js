@@ -902,3 +902,4 @@ Rules:
                     } catch (error) {
                         alert(`Error importing data: ${error.message}`);
                     }
+                }
