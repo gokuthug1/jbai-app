@@ -15,12 +15,10 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
-/* MODIFIED: Replaced general 'pulse' with a specific 'thinking-dot' animation for better UI */
 @keyframes thinking-dot {
     0%, 100% { transform: scale(0.5); opacity: 0.5; }
     50%      { transform: scale(1); opacity: 1; }
 }
-
 
 /* --- 1.2 Theme Variables --- */
 :root { /* Default Light Theme */
@@ -668,7 +666,6 @@ body.sidebar-open .open-icon { display: none; }
 .message.bot {
     justify-content: flex-start;
 }
-/* MODIFIED: Replaced old pulse animation with a proper three-dot thinking indicator */
 .message.thinking .message-content {
     display: inline-flex;
     align-items: center;
@@ -819,20 +816,30 @@ body.sidebar-open .open-icon { display: none; }
 .download-image-button:hover { background: rgba(0, 0, 0, 0.6); }
 .download-image-button svg { width: 18px; height: 18px; }
 
-/* --- 3.3 Chat Input Form --- */
+/* --- 3.3 Chat Input Form (REFINED) --- */
 .chat-input-container {
     flex-shrink: 0;
-    padding: 10px 20px;
+    padding: 10px 20px 20px; /* More bottom padding for helper text */
     background-color: var(--chat-container-bg);
     border-top: 1px solid var(--border-color);
 }
 
 .chat-input-wrapper {
     display: flex;
-    align-items: flex-end;
+    align-items: flex-end; /* Align items to the bottom as textarea grows */
     gap: 10px;
-    max-width: 900px;
+    max-width: 800px;
     margin: 0 auto;
+    padding: 4px; /* Padding for the buttons */
+    background-color: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 24px; /* Highly rounded corners */
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.chat-input-wrapper:focus-within {
+    border-color: var(--focus-color);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-color) 20%, transparent);
 }
 
 textarea {
@@ -842,18 +849,43 @@ textarea {
     resize: none;
     outline: none;
     color: var(--text-color);
-    background-color: var(--input-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
+    background: transparent;
+    border: none;
+    box-shadow: none;
     font-size: 16px;
     line-height: 1.5;
-    transition: border-color 0.2s ease;
 }
 textarea:focus-visible {
-    border-color: var(--focus-color);
+    border-color: transparent;
+    box-shadow: none;
 }
 
-#toggle-options-button,
+#toggle-options-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    border: none;
+    border-radius: 50%;
+    background-color: transparent;
+    color: var(--text-secondary);
+    transition: background-color 0.2s, color 0.2s;
+}
+#toggle-options-button:hover {
+    color: var(--text-color);
+    background-color: var(--sidebar-hover);
+}
+#toggle-options-button:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+#toggle-options-button svg {
+    stroke: currentColor;
+}
+
 #send-button {
     display: flex;
     align-items: center;
@@ -862,25 +894,39 @@ textarea:focus-visible {
     width: 40px;
     height: 40px;
     cursor: pointer;
-    color: var(--button-text);
-    background-color: var(--button-bg);
     border: none;
     border-radius: 50%;
-    transition: background-color 0.2s;
+    background-color: var(--sidebar-hover);
+    color: var(--text-secondary);
+    transition: background-color 0.2s, color 0.2s;
 }
-#toggle-options-button:hover,
-#send-button:hover {
+#send-button:disabled {
+    cursor: not-allowed;
+    background-color: var(--sidebar-hover);
+    color: var(--text-secondary);
+}
+#send-button:not(:disabled) {
+    background-color: var(--button-bg);
+    color: var(--button-text);
+}
+#send-button:not(:disabled):hover {
     background-color: var(--button-hover-bg);
 }
-#toggle-options-button:focus-visible,
 #send-button:focus-visible {
     outline: 2px solid var(--focus-color);
     outline-offset: 2px;
 }
-#send-button svg path,
-#toggle-options-button svg path {
-    fill: var(--button-text);
+#send-button svg path {
+    fill: currentColor;
 }
+
+.input-helper-text {
+    margin-top: 8px;
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
 
 /* --- 3.4 Utility Animation Classes --- */
 .fade-out {
