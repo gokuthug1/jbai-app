@@ -4,6 +4,5 @@
   "private": true,
   "description": "Frontend and image generation for J.B.A.I.",
   "dependencies": {
-    "replicate": "^0.28.0"
+    
   }
-}
