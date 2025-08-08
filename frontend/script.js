@@ -902,4 +902,10 @@ Rules:
                     } catch (error) {
                         alert(`Error importing data: ${error.message}`);
                     }
-                }
+                }; // <-- FIX: Closing brace for reader.onload
+                reader.readAsDataURL(file);
+            }; // <-- FIX: Closing brace for fileInput.onchange
+            fileInput.click();
+        }
+    }
+};
