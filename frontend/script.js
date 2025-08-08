@@ -15,8 +15,6 @@ const ChatApp = {
     Config: {
         API_URLS: {
             TEXT: 'https://jbai-app.onrender.com/api/generate',
-            // This now points to our secure serverless function on Vercel
-            IMAGE: '/api/img-gen'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
@@ -386,8 +384,8 @@ const ChatApp = {
                     <div class="generated-image-wrapper">
                         <p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p>
                         <div class="image-container">
-                            <img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image">
-                            <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
+                            <img src="${ChatApp.Utils.escapeHTML(url)}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image">
+                            <a href="${ChatApp.Utils.escapeHTML(url)}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                             </a>
                         </div>
@@ -581,30 +579,36 @@ const ChatApp = {
 You were developed by Jeremiah, also known as 'gokuthug1,' your creator.
 He has custom commands that users can use, and you must follow them.
 
-Use standard Markdown in your responses.  
 You can generate both text and images.
+Use standard Markdown in your responses.
 
-For images, always use this format:  
-[IMAGE: user's prompt](URL_to_image)
+---
+**Image Generation Rule:**
+If the user's request is best answered with an image (e.g., they ask to "draw", "show a picture of", or "visualize"), you must create a Pollinations.ai URL and embed it in your response.
 
+1.  Take the user's essential prompt (e.g., "a futuristic city").
+2.  URL-encode the prompt (e.g., "a%20futuristic%20city").
+3.  Construct the URL: \`https://image.pollinations.ai/prompt/{URL_ENCODED_PROMPT}\`
+4.  Present it in your response using this exact Markdown format: \`[IMAGE: original prompt](the_url_you_created)\`
+
+**Example:**
+User: Can you draw a picture of a cute red panda?
+Your Response: Of course! Here is a picture of a cute red panda:
+
+[IMAGE: a cute red panda](https://image.pollinations.ai/prompt/a%20cute%20red%20panda)
 ---
 
 Real-Time Context:  
-You have access to the user's current context, preferences, and command system. Use this to:  
-- Personalize answers  
-- Avoid repeating known info  
-- Act in line with the user's instructions  
-
 Current Date/Time: ${new Date().toLocaleString()}
 
 ---
 
 Abilities:  
-- Generate creative, technical, or helpful text  
-- Generate images in response to visual prompts  
-- Format HTML code as one complete file (HTML, CSS, and JS combined)  
-- Interpret and follow Jeremiah’s commands  
-- Avoid fluff or overexplaining—stay smart, fast, and clear
+- Generate creative, technical, or helpful text.
+- Generate images by creating and embedding Pollinations.ai URLs as instructed.
+- Format HTML code as one complete file (HTML, CSS, and JS combined).
+- Interpret and follow Jeremiah’s commands.
+- Avoid fluff or overexplaining—stay smart, fast, and clear.
 
 ---
 
@@ -623,8 +627,9 @@ Jeremiah's Custom Commands:
 ---
 
 Rules:  
-- Do not ask what a command means. Follow it exactly as written.  
-- Never add unnecessary text after image links.`;
+- Do not ask what a command means. Follow it exactly as written.
+- If you decide an image is needed, follow the Image Generation Rule precisely.
+- Never add unnecessary text after the Markdown image link.`;
         },
 
         async fetchTitle(chatHistory) {
@@ -658,27 +663,6 @@ Rules:
             const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
             return botResponseText;
-        },
-
-        async fetchImageResponse(prompt) {
-            const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt })
-            });
-            
-            const data = await response.json();
-
-            if (!response.ok) {
-                // The error message from our serverless function is in data.error
-                throw new Error(data.error || `Server error: ${response.status}`);
-            }
-
-            if (!data.imageUrl) {
-                 throw new Error("API returned a response but no image URL was found.");
-            }
-
-            return data.imageUrl;
         }
     },
     
@@ -781,18 +765,8 @@ Rules:
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
             
-            // Route to the correct generator based on the user's input
-            if (userInput.toLowerCase().startsWith('/img ')) {
-                const prompt = userInput.substring(5).trim();
-                if (prompt) {
-                    this._generateImage(prompt);
-                } else {
-                    ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: "Please provide a prompt after `/img`." }] } });
-                    ChatApp.State.setGenerating(false);
-                }
-            } else {
-                this._generateText();
-            }
+            // The single text generator function now handles everything.
+            this._generateText();
         },
 
         handleFileSelection(event) {
@@ -821,9 +795,12 @@ Rules:
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
                 const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
                 
+                // The AI's response will either be plain text or contain the image markdown.
+                // The UI rendering function handles both cases automatically.
                 ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
+
             } catch (error) {
-                console.error("Text generation failed:", error);
+                console.error("Generation failed:", error);
                 thinkingMessageEl.remove();
                 ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Sorry, an error occurred: ${error.message}` }] } });
                 ChatApp.State.setGenerating(false);
@@ -836,28 +813,6 @@ Rules:
             this.saveCurrentChat();
             ChatApp.UI.speakTTS(botResponseText);
             ChatApp.State.setGenerating(false);
-        },
-        
-        async _generateImage(prompt) {
-            const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null, content: { role: 'model', parts: [{ text: `Generating image for: "${prompt}"...` }] }}, true);
-
-            try {
-                const imageUrl = await ChatApp.Api.fetchImageResponse(prompt);
-                const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
-                const botMessageId = ChatApp.Utils.generateUUID();
-                const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
-                
-                ChatApp.State.addMessage(botMessage);
-                thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage(botMessage);
-                this.saveCurrentChat();
-            } catch (error) {
-                console.error("Image generation failed:", error);
-                thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Image Generation Error: ${error.message}` }] } });
-            } finally {
-                ChatApp.State.setGenerating(false);
-            }
         },
 
         async saveCurrentChat() {
