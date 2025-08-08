@@ -676,6 +676,54 @@ Rules:
      * @description Orchestrates the application, connecting user actions to state changes and UI updates.
      */
     Controller: {
+        /**
+         * Initializes the application by caching elements, loading data, and setting up event listeners.
+         */
+        init() {
+            // 1. Find all our HTML elements first
+            ChatApp.UI.cacheElements();
+            
+            // 2. Load settings and data
+            ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
+            ChatApp.Store.loadAllConversations();
+            
+            // 3. Render the initial UI
+            ChatApp.UI.renderSidebar();
+            ChatApp.UI.toggleSendButtonState(); // Set initial button state
+
+            // 4. Connect UI elements to controller functions (THE CRITICAL STEP)
+            const { elements } = ChatApp.UI;
+            const { Controller } = ChatApp;
+
+            elements.sendButton.addEventListener('click', Controller.handleChatSubmission);
+            
+            elements.chatInput.addEventListener('keydown', (e) => {
+                // Submit on Enter, but allow Shift+Enter for new lines
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault(); // Prevents new line in textarea
+                    Controller.handleChatSubmission();
+                }
+            });
+
+            // Auto-resize textarea and toggle send button on input
+            elements.chatInput.addEventListener('input', () => {
+                elements.chatInput.style.height = 'auto';
+                elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
+                ChatApp.UI.toggleSendButtonState();
+            });
+
+            elements.newChatBtn.addEventListener('click', Controller.startNewChat);
+            elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal);
+            
+            // Wire up the file attachment functionality
+            elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
+            elements.fileInput.addEventListener('change', Controller.handleFileSelection);
+            
+            // Sidebar toggle for mobile
+            elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
+            elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
+        },
+        
         startNewChat() {
             ChatApp.State.resetCurrentChat();
             ChatApp.UI.clearChatArea();
@@ -902,10 +950,15 @@ Rules:
                     } catch (error) {
                         alert(`Error importing data: ${error.message}`);
                     }
-                }; // <-- FIX: Closing brace for reader.onload
-                reader.readAsDataURL(file);
-            }; // <-- FIX: Closing brace for fileInput.onchange
+                };
+                reader.readAsText(file);
+            };
             fileInput.click();
         }
     }
 };
+
+// Start the application once the DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    ChatApp.Controller.init();
+});
