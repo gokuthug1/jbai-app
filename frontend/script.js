@@ -444,13 +444,223 @@ const ChatApp = {
             });
         },
         
-        renderSettingsModal() { /* ... function unchanged ... */ },
-        speakTTS(text) { /* ... function unchanged ... */ },
-        _populateVoiceList() { /* ... function unchanged ... */ }
+        renderSettingsModal() {
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.innerHTML = `
+            <div class="settings-card">
+                <h2>Settings</h2>
+                <div class="settings-row">
+                    <label for="themeSelect">Theme</label>
+                    <select id="themeSelect">
+                        <optgroup label="Light Themes">
+                            <option value="light">Light</option>
+                            <option value="github-light">GitHub Light</option>
+                            <option value="paper">Paper</option>
+                            <option value="solarized-light">Solarized Light</option>
+                        </optgroup>
+                        <optgroup label="Dark Themes">
+                            <option value="ayu-mirage">Ayu Mirage</option>
+                            <option value="cobalt2">Cobalt2</option>
+                            <option value="dark">Dark</option>
+                            <option value="dracula">Dracula</option>
+                            <option value="gruvbox-dark">Gruvbox Dark</option>
+                            <option value="midnight">Midnight</option>
+                            <option value="monokai">Monokai</option>
+                            <option value="nord">Nord</option>
+                            <option value="oceanic-next">Oceanic Next</option>
+                            <option value="tomorrow-night-eighties">Tomorrow Night</option>
+                        </optgroup>
+                    </select>
+                </div>
+                <div class="settings-row">
+                    <label for="ttsToggle">Enable TTS</label>
+                    <label class="switch"><input type="checkbox" id="ttsToggle"><span class="slider"></span></label>
+                </div>
+                <div class="settings-row">
+                    <label for="volumeSlider">Voice Volume</label>
+                    <input type="range" min="0" max="1" step="0.1" value="${ChatApp.State.ttsVolume}" id="volumeSlider" class="volume-slider">
+                </div>
+                <div class="settings-row">
+                    <label for="voiceSelect">Bot Voice</label>
+                    <select id="voiceSelect" disabled></select>
+                </div>
+                <hr>
+                <div class="data-actions">
+                    <button id="upload-data-btn" type="button">Import Data</button>
+                    <button id="download-data-btn" type="button">Export Data</button>
+                    <button id="delete-data-btn" type="button" class="btn-danger">Delete All Data</button>
+                </div>
+                <button id="closeSettingsBtn" type="button" class="btn-primary">Close</button>
+            </div>`;
+            
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+            
+            const themeSelect = overlay.querySelector('#themeSelect');
+            themeSelect.value = ChatApp.Store.getTheme();
+            themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
+
+            overlay.querySelector('#ttsToggle').checked = ChatApp.State.ttsEnabled;
+            overlay.querySelector('#ttsToggle').addEventListener('change', e => { ChatApp.State.ttsEnabled = e.target.checked; });
+            overlay.querySelector('#volumeSlider').addEventListener('input', e => { ChatApp.State.ttsVolume = parseFloat(e.target.value); });
+            overlay.querySelector('#voiceSelect').addEventListener('change', e => { 
+                if(ChatApp.State.filteredVoices[e.target.value]) ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[e.target.value]; 
+            });
+
+            overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
+            overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
+            overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
+            overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
+            
+            this._populateVoiceList();
+        },
+
+        speakTTS(text) {
+            if (!window.speechSynthesis || !ChatApp.State.ttsEnabled || !text.trim() || text.startsWith('[IMAGE:')) return;
+            
+            window.speechSynthesis.cancel();
+            const speechText = text.replace(/```[\s\S]*?```/g, '... Code block ...').replace(/\[IMAGE:.*?\]\(.*?\)/g, '... Image ...');
+            const utterance = new SpeechSynthesisUtterance(speechText);
+            utterance.volume = ChatApp.State.ttsVolume;
+            if (ChatApp.State.selectedVoice) utterance.voice = ChatApp.State.selectedVoice;
+            window.speechSynthesis.speak(utterance);
+        },
+
+        _populateVoiceList() {
+            const voiceSelect = document.getElementById('voiceSelect');
+            if (!voiceSelect || typeof speechSynthesis === 'undefined') return;
+            const setVoices = () => {
+                ChatApp.State.filteredVoices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+                voiceSelect.innerHTML = '';
+                if (ChatApp.State.filteredVoices.length === 0) {
+                    voiceSelect.disabled = true; voiceSelect.innerHTML = '<option>No English voices found</option>'; return;
+                }
+                voiceSelect.disabled = !ChatApp.State.ttsEnabled;
+                let selectedIdx = 0;
+                ChatApp.State.filteredVoices.forEach((voice, i) => {
+                    const option = new Option(`${voice.name} (${voice.lang})`, i);
+                    voiceSelect.add(option);
+                    if (ChatApp.State.selectedVoice && ChatApp.State.selectedVoice.name === voice.name) {
+                        selectedIdx = i;
+                    }
+                });
+                voiceSelect.selectedIndex = selectedIdx;
+                if (!ChatApp.State.selectedVoice) ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[0];
+            };
+            setVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = setVoices;
+            }
+        }
     },
 
     // --- API Module ---
-    Api: { /* ... module unchanged ... */ },
+    /**
+     * @memberof ChatApp
+     * @namespace Api
+     * @description Handles all fetch requests to external APIs.
+     */
+    Api: {
+        async getSystemContext() {
+            return `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online.
+
+You were developed by Jeremiah, also known as 'gokuthug1,' your creator.
+He has custom commands that users can use, and you must follow them.
+
+Use standard Markdown in your responses.  
+You can generate both text and images.
+
+For images, always use this format:  
+[IMAGE: user's prompt](URL_to_image)
+
+---
+
+Real-Time Context:  
+You have access to the user's current context, preferences, and command system. Use this to:  
+- Personalize answers  
+- Avoid repeating known info  
+- Act in line with the user's instructions  
+
+Current Date/Time: ${new Date().toLocaleString()}
+
+---
+
+Abilities:  
+- Generate creative, technical, or helpful text  
+- Generate images in response to visual prompts  
+- Format HTML code as one complete file (HTML, CSS, and JS combined)  
+- Interpret and follow Jeremiah’s commands  
+- Avoid fluff or overexplaining—stay smart, fast, and clear
+
+---
+
+Jeremiah's Custom Commands:  
+/html      → Give a random HTML code that’s interesting and fun.  
+/profile   → List all custom commands and explain what each does.  
+/concept   → Ask what concept the user wants to create.  
+/song      → Ask about his music taste, then recommend a fitting song.  
+/word      → Give a new word and its definition.  
+/tip       → Share a useful lifehack or tip.  
+/invention → Generate a fictional, interesting invention idea.  
+/sp        → Correct any text the user sends for spelling and grammar.  
+/art       → Suggest a prompt or idea for a creative art project.  
+/bdw       → Break down a word: pronunciation, definition, and similar-sounding word.
+
+---
+
+Rules:  
+- Do not ask what a command means. Follow it exactly as written.  
+- Never add unnecessary text after image links.`;
+        },
+
+        async fetchTitle(chatHistory) {
+            const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
+            if (safeHistory.length < 2) return "New Chat";
+
+            const prompt = `Based on this conversation, create a short, concise title (4 words max). Output only the title, no quotes or markdown.\nUser: ${safeHistory[0].content.parts[0].text}\nAI: ${safeHistory[1].content.parts[0].text}`;
+            try {
+                const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
+                });
+                if (!response.ok) throw new Error("API error during title generation");
+                const data = await response.json();
+                return data?.candidates?.[0]?.content?.parts?.[0]?.text.trim().replace(/["*]/g, '') || "Chat";
+            } catch (error) {
+                console.error("Title generation failed:", error);
+                return "Titled Chat";
+            }
+        },
+
+        async fetchTextResponse(apiContents, systemInstruction) {
+             const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ contents: apiContents, systemInstruction })
+            });
+            if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            const data = await response.json();
+            const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
+            return botResponseText;
+        },
+
+        async fetchImageResponse(prompt) {
+            const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt })
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+            const imageBlob = await response.blob();
+            const imageUrl = URL.createObjectURL(imageBlob);
+            if (!imageUrl) throw new Error("Could not create image URL from the API response.");
+            return imageUrl;
+        }
+    },
     
     // --- Controller Module (Application Logic) ---
     /**
@@ -639,10 +849,65 @@ const ChatApp = {
             }
             this.saveCurrentChat();
         },
-        deleteConversation(chatId) { /* ... function unchanged ... */ },
-        downloadAllData() { /* ... function unchanged ... */ },
-        handleDataUpload() { /* ... function unchanged ... */ },
-        deleteAllData() { /* ... function unchanged ... */ }
+
+        deleteConversation(chatId) {
+            if (!confirm('Are you sure you want to delete this chat permanently?')) return;
+            ChatApp.State.allConversations = ChatApp.State.allConversations.filter(c => c.id !== chatId);
+            ChatApp.Store.saveAllConversations();
+            if (ChatApp.State.currentChatId === chatId) {
+                this.startNewChat();
+            } else {
+                ChatApp.UI.renderSidebar();
+            }
+        },
+        
+        downloadAllData() {
+            const dataStr = JSON.stringify(ChatApp.State.allConversations, null, 2);
+            if (!dataStr || dataStr === '[]') { alert('No conversation data to download.'); return; }
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = 'jbai_conversations_backup.json';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        },
+
+        handleDataUpload() {
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json,application/json';
+            fileInput.onchange = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) {
+                            throw new Error("Invalid data format. Expected an array of chat objects.");
+                        }
+                        if (confirm('This will replace all current conversations. Are you sure? This action cannot be undone.')) {
+                            ChatApp.State.allConversations = importedData;
+                            ChatApp.Store.saveAllConversations();
+                            alert('Data successfully imported. The application will now reload.');
+                            location.reload();
+                        }
+                    } catch (error) {
+                        alert(`Error importing data: ${error.message}`);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            fileInput.click();
+        },
+
+        deleteAllData() {
+            if (confirm('DANGER: This will permanently delete ALL chat data from this browser. Are you absolutely sure?')) {
+                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
+                alert('All chat data has been deleted.');
+                location.reload();
+            }
+        }
     },
     
     // --- Application Initialization ---
@@ -679,9 +944,6 @@ const ChatApp = {
         this.UI.cacheElements();
         this.UI.applyTheme(this.Store.getTheme());
         this.Store.loadAllConversations();
-        
-        // This logic is now handled by CSS media queries for a more robust responsive design.
-        // We no longer need to add the class via JS on init.
         
         this.Controller.startNewChat();
         this._bindEventListeners();
