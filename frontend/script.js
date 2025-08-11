@@ -40,6 +40,7 @@ const ChatApp = {
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
+        apiAbortController: null, // NEW: To cancel in-flight API requests
         typingInterval: null,
         ttsEnabled: false,
         selectedVoice: null,
@@ -81,13 +82,21 @@ const ChatApp = {
         setGenerating(status) {
             this.isGenerating = status;
             ChatApp.UI.toggleSendButtonState();
-            if (!status && this.typingInterval) {
-                clearInterval(this.typingInterval);
-                this.typingInterval = null;
+            if (!status) {
+                if (this.typingInterval) {
+                    clearInterval(this.typingInterval);
+                    this.typingInterval = null;
+                }
+                // If we stop generating, ensure the abort controller is reset
+                this.apiAbortController = null;
             }
         },
         
         resetCurrentChat() {
+            // NEW: Abort any pending API requests before resetting
+            if (this.apiAbortController) {
+                this.apiAbortController.abort();
+            }
             this.setCurrentConversation([]);
             this.currentChatId = null;
             this.attachedFiles = [];
@@ -169,6 +178,7 @@ const ChatApp = {
                 newChatBtn: document.getElementById('new-chat-btn'),
                 conversationList: document.getElementById('conversation-list'),
                 messageArea: document.getElementById('message-area'),
+                emptyChatPlaceholder: document.getElementById('empty-chat-placeholder'),
                 chatInput: document.getElementById('chat-input'),
                 sendButton: document.getElementById('send-button'),
                 settingsButton: document.getElementById('toggle-options-button'),
@@ -192,6 +202,19 @@ const ChatApp = {
             this.elements.chatInput.value = '';
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
+            this.togglePlaceholder();
+        },
+
+        togglePlaceholder() {
+            const hasMessages = this.elements.messageArea.querySelector('.message');
+            if (!this.elements.emptyChatPlaceholder) return;
+            
+            if (hasMessages) {
+                this.elements.emptyChatPlaceholder.style.display = 'none';
+            } else {
+                this.elements.messageArea.appendChild(this.elements.emptyChatPlaceholder);
+                this.elements.emptyChatPlaceholder.style.display = 'flex';
+            }
         },
 
         toggleSendButtonState() {
@@ -203,7 +226,6 @@ const ChatApp = {
         
         renderSidebar() {
             this.elements.conversationList.innerHTML = '';
-            // Sort conversations by ID (timestamp) descending to show newest first
             const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => b.id - a.id);
             
             sortedConversations.forEach(chat => {
@@ -229,12 +251,9 @@ const ChatApp = {
             });
         },
 
-        /**
-         * Renders a single message in the chat area.
-         * @param {object} message - The full message object from the state.
-         * @param {boolean} [isTyping=false] - If true, renders a "thinking" indicator.
-         */
         renderMessage(message, isTyping = false) {
+            this.togglePlaceholder(); // Hide placeholder when a message is rendered
+            
             const messageEl = document.createElement('div');
             messageEl.dataset.messageId = message.id;
 
@@ -248,8 +267,7 @@ const ChatApp = {
                 const { content, attachments } = message;
                 const sender = content.role === 'model' ? 'bot' : 'user';
                 const textContent = content.parts[0]?.text || '';
-                const rawText = textContent;
-
+                
                 messageEl.className = `message ${sender}`;
                 contentEl.innerHTML = this._formatMessageContent(textContent);
                 
@@ -258,7 +276,7 @@ const ChatApp = {
                     contentEl.prepend(attachmentsContainer);
                 }
                 
-                this._addMessageInteractions(messageEl, rawText, message.id);
+                this._addMessageInteractions(messageEl, textContent, message.id);
             }
             
             messageEl.appendChild(contentEl);
@@ -319,12 +337,6 @@ const ChatApp = {
             this.toggleSendButtonState();
         },
         
-        /**
-         * Finalizes a bot message element by typing out the response and rendering it.
-         * @param {HTMLElement} messageEl - The placeholder message element (usually the "thinking" one).
-         * @param {string} fullText - The full text of the bot's response.
-         * @param {string} messageId - The new message's unique ID.
-         */
         finalizeBotMessage(messageEl, fullText, messageId) {
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
@@ -353,7 +365,6 @@ const ChatApp = {
         _addMessageInteractions(messageEl, rawText, messageId) {
             this._addCopyButtons(messageEl, rawText);
             
-            // Allow message deletion via long-press on touch devices or Shift+Click on desktop.
             let pressTimer = null;
             const startDeleteTimer = () => {
                 pressTimer = setTimeout(() => {
@@ -512,7 +523,6 @@ const ChatApp = {
             overlay.querySelector('#ttsToggle').addEventListener('change', e => { ChatApp.State.ttsEnabled = e.target.checked; });
             overlay.querySelector('#volumeSlider').addEventListener('input', e => { ChatApp.State.ttsVolume = parseFloat(e.target.value); });
             
-            // The value of the select is the index in the filteredVoices array.
             overlay.querySelector('#voiceSelect').addEventListener('change', e => { 
                 if(ChatApp.State.filteredVoices[e.target.value]) {
                     ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[e.target.value];
@@ -528,10 +538,16 @@ const ChatApp = {
         },
 
         speakTTS(text) {
-            if (!window.speechSynthesis || !ChatApp.State.ttsEnabled || !text.trim() || text.startsWith('[IMAGE:')) return;
+            if (!window.speechSynthesis || !ChatApp.State.ttsEnabled || !text.trim()) return;
             
             window.speechSynthesis.cancel();
-            const speechText = text.replace(/```[\s\S]*?```/g, '... Code block ...').replace(/\[IMAGE:.*?\]\(.*?\)/g, '... Image ...');
+            // UPDATED: Smarter TTS text cleaning
+            const speechText = text
+                .replace(/```[\s\S]*?```/g, '... Code block ...')
+                .replace(/\[IMAGE:.*?\]\(.*?\)/g, '... Image ...');
+
+            if (!speechText.trim()) return;
+
             const utterance = new SpeechSynthesisUtterance(speechText);
             utterance.volume = ChatApp.State.ttsVolume;
             if (ChatApp.State.selectedVoice) utterance.voice = ChatApp.State.selectedVoice;
@@ -632,7 +648,7 @@ Rules:
 - Never add unnecessary text after the Markdown image link.`;
         },
 
-        async fetchTitle(chatHistory) {
+        async fetchTitle(chatHistory, signal) {
             const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
             if (safeHistory.length < 2) return "New Chat";
 
@@ -642,21 +658,27 @@ Rules:
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
+                    signal // Pass the abort signal
                 });
                 if (!response.ok) throw new Error("API error during title generation");
                 const data = await response.json();
                 return data?.candidates?.[0]?.content?.parts?.[0]?.text.trim().replace(/["*]/g, '') || "Chat";
             } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('Title generation was aborted.');
+                    return "Chat";
+                }
                 console.error("Title generation failed:", error);
                 return "Titled Chat";
             }
         },
 
-        async fetchTextResponse(apiContents, systemInstruction) {
+        async fetchTextResponse(apiContents, systemInstruction, signal) {
              const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contents: apiContents, systemInstruction })
+                body: JSON.stringify({ contents: apiContents, systemInstruction }),
+                signal // Pass the abort signal
             });
             if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
             const data = await response.json();
@@ -673,36 +695,27 @@ Rules:
      * @description Orchestrates the application, connecting user actions to state changes and UI updates.
      */
     Controller: {
-        /**
-         * Initializes the application by caching elements, loading data, and setting up event listeners.
-         */
         init() {
-            // 1. Find all our HTML elements first
             ChatApp.UI.cacheElements();
-            
-            // 2. Load settings and data
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
             
-            // 3. Render the initial UI
             ChatApp.UI.renderSidebar();
-            ChatApp.UI.toggleSendButtonState(); // Set initial button state
+            ChatApp.UI.togglePlaceholder();
+            ChatApp.UI.toggleSendButtonState();
 
-            // 4. Connect UI elements to controller functions using arrow functions to preserve `this` context.
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
 
             elements.sendButton.addEventListener('click', () => Controller.handleChatSubmission());
             
             elements.chatInput.addEventListener('keydown', (e) => {
-                // Submit on Enter, but allow Shift+Enter for new lines
                 if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault(); // Prevents new line in textarea
+                    e.preventDefault();
                     Controller.handleChatSubmission();
                 }
             });
 
-            // Auto-resize textarea and toggle send button on input
             elements.chatInput.addEventListener('input', () => {
                 elements.chatInput.style.height = 'auto';
                 elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
@@ -712,11 +725,9 @@ Rules:
             elements.newChatBtn.addEventListener('click', () => Controller.startNewChat());
             elements.settingsButton.addEventListener('click', () => ChatApp.UI.renderSettingsModal());
             
-            // Wire up the file attachment functionality
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
             elements.fileInput.addEventListener('change', (e) => Controller.handleFileSelection(e));
             
-            // Sidebar toggle for mobile
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
         },
@@ -728,14 +739,31 @@ Rules:
         },
 
         async handleChatSubmission() {
-            const userInput = ChatApp.UI.elements.chatInput.value.trim();
-            const files = ChatApp.State.attachedFiles;
+            if (ChatApp.State.isGenerating) return;
 
-            if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
-            
+            const userInput = ChatApp.UI.elements.chatInput.value.trim();
+            const files = [...ChatApp.State.attachedFiles];
+            if (!userInput && files.length === 0) return;
+
             ChatApp.State.setGenerating(true);
 
-            // Process and prepare file data for local display
+            const attachments = await this._prepareAttachments(files);
+            this._clearInputs();
+
+            const userMessage = this._createUserMessage(userInput, attachments);
+            ChatApp.State.addMessage(userMessage);
+            ChatApp.UI.renderMessage(userMessage);
+            
+            this._triggerGeneration();
+        },
+
+        _clearInputs() {
+            ChatApp.UI.elements.chatInput.value = "";
+            ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input')); // Recalculate size
+            this.clearAttachedFiles();
+        },
+
+        async _prepareAttachments(files) {
             const fileDataPromises = files.map(file => {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
@@ -748,33 +776,57 @@ Rules:
                     reader.readAsDataURL(file);
                 });
             });
-            const attachments = await Promise.all(fileDataPromises);
-
-            // Clear inputs
-            ChatApp.UI.elements.chatInput.value = "";
-            ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
-            this.clearAttachedFiles();
-
-            // Create and render the user's message
-            const userMessageId = ChatApp.Utils.generateUUID();
-            const userMessage = {
-                id: userMessageId,
-                content: { role: "user", parts: [{ text: userInput }] },
-                attachments: attachments
-            };
-            ChatApp.State.addMessage(userMessage);
-            ChatApp.UI.renderMessage(userMessage);
-            
-            // The single text generator function now handles everything.
-            this._generateText();
+            return Promise.all(fileDataPromises);
         },
 
+        _createUserMessage(text, attachments) {
+            return {
+                id: ChatApp.Utils.generateUUID(),
+                content: { role: "user", parts: [{ text }] },
+                attachments: attachments
+            };
+        },
+
+        async _triggerGeneration() {
+            const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null }, true);
+            
+            // NEW: Create and manage AbortController
+            ChatApp.State.apiAbortController = new AbortController();
+            const { signal } = ChatApp.State.apiAbortController;
+
+            try {
+                const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
+                const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
+                const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction, signal);
+                
+                ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
+
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    console.log('API request was aborted.');
+                    thinkingMessageEl.remove();
+                    // Don't show an error if it was a deliberate cancellation
+                } else {
+                    console.error("Generation failed:", error);
+                    thinkingMessageEl.remove();
+                    ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Sorry, an error occurred: ${error.message}` }] } });
+                    ChatApp.State.setGenerating(false);
+                }
+            }
+        },
+
+        completeGeneration(botResponseText, messageId) {
+            const botMessage = { id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } };
+            ChatApp.State.addMessage(botMessage);
+            this.saveCurrentChat();
+            ChatApp.UI.speakTTS(botResponseText);
+            ChatApp.State.setGenerating(false);
+        },
+        
         handleFileSelection(event) {
-            const files = Array.from(event.target.files);
-            ChatApp.State.attachedFiles.push(...files);
+            ChatApp.State.attachedFiles.push(...Array.from(event.target.files));
             ChatApp.UI.renderFilePreviews();
-            // Reset input so the same file can be selected again
-            event.target.value = null;
+            event.target.value = null; // Reset input
         },
 
         removeAttachedFile(index) {
@@ -787,47 +839,18 @@ Rules:
             ChatApp.UI.renderFilePreviews();
         },
 
-        async _generateText() {
-            const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null }, true);
-
-            try {
-                const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
-                const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
-                const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
-                
-                // The AI's response will either be plain text or contain the image markdown.
-                // The UI rendering function handles both cases automatically.
-                ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
-
-            } catch (error) {
-                console.error("Generation failed:", error);
-                thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Sorry, an error occurred: ${error.message}` }] } });
-                ChatApp.State.setGenerating(false);
-            }
-        },
-
-        completeGeneration(botResponseText, messageId) {
-            const botMessage = { id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } };
-            ChatApp.State.addMessage(botMessage);
-            this.saveCurrentChat();
-            ChatApp.UI.speakTTS(botResponseText);
-            ChatApp.State.setGenerating(false);
-        },
-
         async saveCurrentChat() {
             if (ChatApp.State.currentConversation.length === 0) return;
 
             if (ChatApp.State.currentChatId) {
                 const chat = ChatApp.State.allConversations.find(c => c.id === ChatApp.State.currentChatId);
-                if (chat) {
-                    chat.history = ChatApp.State.currentConversation;
-                }
-            } else { // Create a new chat only if there's a user message and a bot response
+                if (chat) chat.history = ChatApp.State.currentConversation;
+            } else {
                  const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
                  const modelMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'model').length;
                  if (userMessages > 0 && modelMessages > 0) {
-                    const newTitle = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation);
+                    const titleAbortController = new AbortController();
+                    const newTitle = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation, titleAbortController.signal);
                     ChatApp.State.currentChatId = Date.now();
                     ChatApp.State.allConversations.push({ 
                         id: ChatApp.State.currentChatId, 
@@ -849,27 +872,27 @@ Rules:
                 return;
             }
 
-            this.startNewChat(); // Clear state and UI before loading
+            this.startNewChat(); // Clears state, UI, and aborts any pending requests
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
             
             ChatApp.UI.clearChatArea();
-            ChatApp.State.currentConversation.forEach(msg => {
-                ChatApp.UI.renderMessage(msg);
-            });
+            ChatApp.State.currentConversation.forEach(msg => ChatApp.UI.renderMessage(msg));
 
             setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             ChatApp.UI.renderSidebar();
         },
 
         deleteMessage(messageId) {
-            // The confirm dialog is blocking, but simple. For a better UX, a custom non-blocking modal could be used.
             if (!confirm('Are you sure you want to delete this message?')) return;
             ChatApp.State.removeMessage(messageId);
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
             if (messageEl) {
                 messageEl.classList.add('fade-out');
-                setTimeout(() => messageEl.remove(), 400);
+                setTimeout(() => {
+                    messageEl.remove();
+                    ChatApp.UI.togglePlaceholder(); // Check if placeholder should be shown
+                }, 400);
             }
             this.saveCurrentChat();
         },
@@ -930,7 +953,6 @@ Rules:
                 ChatApp.State.allConversations = [];
                 ChatApp.Store.saveAllConversations();
                 this.startNewChat();
-                // Also close the settings modal if it's open
                 const settingsModal = document.querySelector('.modal-overlay');
                 if (settingsModal) settingsModal.remove();
                 alert('All conversation data has been deleted.');
@@ -939,7 +961,6 @@ Rules:
     }
 };
 
-// Start the application once the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     ChatApp.Controller.init();
 });
