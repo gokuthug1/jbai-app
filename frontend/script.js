@@ -1,68 +1,95 @@
 /**
- * A self-contained, modern Chat Application object.
+ * A self-contained Chat Application object.
  * This object encapsulates all logic for configuration, state management,
- * DOM manipulation, API interaction, and application control.
+ * UI rendering, API communication, and application control.
  *
- * @version 2.0
- * @author Original author, Refactored by AI
+ * @namespace ChatApp
  */
 const ChatApp = {
     // --- Configuration Module ---
     /**
-     * Stores static configuration values for the application.
+     * @memberof ChatApp
+     * @namespace Config
+     * @description Stores static configuration values for the application.
      */
     Config: {
         API_URLS: {
             TEXT: 'https://jbai-app.onrender.com/api/generate',
+            IMAGE: '/api/img-gen'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations'
         },
-        DEFAULT_THEME: 'dark',
+        DEFAULT_THEME: 'light',
+        TYPING_SPEED_MS: 0, // Milliseconds per character
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
-            DELETE: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>`,
-            PROCESSING: `<svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/><path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/></svg>`
+            DELETE: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`
         }
     },
 
     // --- State Management Module ---
     /**
-     * Manages the dynamic state of the application.
+     * @memberof ChatApp
+     * @namespace State
+     * @description Manages the dynamic state of the application.
      */
     State: {
         currentConversation: [],
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
-        apiAbortController: null,
+        typingInterval: null,
         ttsEnabled: false,
         selectedVoice: null,
         ttsVolume: 1,
+        filteredVoices: [],
         attachedFiles: [],
 
         /**
-         * Sets the generation status and updates UI accordingly.
-         * @param {boolean} status - The new generating status.
+         * Sets the current conversation, migrating old data formats if necessary.
+         * @param {Array<Object>} history - The conversation history array.
          */
+        setCurrentConversation(history) {
+            this.currentConversation = history.map(msg => {
+                if (!msg) return null;
+                // Already in new format
+                if (msg.id && msg.content && Array.isArray(msg.content.parts)) return msg;
+                // Old format: { role: 'user'/'bot', text: '...' }
+                if (msg.role && typeof msg.text !== 'undefined') {
+                    return {
+                        id: ChatApp.Utils.generateUUID(),
+                        content: {
+                            role: msg.role === 'user' ? 'user' : 'model',
+                            parts: [{ text: msg.text }]
+                        }
+                    };
+                }
+                return null;
+            }).filter(Boolean);
+        },
+
+        addMessage(message) {
+            this.currentConversation.push(message);
+        },
+
+        removeMessage(messageId) {
+            this.currentConversation = this.currentConversation.filter(msg => msg.id !== messageId);
+        },
+
         setGenerating(status) {
             this.isGenerating = status;
             ChatApp.UI.toggleSendButtonState();
-            if (!status) {
-                this.apiAbortController = null;
+            if (!status && this.typingInterval) {
+                clearInterval(this.typingInterval);
+                this.typingInterval = null;
             }
         },
-
-        /**
-         * Resets the current chat state to start a new conversation.
-         */
+        
         resetCurrentChat() {
-            if (this.apiAbortController) {
-                this.apiAbortController.abort();
-            }
-            this.currentConversation = [];
+            this.setCurrentConversation([]);
             this.currentChatId = null;
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
@@ -74,7 +101,9 @@ const ChatApp = {
 
     // --- Utility Module ---
     /**
-     * Provides helper functions used throughout the application.
+     * @memberof ChatApp
+     * @namespace Utils
+     * @description Provides helper and utility functions.
      */
     Utils: {
         /**
@@ -87,57 +116,52 @@ const ChatApp = {
             p.textContent = str;
             return p.innerHTML;
         },
+
         /**
-         * Generates a standard v4 UUID.
-         * @returns {string} A new UUID.
+         * Generates a universally unique identifier.
+         * @returns {string} A UUID string.
          */
         generateUUID() {
             return crypto.randomUUID();
-        },
+        }
     },
 
     // --- Local Storage Module ---
     /**
-     * Handles all interactions with the browser's Local Storage.
+     * @memberof ChatApp
+     * @namespace Store
+     * @description Handles all interactions with browser localStorage.
      */
     Store: {
-        /** Saves all conversations to local storage. */
         saveAllConversations() {
             localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations));
         },
-        /** Loads all conversations from local storage into the state. */
         loadAllConversations() {
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 ChatApp.State.allConversations = stored ? JSON.parse(stored) : [];
             } catch (e) {
-                console.error("Failed to parse conversations from local storage, resetting.", e);
+                console.error("Failed to parse conversations from localStorage, resetting.", e);
                 ChatApp.State.allConversations = [];
             }
         },
-        /**
-         * Saves the selected theme to local storage.
-         * @param {string} themeName - The name of the theme to save.
-         */
         saveTheme(themeName) {
             localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName);
         },
-        /**
-         * Retrieves the saved theme from local storage or returns the default.
-         * @returns {string} The current theme name.
-         */
         getTheme() {
             return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME;
-        },
+        }
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
     /**
-     * Manages all direct DOM manipulations and UI rendering.
+     * @memberof ChatApp
+     * @namespace UI
+     * @description Manages all DOM manipulations, rendering, and UI event handling.
      */
     UI: {
         elements: {},
-        /** Caches frequently accessed DOM elements. */
+
         cacheElements() {
             this.elements = {
                 body: document.body,
@@ -146,7 +170,6 @@ const ChatApp = {
                 newChatBtn: document.getElementById('new-chat-btn'),
                 conversationList: document.getElementById('conversation-list'),
                 messageArea: document.getElementById('message-area'),
-                emptyChatPlaceholder: document.getElementById('empty-chat-placeholder'),
                 chatInput: document.getElementById('chat-input'),
                 sendButton: document.getElementById('send-button'),
                 settingsButton: document.getElementById('toggle-options-button'),
@@ -155,119 +178,96 @@ const ChatApp = {
                 filePreviewsContainer: document.getElementById('file-previews-container'),
             };
         },
-        /**
-         * Applies a new theme to the application.
-         * @param {string} themeName - The theme to apply.
-         */
+
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
         },
-        /** Scrolls the message area to the bottom. */
+        
         scrollToBottom() {
-            this.elements.messageArea?.scrollTo({ top: this.elements.messageArea.scrollHeight, behavior: 'smooth' });
+            this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight;
         },
-        /** Clears the chat area and resets the input field. */
+        
         clearChatArea() {
             this.elements.messageArea.innerHTML = '';
             this.elements.chatInput.value = '';
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
-            this.togglePlaceholder(true);
         },
-        /**
-         * Toggles the visibility of the empty chat placeholder.
-         * @param {boolean} [forceShow=false] - If true, forces the placeholder to show.
-         */
-        togglePlaceholder(forceShow = false) {
-            const hasMessages = this.elements.messageArea.querySelector('.message');
-            this.elements.emptyChatPlaceholder.classList.toggle('visible', forceShow || !hasMessages);
-        },
-        /** Enables or disables the send button based on input state. */
+
         toggleSendButtonState() {
             const hasText = this.elements.chatInput.value.trim().length > 0;
             const hasFiles = ChatApp.State.attachedFiles.length > 0;
-            this.elements.sendButton.disabled = (!hasText && !hasFiles) || ChatApp.State.isGenerating;
+            const isGenerating = ChatApp.State.isGenerating;
+            this.elements.sendButton.disabled = (!hasText && !hasFiles) || isGenerating;
         },
-        /** Renders the list of conversations in the sidebar. */
+        
         renderSidebar() {
             this.elements.conversationList.innerHTML = '';
-            const sorted = [...ChatApp.State.allConversations].sort((a, b) => b.id - a.id);
-            sorted.forEach(chat => {
+            // Sort conversations by ID (timestamp) descending to show newest first
+            const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => b.id - a.id);
+            
+            sortedConversations.forEach(chat => {
                 const item = document.createElement('div');
                 item.className = 'conversation-item';
                 item.dataset.chatId = chat.id;
-                if (chat.id === ChatApp.State.currentChatId) item.classList.add('active');
-
+                if (chat.id === ChatApp.State.currentChatId) {
+                    item.classList.add('active');
+                }
+                
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
-                item.innerHTML = `<span class="conversation-title" title="${title}">${title}</span>
-                                <button type="button" class="delete-btn" title="Delete Chat" aria-label="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                item.innerHTML = `
+                    <span class="conversation-title" title="${title}">${title}</span>
+                    <button type="button" class="delete-btn" title="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                
                 item.addEventListener('click', () => ChatApp.Controller.loadChat(chat.id));
-                item.querySelector('.delete-btn').addEventListener('click', e => {
+                item.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     ChatApp.Controller.deleteConversation(chat.id);
                 });
+
                 this.elements.conversationList.appendChild(item);
             });
         },
+
         /**
          * Renders a single message in the chat area.
-         * @param {object} message - The message object to render.
-         * @returns {HTMLElement} The created message element.
+         * @param {object} message - The full message object from the state.
+         * @param {boolean} [isTyping=false] - If true, renders a "thinking" indicator.
          */
-        renderMessage(message) {
-            this.togglePlaceholder(false);
+        renderMessage(message, isTyping = false) {
             const messageEl = document.createElement('div');
-            messageEl.className = `message ${message.role}`;
             messageEl.dataset.messageId = message.id;
 
             const contentEl = document.createElement('div');
             contentEl.className = 'message-content';
 
-            if (message.attachments?.length > 0) {
-                contentEl.appendChild(this._createAttachmentsContainer(message.attachments));
-            }
-            if (message.text) {
-                const textNode = document.createElement('div');
-                textNode.innerHTML = this._formatMessageContent(message.text);
-                contentEl.appendChild(textNode);
-            }
+            if (isTyping) {
+                messageEl.className = 'message bot thinking';
+                contentEl.innerHTML = `<span></span><span></span><span></span>`;
+            } else {
+                const { content, attachments } = message;
+                const sender = content.role === 'model' ? 'bot' : 'user';
+                const textContent = content.parts[0]?.text || '';
+                const rawText = textContent;
 
+                messageEl.className = `message ${sender}`;
+                contentEl.innerHTML = this._formatMessageContent(textContent);
+                
+                if (attachments && attachments.length > 0) {
+                    const attachmentsContainer = this._createAttachmentsContainer(attachments);
+                    contentEl.prepend(attachmentsContainer);
+                }
+                
+                this._addMessageInteractions(messageEl, rawText, message.id);
+            }
+            
             messageEl.appendChild(contentEl);
             this.elements.messageArea.appendChild(messageEl);
-            
-            this._addMessageInteractions(messageEl, message.text, message.id);
-            this._highlightCodeInElement(messageEl);
+            this.scrollToBottom();
+            return messageEl;
+        },
 
-            this.scrollToBottom();
-            return messageEl;
-        },
-        /** Renders a "thinking" indicator message. */
-        renderThinkingMessage() {
-            this.togglePlaceholder(false);
-            const messageEl = document.createElement('div');
-            messageEl.className = 'message bot thinking';
-            messageEl.innerHTML = `<div class="message-content"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>`;
-            this.elements.messageArea.appendChild(messageEl);
-            this.scrollToBottom();
-            return messageEl;
-        },
-        /**
-         * Renders a "processing files" indicator message.
-         * @param {File[]} files - The files being processed.
-         * @returns {HTMLElement} The created message element.
-         */
-        renderProcessingMessage(files) {
-            this.togglePlaceholder(false);
-            const messageEl = document.createElement('div');
-            messageEl.className = 'message bot processing';
-            const fileCount = files.length;
-            const text = `Processing ${fileCount} file${fileCount > 1 ? 's' : ''}...`;
-            messageEl.innerHTML = `<div class="message-content">${ChatApp.Config.ICONS.PROCESSING} <span>${text}</span></div>`;
-            this.elements.messageArea.appendChild(messageEl);
-            this.scrollToBottom();
-            return messageEl;
-        },
         _createAttachmentsContainer(attachments) {
             const container = document.createElement('div');
             container.className = 'message-attachments';
@@ -278,73 +278,153 @@ const ChatApp = {
                     item.innerHTML = `<img src="${file.dataUrl}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
                 } else if (file.type.startsWith('video/')) {
                     item.innerHTML = `<video src="${file.dataUrl}" controls class="attachment-media"></video>`;
-                } else {
-                    item.innerHTML = `<div class="attachment-fallback">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
                 }
                 container.appendChild(item);
             });
             return container;
         },
-        /** Renders previews for attached files before sending. */
+
         renderFilePreviews() {
-            const container = this.elements.filePreviewsContainer;
-            container.innerHTML = '';
+            this.elements.filePreviewsContainer.innerHTML = '';
             if (ChatApp.State.attachedFiles.length === 0) {
-                container.style.display = 'none';
+                this.elements.filePreviewsContainer.style.display = 'none';
                 return;
             }
 
-            container.style.display = 'flex';
+            this.elements.filePreviewsContainer.style.display = 'flex';
             ChatApp.State.attachedFiles.forEach((file, index) => {
                 const previewItem = document.createElement('div');
                 previewItem.className = 'file-preview-item';
+
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    let previewContent;
+                    let previewContent = '';
                     if (file.type.startsWith('image/')) {
                         previewContent = `<img src="${e.target.result}" alt="${ChatApp.Utils.escapeHTML(file.name)}">`;
                     } else if (file.type.startsWith('video/')) {
-                        previewContent = `<video src="${e.target.result}" muted playsinline></video>`;
+                         previewContent = `<video src="${e.target.result}" muted playsinline></video>`;
                     } else {
-                        previewContent = `<div class="file-preview-fallback"><span>${ChatApp.Utils.escapeHTML(file.name.split('.').pop())}</span></div>`;
+                        previewContent = `<span>${ChatApp.Utils.escapeHTML(file.name)}</span>`;
                     }
                     previewItem.innerHTML = `
                         ${previewContent}
-                        <button class="remove-preview-btn" title="Remove file" aria-label="Remove file" type="button">&times;</button>
+                        <button class="remove-preview-btn" title="Remove file" type="button">&times;</button>
                     `;
                     previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => {
                         ChatApp.Controller.removeAttachedFile(index);
                     });
                 };
                 reader.readAsDataURL(file);
-                container.appendChild(previewItem);
+                this.elements.filePreviewsContainer.appendChild(previewItem);
             });
             this.toggleSendButtonState();
         },
-        _formatMessageContent(text) {
-            if (!text) return '';
-            let formatted = text;
-            // 1. Bot-generated image markdown: [IMAGE: alt text](url)
-            formatted = formatted.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, '<img src="$2" alt="Bot-generated image: $1" class="bot-generated-image">');
-            // 2. Code blocks
-            formatted = formatted.replace(/```(\w+)?\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${ChatApp.Utils.escapeHTML(code.trim())}</code></pre>`);
-            // 3. Headings
-            formatted = formatted.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-            return formatted;
+        
+        /**
+         * Finalizes a bot message element by typing out the response and rendering it.
+         * @param {HTMLElement} messageEl - The placeholder message element (usually the "thinking" one).
+         * @param {string} fullText - The full text of the bot's response.
+         * @param {string} messageId - The new message's unique ID.
+         */
+        finalizeBotMessage(messageEl, fullText, messageId) {
+            messageEl.classList.remove('thinking');
+            messageEl.dataset.messageId = messageId;
+            const contentEl = messageEl.querySelector('.message-content');
+            contentEl.innerHTML = ''; // Clear thinking dots
+
+            let i = 0;
+            ChatApp.State.typingInterval = setInterval(() => {
+                if (i < fullText.length) {
+                    contentEl.textContent += fullText[i];
+                    i++;
+                    if (i % 10 === 0) this.scrollToBottom();
+                } else {
+                    clearInterval(ChatApp.State.typingInterval);
+                    ChatApp.State.typingInterval = null;
+                    
+                    contentEl.innerHTML = this._formatMessageContent(fullText);
+                    this._addMessageInteractions(messageEl, fullText, messageId);
+                    this.scrollToBottom();
+
+                    ChatApp.Controller.completeGeneration(fullText, messageId);
+                }
+            }, ChatApp.Config.TYPING_SPEED_MS);
         },
+
         _addMessageInteractions(messageEl, rawText, messageId) {
+            this._addCopyButtons(messageEl, rawText);
+            
+            let pressTimer = null;
+            const startDeleteTimer = () => {
+                pressTimer = setTimeout(() => {
+                    if (navigator.vibrate) navigator.vibrate(50);
+                    ChatApp.Controller.deleteMessage(messageId);
+                }, 800);
+            };
+            const clearDeleteTimer = () => clearTimeout(pressTimer);
+            
+            messageEl.addEventListener('click', e => { 
+                if (e.shiftKey) { 
+                    e.preventDefault(); 
+                    ChatApp.Controller.deleteMessage(messageId); 
+                } 
+            });
+            messageEl.addEventListener('touchstart', startDeleteTimer, { passive: true });
+            messageEl.addEventListener('touchend', clearDeleteTimer);
+            messageEl.addEventListener('touchmove', clearDeleteTimer);
+        },
+        
+        _formatMessageContent(text) {
+             if (!text) return '';
+            let html = ChatApp.Utils.escapeHTML(text)
+                // Custom Block: Image format
+                .replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
+                    const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
+                    return `
+                    <div class="generated-image-wrapper">
+                        <p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p>
+                        <div class="image-container">
+                            <img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image">
+                            <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                            </a>
+                        </div>
+                    </div>`;
+                });
+            
+            // Process block-level Markdown first
+            html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
+            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
+            html = html.replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
+            html = html.replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
+            html = html.replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
+            
+            // Process inline-level Markdown
+            html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
+            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
+            html = html.replace(/~~(.*?)~~/g, '<s>$1</s>');
+            
+            // Final paragraph wrapping for remaining lines
+            return html.split('\n').map(line => {
+                const trimmed = line.trim();
+                if (trimmed === '') return '';
+                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div)|\[IMAGE:)/.test(trimmed);
+                return isBlockElement ? line : `<p>${line}</p>`;
+            }).join('');
+        },
+
+        _addCopyButtons(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
-
-            const { COPY, CHECK, DELETE } = ChatApp.Config.ICONS;
-            const interactionContainer = document.createElement('div');
-            interactionContainer.className = 'message-interactions';
             
-            if (rawText) {
+            const { COPY, CHECK } = ChatApp.Config.ICONS;
+            
+            if (rawText && !rawText.startsWith('[IMAGE:')) {
                 const copyBtn = document.createElement('button');
-                copyBtn.className = 'interaction-btn';
+                copyBtn.className = 'copy-button';
                 copyBtn.title = 'Copy message text';
-                copyBtn.ariaLabel = 'Copy message text';
                 copyBtn.innerHTML = COPY;
                 copyBtn.addEventListener('click', e => {
                     e.stopPropagation();
@@ -353,23 +433,9 @@ const ChatApp = {
                         setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000);
                     });
                 });
-                interactionContainer.appendChild(copyBtn);
+                messageEl.appendChild(copyBtn);
             }
-
-            const deleteBtn = document.createElement('button');
-            deleteBtn.className = 'interaction-btn';
-            deleteBtn.title = 'Delete message';
-            deleteBtn.ariaLabel = 'Delete message';
-            deleteBtn.innerHTML = DELETE;
-            deleteBtn.addEventListener('click', e => {
-                e.stopPropagation();
-                ChatApp.Controller.deleteMessage(messageId);
-            });
-            interactionContainer.appendChild(deleteBtn);
             
-            contentEl.appendChild(interactionContainer);
-            
-            // Add copy button to code blocks specifically
             contentEl.querySelectorAll('pre').forEach(pre => {
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
@@ -384,32 +450,34 @@ const ChatApp = {
                 pre.appendChild(copyCodeBtn);
             });
         },
-        _highlightCodeInElement(element) {
-            if (typeof hljs !== 'undefined') {
-                element.querySelectorAll('pre code').forEach((block) => {
-                    try {
-                        hljs.highlightElement(block);
-                    } catch (e) {
-                        console.error("Code highlighting failed", e);
-                    }
-                });
-            }
-        },
-        /** Renders and handles the settings modal. */
+        
         renderSettingsModal() {
-            this.closeSettingsModal(); // Ensure no duplicates
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
             overlay.innerHTML = `
             <div class="settings-card">
-                <button class="close-modal-btn" aria-label="Close settings">&times;</button>
                 <h2>Settings</h2>
                 <div class="settings-row">
                     <label for="themeSelect">Theme</label>
                     <select id="themeSelect">
-                        <option value="dark">Dark</option><option value="light">Light</option><option value="dracula">Dracula</option>
-                        <option value="midnight">Midnight</option><option value="monokai">Monokai</option><option value="nord">Nord</option>
-                        <option value="solarized-light">Solarized Light</option><option value="github-light">GitHub Light</option>
+                        <optgroup label="Light Themes">
+                            <option value="light">Light</option>
+                            <option value="github-light">GitHub Light</option>
+                            <option value="paper">Paper</option>
+                            <option value="solarized-light">Solarized Light</option>
+                        </optgroup>
+                        <optgroup label="Dark Themes">
+                            <option value="ayu-mirage">Ayu Mirage</option>
+                            <option value="cobalt2">Cobalt2</option>
+                            <option value="dark">Dark</option>
+                            <option value="dracula">Dracula</option>
+                            <option value="gruvbox-dark">Gruvbox Dark</option>
+                            <option value="midnight">Midnight</option>
+                            <option value="monokai">Monokai</option>
+                            <option value="nord">Nord</option>
+                            <option value="oceanic-next">Oceanic Next</option>
+                            <option value="tomorrow-night-eighties">Tomorrow Night</option>
+                        </optgroup>
                     </select>
                 </div>
                 <div class="settings-row">
@@ -420,18 +488,21 @@ const ChatApp = {
                     <label for="volumeSlider">Voice Volume</label>
                     <input type="range" min="0" max="1" step="0.1" value="${ChatApp.State.ttsVolume}" id="volumeSlider" class="volume-slider">
                 </div>
+                <div class="settings-row">
+                    <label for="voiceSelect">Bot Voice</label>
+                    <select id="voiceSelect" disabled></select>
+                </div>
                 <hr>
-                <div class="settings-actions">
+                <div class="data-actions">
                     <button id="upload-data-btn" type="button">Import Data</button>
                     <button id="download-data-btn" type="button">Export Data</button>
                     <button id="delete-data-btn" type="button" class="btn-danger">Delete All Data</button>
                 </div>
+                <button id="closeSettingsBtn" type="button" class="btn-primary">Close</button>
             </div>`;
+            
             document.body.appendChild(overlay);
-
-            const closeModal = () => this.closeSettingsModal();
-            overlay.addEventListener('click', e => { if (e.target === overlay) closeModal(); });
-            overlay.querySelector('.close-modal-btn').addEventListener('click', closeModal);
+            overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
             
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
@@ -440,71 +511,98 @@ const ChatApp = {
             overlay.querySelector('#ttsToggle').checked = ChatApp.State.ttsEnabled;
             overlay.querySelector('#ttsToggle').addEventListener('change', e => { ChatApp.State.ttsEnabled = e.target.checked; });
             overlay.querySelector('#volumeSlider').addEventListener('input', e => { ChatApp.State.ttsVolume = parseFloat(e.target.value); });
+            overlay.querySelector('#voiceSelect').addEventListener('change', e => { 
+                if(ChatApp.State.filteredVoices[e.target.value]) ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[e.target.value]; 
+            });
+
+            overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
+            overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
+            overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
+            overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
             
-            overlay.querySelector('#upload-data-btn').addEventListener('click', () => ChatApp.Controller.handleDataUpload());
-            overlay.querySelector('#download-data-btn').addEventListener('click', () => ChatApp.Controller.downloadAllData());
-            overlay.querySelector('#delete-data-btn').addEventListener('click', () => ChatApp.Controller.deleteAllData());
+            this._populateVoiceList();
         },
-        /** Closes the settings modal if it's open. */
-        closeSettingsModal() {
-            document.querySelector('.modal-overlay')?.remove();
-        },
-        /**
-         * Speaks the given text using the Web Speech API if enabled.
-         * @param {string} text - The text to speak.
-         */
+
         speakTTS(text) {
-            if (!window.speechSynthesis || !ChatApp.State.ttsEnabled || !text?.trim()) return;
+            if (!window.speechSynthesis || !ChatApp.State.ttsEnabled || !text.trim() || text.startsWith('[IMAGE:')) return;
+            
             window.speechSynthesis.cancel();
-            // Remove code blocks and other non-verbal content before speaking
-            const speechText = text.replace(/```[\s\S]*?```/g, '... Code block ...').replace(/\[IMAGE:.*?\]\(.*?\)/g, '');
-            if (!speechText.trim()) return;
+            const speechText = text.replace(/```[\s\S]*?```/g, '... Code block ...').replace(/\[IMAGE:.*?\]\(.*?\)/g, '... Image ...');
             const utterance = new SpeechSynthesisUtterance(speechText);
             utterance.volume = ChatApp.State.ttsVolume;
             if (ChatApp.State.selectedVoice) utterance.voice = ChatApp.State.selectedVoice;
             window.speechSynthesis.speak(utterance);
         },
+
+        _populateVoiceList() {
+            const voiceSelect = document.getElementById('voiceSelect');
+            if (!voiceSelect || typeof speechSynthesis === 'undefined') return;
+            const setVoices = () => {
+                ChatApp.State.filteredVoices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
+                voiceSelect.innerHTML = '';
+                if (ChatApp.State.filteredVoices.length === 0) {
+                    voiceSelect.disabled = true; voiceSelect.innerHTML = '<option>No English voices found</option>'; return;
+                }
+                voiceSelect.disabled = !ChatApp.State.ttsEnabled;
+                let selectedIdx = 0;
+                ChatApp.State.filteredVoices.forEach((voice, i) => {
+                    const option = new Option(`${voice.name} (${voice.lang})`, i);
+                    voiceSelect.add(option);
+                    if (ChatApp.State.selectedVoice && ChatApp.State.selectedVoice.name === voice.name) {
+                        selectedIdx = i;
+                    }
+                });
+                voiceSelect.selectedIndex = selectedIdx;
+                if (!ChatApp.State.selectedVoice) ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[0];
+            };
+            setVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = setVoices;
+            }
+        }
     },
 
     // --- API Module ---
     /**
-     * Handles all communication with external APIs.
+     * @memberof ChatApp
+     * @namespace Api
+     * @description Handles all fetch requests to external APIs.
      */
     Api: {
         async getSystemContext() {
-            return `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online. You were developed by Jeremiah, also known as 'gokuthug1,' your creator. He has custom commands that users can use, and you must follow them. You can generate both text and images. Use standard Markdown in your responses.
+            return `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online.
+
+You were developed by Jeremiah, also known as 'gokuthug1,' your creator.
+He has custom commands that users can use, and you must follow them.
+
+Use standard Markdown in your responses.  
+You can generate both text and images.
+
+For images, always use this format:  
+[IMAGE: user's prompt](URL_to_image)
 
 ---
-**Image Generation Rule:**
-If the user's request is best answered with an image (e.g., they ask to "draw", "show a picture of", or "visualize"), you must create a Pollinations.ai URL and embed it in your response.
 
-1.  Take the user's essential prompt (e.g., "a futuristic city").
-2.  URL-encode the prompt (e.g., "a%20futuristic%20city").
-3.  Construct the URL: \`https://image.pollinations.ai/prompt/{URL_ENCODED_PROMPT}\`
-4.  Present it in your response using this exact Markdown format: \`[IMAGE: original prompt](the_url_you_created)\`
+Real-Time Context:  
+You have access to the user's current context, preferences, and command system. Use this to:  
+- Personalize answers  
+- Avoid repeating known info  
+- Act in line with the user's instructions  
 
-**Example:**
-User: Can you draw a picture of a cute red panda?
-Your Response: Of course! Here is a picture of a cute red panda:
-
-[IMAGE: a cute red panda](https://image.pollinations.ai/prompt/a%20cute%20red%20panda)
----
-
-**Real-Time Context:**  
 Current Date/Time: ${new Date().toLocaleString()}
 
 ---
 
-**Abilities:**  
-- Generate creative, technical, or helpful text.
-- Generate images by creating and embedding Pollinations.ai URLs as instructed.
-- Format HTML code as one complete file (HTML, CSS, and JS combined).
-- Interpret and follow Jeremiah’s commands.
-- Avoid fluff or overexplaining—stay smart, fast, and clear.
+Abilities:  
+- Generate creative, technical, or helpful text  
+- Generate images in response to visual prompts  
+- Format HTML code as one complete file (HTML, CSS, and JS combined)  
+- Interpret and follow Jeremiah’s commands  
+- Avoid fluff or overexplaining—stay smart, fast, and clear
 
 ---
 
-**Jeremiah's Custom Commands:**  
+Jeremiah's Custom Commands:  
 /html      → Give a random HTML code that’s interesting and fun.  
 /profile   → List all custom commands and explain what each does.  
 /concept   → Ask what concept the user wants to create.  
@@ -518,236 +616,297 @@ Current Date/Time: ${new Date().toLocaleString()}
 
 ---
 
-**Rules:**  
-- Do not ask what a command means. Follow it exactly as written.
-- If you decide an image is needed, follow the Image Generation Rule precisely.
-- Never add unnecessary text after the Markdown image link.`;
+Rules:  
+- Do not ask what a command means. Follow it exactly as written.  
+- Never add unnecessary text after image links.`;
         },
-        async fetchTitle(chatHistory, signal) {
-            const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text);
+
+        async fetchTitle(chatHistory) {
+            const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
             if (safeHistory.length < 2) return "New Chat";
+
             const prompt = `Based on this conversation, create a short, concise title (4 words max). Output only the title, no quotes or markdown.\nUser: ${safeHistory[0].content.parts[0].text}\nAI: ${safeHistory[1].content.parts[0].text}`;
             try {
                 const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
-                    signal
                 });
-                if (!response.ok) throw new Error("API error for title generation");
+                if (!response.ok) throw new Error("API error during title generation");
                 const data = await response.json();
                 return data?.candidates?.[0]?.content?.parts?.[0]?.text.trim().replace(/["*]/g, '') || "Chat";
             } catch (error) {
-                if (error.name === 'AbortError') return "Chat";
                 console.error("Title generation failed:", error);
                 return "Titled Chat";
             }
         },
-        async fetchTextResponse(apiContents, systemInstruction, signal) {
-            const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
+
+        async fetchTextResponse(apiContents, systemInstruction) {
+             const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contents: apiContents, systemInstruction }),
-                signal
+                body: JSON.stringify({ contents: apiContents, systemInstruction })
             });
             if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
             const data = await response.json();
             const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!botResponseText) throw new Error("Invalid or empty response from API.");
+            if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
             return botResponseText;
+        },
+
+        async fetchImageResponse(prompt) {
+            const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt })
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+            const imageBlob = await response.blob();
+            const imageUrl = URL.createObjectURL(imageBlob);
+            if (!imageUrl) throw new Error("Could not create image URL from the API response.");
+            return imageUrl;
         }
     },
-
+    
     // --- Controller Module (Application Logic) ---
     /**
-     * Orchestrates the application, connecting user actions to state changes and UI updates.
+     * @memberof ChatApp
+     * @namespace Controller
+     * @description Orchestrates the application, connecting user actions to state changes and UI updates.
      */
     Controller: {
-        /** Initializes the application and sets up event listeners. */
+        /**
+         * Initializes the application by caching elements, loading data, and setting up event listeners.
+         */
         init() {
+            // 1. Find all our HTML elements first
             ChatApp.UI.cacheElements();
+            
+            // 2. Load settings and data
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
+            
+            // 3. Render the initial UI
             ChatApp.UI.renderSidebar();
-            ChatApp.UI.togglePlaceholder(true);
-            ChatApp.UI.toggleSendButtonState();
+            ChatApp.UI.toggleSendButtonState(); // Set initial button state
 
+            // 4. Connect UI elements to controller functions (THE CRITICAL STEP)
             const { elements } = ChatApp.UI;
-            elements.sendButton.addEventListener('click', () => this.handleChatSubmission());
+            const { Controller } = ChatApp;
+
+            // FIX: Bind 'this' to ensure the correct context inside the event handler
+            elements.sendButton.addEventListener('click', Controller.handleChatSubmission.bind(Controller));
+            
             elements.chatInput.addEventListener('keydown', (e) => {
+                // Submit on Enter, but allow Shift+Enter for new lines
                 if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    this.handleChatSubmission();
+                    e.preventDefault(); // Prevents new line in textarea
+                    Controller.handleChatSubmission();
                 }
             });
+
+            // Auto-resize textarea and toggle send button on input
             elements.chatInput.addEventListener('input', () => {
                 elements.chatInput.style.height = 'auto';
-                const newHeight = Math.min(elements.chatInput.scrollHeight, 300); // Max height
-                elements.chatInput.style.height = `${newHeight}px`;
+                elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
                 ChatApp.UI.toggleSendButtonState();
             });
-            elements.newChatBtn.addEventListener('click', () => this.startNewChat());
-            elements.settingsButton.addEventListener('click', () => ChatApp.UI.renderSettingsModal());
+
+            // FIX: Bind 'this' for these methods as well
+            elements.newChatBtn.addEventListener('click', Controller.startNewChat.bind(Controller));
+            elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
+            
+            // Wire up the file attachment functionality
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
-            elements.fileInput.addEventListener('change', (e) => this.handleFileSelection(e));
+            elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
+            
+            // Sidebar toggle for mobile
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
         },
-        /** Starts a new, empty chat session. */
+        
         startNewChat() {
             ChatApp.State.resetCurrentChat();
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar();
         },
-        /** Handles the logic for submitting a message. */
+
         async handleChatSubmission() {
-            if (ChatApp.State.isGenerating) return;
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
-            const files = [...ChatApp.State.attachedFiles];
-            if (!userInput && files.length === 0) return;
+            const files = ChatApp.State.attachedFiles;
 
+            if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
+            
             ChatApp.State.setGenerating(true);
-            let processingMessageEl = null;
-            if (files.length > 0) {
-                processingMessageEl = ChatApp.UI.renderProcessingMessage(files);
-            }
 
-            const { textForApi, attachmentsForUi } = await this._processFilesForSubmission(files, userInput);
-            this._clearInputs();
-            const userMessage = { role: "user", id: ChatApp.Utils.generateUUID(), text: userInput, attachments: attachmentsForUi };
-            ChatApp.UI.renderMessage(userMessage);
-
-            if (processingMessageEl) {
-                setTimeout(() => processingMessageEl.remove(), 1000);
-            }
-            ChatApp.State.currentConversation.push({ id: userMessage.id, content: { role: "user", parts: [{ text: textForApi }] } });
-            this._triggerGeneration();
-        },
-        async _processFilesForSubmission(files, userInput) {
-            let filePlaceholders = [];
-            const attachmentPromises = files.map(file => {
-                let type = 'file';
-                if (file.type.startsWith('image/')) type = 'image';
-                else if (file.type.startsWith('video/')) type = 'video';
-                filePlaceholders.push(`[User uploaded ${type}: "${file.name}"]`);
-                return new Promise((resolve) => {
+            // 1. Process and prepare file data for local display
+            const fileDataPromises = files.map(file => {
+                return new Promise((resolve, reject) => {
                     const reader = new FileReader();
-                    reader.onload = e => resolve({ name: file.name, type: file.type, dataUrl: e.target.result });
+                    reader.onload = e => resolve({
+                        name: file.name,
+                        type: file.type,
+                        dataUrl: e.target.result
+                    });
+                    reader.onerror = reject;
                     reader.readAsDataURL(file);
                 });
             });
-            const attachmentsForUi = await Promise.all(attachmentPromises);
-            const textForApi = `${userInput} ${filePlaceholders.join(' ')}`.trim();
-            return { textForApi, attachmentsForUi };
-        },
-        _clearInputs() {
+
+            const attachments = await Promise.all(fileDataPromises);
+
+            // 2. Clear inputs
             ChatApp.UI.elements.chatInput.value = "";
-            ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input')); // Recalculate height
-            ChatApp.State.attachedFiles = [];
-            ChatApp.UI.renderFilePreviews();
-            ChatApp.UI.elements.chatInput.focus();
-        },
-        async _triggerGeneration() {
-            const thinkingMessageEl = ChatApp.UI.renderThinkingMessage();
-            ChatApp.State.apiAbortController = new AbortController();
-            const { signal } = ChatApp.State.apiAbortController;
-            try {
-                const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
-                const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
-                const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction, signal);
-                thinkingMessageEl.remove();
-                const botMessage = { role: 'bot', id: ChatApp.Utils.generateUUID(), text: botResponseText };
-                ChatApp.UI.renderMessage(botMessage);
-                this.completeGeneration(botResponseText, botMessage.id);
-            } catch (error) {
-                thinkingMessageEl.remove();
-                if (error.name === 'AbortError') {
-                    console.log('API request was aborted by the user.');
-                } else {
-                    console.error("Generation failed:", error);
-                    ChatApp.UI.renderMessage({ role: 'bot', id: ChatApp.Utils.generateUUID(), text: `Sorry, an error occurred: ${error.message}` });
+            ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+            this.clearAttachedFiles();
+
+            // 3. Create and render the user's message
+            const userMessageId = ChatApp.Utils.generateUUID();
+            const userMessage = {
+                id: userMessageId,
+                content: { role: "user", parts: [{ text: userInput }] },
+                attachments: attachments
+            };
+            ChatApp.State.addMessage(userMessage);
+            ChatApp.UI.renderMessage(userMessage);
+            
+            // 4. Handle different generation types
+            if (userInput.toLowerCase().startsWith('/img ')) {
+                const prompt = userInput.substring(5).trim();
+                if (prompt) this._generateImage(prompt);
+                else {
+                    ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: "Please provide a prompt after `/img`." }] } });
+                    ChatApp.State.setGenerating(false);
                 }
-                ChatApp.State.setGenerating(false);
+            } else {
+                this._generateText();
             }
         },
-        completeGeneration(botResponseText, messageId) {
-            ChatApp.State.currentConversation.push({ id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } });
-            this.saveCurrentChat();
-            ChatApp.UI.speakTTS(botResponseText);
-            ChatApp.State.setGenerating(false);
-        },
+
         handleFileSelection(event) {
-            ChatApp.State.attachedFiles.push(...Array.from(event.target.files));
+            const files = Array.from(event.target.files);
+            ChatApp.State.attachedFiles.push(...files);
             ChatApp.UI.renderFilePreviews();
-            event.target.value = null; // Reset for same-file selection
+            // Reset input so the same file can be selected again
+            event.target.value = null;
         },
+
         removeAttachedFile(index) {
             ChatApp.State.attachedFiles.splice(index, 1);
             ChatApp.UI.renderFilePreviews();
         },
+
+        clearAttachedFiles() {
+            ChatApp.State.attachedFiles = [];
+            ChatApp.UI.renderFilePreviews();
+        },
+
+        async _generateText() {
+            const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null }, true);
+
+            try {
+                const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
+                const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
+                const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
+                
+                ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
+            } catch (error) {
+                console.error("Text generation failed:", error);
+                thinkingMessageEl.remove();
+                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Sorry, an error occurred: ${error.message}` }] } });
+                ChatApp.State.setGenerating(false);
+            }
+        },
+
+        completeGeneration(botResponseText, messageId) {
+            const botMessage = { id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } };
+            ChatApp.State.addMessage(botMessage);
+            this.saveCurrentChat();
+            ChatApp.UI.speakTTS(botResponseText);
+            ChatApp.State.setGenerating(false);
+        },
+        
+        async _generateImage(prompt) {
+            const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null, content: { role: 'model', parts: [{ text: `Generating image for: "${prompt}"...` }] }}, true);
+
+            try {
+                const imageUrl = await ChatApp.Api.fetchImageResponse(prompt);
+                const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
+                const botMessageId = ChatApp.Utils.generateUUID();
+                const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
+                
+                ChatApp.State.addMessage(botMessage);
+                thinkingMessageEl.remove();
+                ChatApp.UI.renderMessage(botMessage);
+                this.saveCurrentChat();
+            } catch (error) {
+                console.error("Image generation failed:", error);
+                thinkingMessageEl.remove();
+                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Image Generation Error: ${error.message}` }] } });
+            } finally {
+                ChatApp.State.setGenerating(false);
+            }
+        },
+
         async saveCurrentChat() {
             if (ChatApp.State.currentConversation.length === 0) return;
-            let chat = ChatApp.State.allConversations.find(c => c.id === ChatApp.State.currentChatId);
-            if (chat) {
-                chat.history = ChatApp.State.currentConversation;
-            } else {
-                const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
-                const modelMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'model').length;
-                if (userMessages > 0 && modelMessages > 0) {
-                    const titleAbortController = new AbortController();
-                    const newTitle = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation, titleAbortController.signal);
+
+            if (ChatApp.State.currentChatId) {
+                const chat = ChatApp.State.allConversations.find(c => c.id === ChatApp.State.currentChatId);
+                if (chat) {
+                    chat.history = ChatApp.State.currentConversation;
+                }
+            } else { // Create a new chat only if there's a user message and a bot response
+                 const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
+                 const modelMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'model').length;
+                 if (userMessages > 0 && modelMessages > 0) {
+                    const newTitle = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation);
                     ChatApp.State.currentChatId = Date.now();
-                    chat = { id: ChatApp.State.currentChatId, title: newTitle, history: ChatApp.State.currentConversation };
-                    ChatApp.State.allConversations.push(chat);
+                    ChatApp.State.allConversations.push({ 
+                        id: ChatApp.State.currentChatId, 
+                        title: newTitle, 
+                        history: ChatApp.State.currentConversation 
+                    });
                 }
             }
             ChatApp.Store.saveAllConversations();
             ChatApp.UI.renderSidebar();
         },
+        
         loadChat(chatId) {
-            if (ChatApp.State.currentChatId === chatId || ChatApp.State.isGenerating) return;
+            if (ChatApp.State.currentChatId === chatId) return;
             const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
-            if (!chat?.history) {
-                alert("Could not load the selected chat. It may be corrupted.");
+            if (!chat || !Array.isArray(chat.history)) {
+                console.error("Chat not found or is corrupted:", chatId);
+                alert("Could not load the selected chat.");
                 return;
             }
-            this.startNewChat();
+
+            this.startNewChat(); // Clear state and UI before loading
             ChatApp.State.currentChatId = chatId;
-            ChatApp.State.currentConversation = chat.history;
+            ChatApp.State.setCurrentConversation(chat.history);
+            
             ChatApp.UI.clearChatArea();
-
-            const fragment = document.createDocumentFragment();
-            chat.history.forEach(msg => {
-                if (!msg.content?.parts) return;
-                const role = msg.content.role === 'model' ? 'bot' : 'user';
-                // Clean up text for rendering past messages (attachments are not re-rendered)
-                const text = msg.content.parts[0]?.text.replace(/\[User uploaded.*?\]/g, '').trim();
-                const attachments = msg.attachments; // Check if attachments were saved with message
-                const messageEl = ChatApp.UI.renderMessage({ role, id: msg.id, text, attachments });
-                fragment.appendChild(messageEl);
+            ChatApp.State.currentConversation.forEach(msg => {
+                ChatApp.UI.renderMessage(msg);
             });
-            ChatApp.UI.elements.messageArea.appendChild(fragment);
 
+            setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             ChatApp.UI.renderSidebar();
-            setTimeout(() => ChatApp.UI.scrollToBottom(), 0); // Allow DOM to update before scroll
         },
+
         deleteMessage(messageId) {
             if (!confirm('Are you sure you want to delete this message?')) return;
-            const msgIndex = ChatApp.State.currentConversation.findIndex(m => m.id === messageId);
-            if (msgIndex === -1) return;
-
-            ChatApp.State.currentConversation.splice(msgIndex, 1);
-            this.saveCurrentChat(); // Save the modified conversation
-
+            ChatApp.State.removeMessage(messageId);
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
             if (messageEl) {
                 messageEl.classList.add('fade-out');
-                setTimeout(() => {
-                    messageEl.remove();
-                    ChatApp.UI.togglePlaceholder();
-                }, 400);
+                setTimeout(() => messageEl.remove(), 400);
             }
+            this.saveCurrentChat();
         },
+
         deleteConversation(chatId) {
             if (!confirm('Are you sure you want to delete this chat permanently?')) return;
             ChatApp.State.allConversations = ChatApp.State.allConversations.filter(c => c.id !== chatId);
@@ -758,37 +917,33 @@ Current Date/Time: ${new Date().toLocaleString()}
                 ChatApp.UI.renderSidebar();
             }
         },
+        
         downloadAllData() {
-            if(ChatApp.State.allConversations.length === 0) {
-                alert('No conversation data to download.'); 
-                return;
-            }
             const dataStr = JSON.stringify(ChatApp.State.allConversations, null, 2);
+            if (!dataStr || dataStr === '[]') { alert('No conversation data to download.'); return; }
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url;
-            a.download = 'jbai_conversations_backup.json';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            a.href = url; a.download = 'jbai_conversations_backup.json';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
         },
+
         handleDataUpload() {
             const fileInput = document.createElement('input');
             fileInput.type = 'file';
             fileInput.accept = '.json,application/json';
             fileInput.onchange = (event) => {
-                const file = event.target.files?.[0];
+                const file = event.target.files[0];
                 if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
                         if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) {
-                            throw new Error("Invalid data format. Ensure it's a valid conversations export file.");
+                            throw new Error("Invalid data format. Expected an array of chat objects.");
                         }
-                        if (confirm('This will REPLACE all current conversations with the content from the file. Are you sure?')) {
+                        if (confirm('This will replace all current conversations. Are you sure? This action cannot be undone.')) {
                             ChatApp.State.allConversations = importedData;
                             ChatApp.Store.saveAllConversations();
                             alert('Data successfully imported. The application will now reload.');
@@ -801,23 +956,11 @@ Current Date/Time: ${new Date().toLocaleString()}
                 reader.readAsText(file);
             };
             fileInput.click();
-        },
-        deleteAllData() {
-            if (confirm('DANGER: This will permanently delete ALL conversations. This action cannot be undone. Are you sure?')) {
-                ChatApp.State.allConversations = [];
-                ChatApp.Store.saveAllConversations();
-                this.startNewChat();
-                ChatApp.UI.closeSettingsModal();
-                alert('All conversation data has been deleted.');
-            }
         }
     }
 };
 
-/**
- * Entry point for the application.
- * Initializes the ChatApp once the DOM is fully loaded.
- */
+// Start the application once the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     ChatApp.Controller.init();
 });
