@@ -15,6 +15,19 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* NEW: Animation for incoming messages */
+@keyframes slideInUp {
+    from {
+        opacity: 0;
+        transform: translateY(15px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+
 @keyframes thinking-dot {
     0%, 100% { transform: scale(0.5); opacity: 0.5; }
     50%      { transform: scale(1); opacity: 1; }
@@ -526,7 +539,7 @@ body.sidebar-open .sidebar-backdrop {
 /* ==========================================================================
    3. UI Components
    - Sidebar Contents (Toggle, Header, List)
-   - Chat Area (Messages, Code, Images)
+   - Chat Area (Messages, Code, Images, Placeholder)
    - Chat Input Form
    ========================================================================== */
 
@@ -670,10 +683,44 @@ body.sidebar-open .open-icon { display: none; }
     display: none; /* Safari & Chrome */
 }
 
+/* NEW: Placeholder for empty chats */
+.empty-chat-placeholder {
+    display: none; /* Hidden by default, shown by JS */
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+    height: 100%;
+    text-align: center;
+    color: var(--text-secondary);
+}
+.empty-chat-placeholder .placeholder-logo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 60px;
+    height: 60px;
+    margin-bottom: 20px;
+    background-color: var(--message-bot-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    font-size: 14px;
+    font-weight: bold;
+}
+.empty-chat-placeholder h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+
 .message {
     display: flex;
     align-items: flex-start;
     max-width: 100%;
+    animation: slideInUp 0.4s ease-out; /* NEW: Animate incoming messages */
 }
 .message.user {
     justify-content: flex-end;
@@ -727,20 +774,21 @@ body.sidebar-open .open-icon { display: none; }
 .message.bot .message-content h3:first-child {
     margin-top: 0;
 }
-.message.bot .message-content p:last-child {
+.message-content p:last-child {
     margin-bottom: 0;
 }
 
-/* NEW: Message Formatting Styles */
+/* Message Formatting Styles */
 .message-content blockquote {
     padding: 10px 15px;
-    margin: 8px 0;
+    margin: 12px 0;
     border-left: 4px solid var(--border-color);
-    background-color: color-mix(in srgb, var(--message-bot-bg) 50%, var(--bg-color) 50%);
+    /* UPDATED: Removed color-mix for wider compatibility. Using a theme variable. */
+    background-color: var(--sidebar-hover);
     border-radius: 0 8px 8px 0;
 }
 .message.user .message-content blockquote {
-    background-color: color-mix(in srgb, var(--message-user-bg) 50%, var(--bg-color) 50%);
+    background-color: var(--sidebar-hover);
 }
 .message-content blockquote p {
     margin: 0;
@@ -758,7 +806,7 @@ body.sidebar-open .open-icon { display: none; }
     color: var(--text-secondary);
 }
 
-/* NEW: Message Attachments */
+/* Message Attachments */
 .message-attachments {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
