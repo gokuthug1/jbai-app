@@ -44,14 +44,22 @@ const ChatApp = {
 
     // --- Utility Module ---
     Utils: {
-        escapeHTML: str => { const p = document.createElement('p'); p.textContent = str; return p.innerHTML; },
-        generateUUID: () => crypto.randomUUID(),
+        escapeHTML(str) {
+            const p = document.createElement('p');
+            p.textContent = str;
+            return p.innerHTML;
+        },
+        generateUUID() {
+            return crypto.randomUUID();
+        },
     },
 
     // --- Local Storage Module ---
     Store: {
-        saveAllConversations: () => localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations)),
-        loadAllConversations: () => {
+        saveAllConversations() {
+            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations));
+        },
+        loadAllConversations() {
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 ChatApp.State.allConversations = stored ? JSON.parse(stored) : [];
@@ -60,8 +68,12 @@ const ChatApp = {
                 ChatApp.State.allConversations = [];
             }
         },
-        saveTheme: themeName => localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName),
-        getTheme: () => localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME,
+        saveTheme(themeName) {
+            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName);
+        },
+        getTheme() {
+            return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME;
+        },
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -78,11 +90,11 @@ const ChatApp = {
                 filePreviewsContainer: document.getElementById('file-previews-container'),
             };
         },
-        applyTheme: themeName => {
+        applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
         },
-        scrollToBottom: () => {
+        scrollToBottom() {
             if (this.elements.messageArea) {
                 this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight;
             }
@@ -187,7 +199,6 @@ const ChatApp = {
                 } else if (file.type.startsWith('video/')) {
                     item.innerHTML = `<video src="${file.dataUrl}" controls class="attachment-media"></video>`;
                 } else {
-                    // Fallback for other file types
                     item.innerHTML = `<div class="attachment-fallback">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
                 }
                 container.appendChild(item);
@@ -230,7 +241,9 @@ const ChatApp = {
             });
             this.toggleSendButtonState();
         },
-        _formatMessageContent: (text) => text ? text.replace(/```(\w+)?\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${ChatApp.Utils.escapeHTML(code.trim())}</code></pre>`).replace(/^# (.*$)/gim, '<h1>$1</h1>') : '',
+        _formatMessageContent(text) {
+             return text ? text.replace(/```(\w+)?\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${ChatApp.Utils.escapeHTML(code.trim())}</code></pre>`).replace(/^# (.*$)/gim, '<h1>$1</h1>') : '';
+        },
         _addMessageInteractions(messageEl, rawText, messageId) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
@@ -313,8 +326,10 @@ const ChatApp = {
             overlay.querySelector('#download-data-btn').addEventListener('click', () => ChatApp.Controller.downloadAllData());
             overlay.querySelector('#delete-data-btn').addEventListener('click', () => ChatApp.Controller.deleteAllData());
         },
-        closeSettingsModal: () => document.querySelector('.modal-overlay')?.remove(),
-        speakTTS: (text) => {
+        closeSettingsModal() {
+            document.querySelector('.modal-overlay')?.remove()
+        },
+        speakTTS(text) {
             if (!window.speechSynthesis || !ChatApp.State.ttsEnabled || !text.trim()) return;
             window.speechSynthesis.cancel();
             const speechText = text.replace(/```[\s\S]*?```/g, '... Code block ...');
@@ -393,13 +408,12 @@ const ChatApp = {
             ChatApp.UI.toggleSendButtonState();
 
             const { elements } = ChatApp.UI;
-            const self = this;
-
-            elements.sendButton.addEventListener('click', () => self.handleChatSubmission());
+            
+            elements.sendButton.addEventListener('click', () => this.handleChatSubmission());
             elements.chatInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
-                    self.handleChatSubmission();
+                    this.handleChatSubmission();
                 }
             });
             elements.chatInput.addEventListener('input', () => {
@@ -407,10 +421,10 @@ const ChatApp = {
                 elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
                 ChatApp.UI.toggleSendButtonState();
             });
-            elements.newChatBtn.addEventListener('click', () => self.startNewChat());
+            elements.newChatBtn.addEventListener('click', () => this.startNewChat());
             elements.settingsButton.addEventListener('click', () => ChatApp.UI.renderSettingsModal());
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
-            elements.fileInput.addEventListener('change', (e) => self.handleFileSelection(e));
+            elements.fileInput.addEventListener('change', (e) => this.handleFileSelection(e));
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
         },
@@ -552,7 +566,6 @@ const ChatApp = {
             chat.history.forEach(msg => {
                 if (!msg.content || !msg.content.parts) return;
                 const role = msg.content.role === 'model' ? 'bot' : 'user';
-                // We simplify and only display the text part from history, not re-creating file placeholders.
                 const text = msg.content.parts[0]?.text.replace(/\[User uploaded.*?\]/g, '').trim();
                 ChatApp.UI.renderMessage({ role, id: msg.id, text });
             });
@@ -562,8 +575,6 @@ const ChatApp = {
         },
         deleteMessage(messageId) {
             if (!confirm('Are you sure you want to delete this message?')) return;
-            // This is a simplified deletion. It only removes from the UI for now.
-            // For full persistence, it should also update the conversation in State and localStorage.
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
             if (messageEl) {
                 messageEl.classList.add('fade-out');
