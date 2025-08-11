@@ -412,8 +412,10 @@ body.sidebar-open .open-icon { display: none; }
 
 /* Thinking/Processing Indicator */
 .message.thinking .message-content, .message.processing .message-content {
-    display: inline-flex; align-items: center; gap: 5px;
+    display: inline-flex; align-items: center; gap: 8px;
     font-style: italic; color: var(--text-secondary);
+    background-color: var(--message-bot-bg);
+    padding: 10px 16px; border-radius: 18px;
 }
 .message.thinking .dot {
     display: inline-block; width: 8px; height: 8px; background-color: var(--text-secondary);
@@ -422,10 +424,16 @@ body.sidebar-open .open-icon { display: none; }
 .message.thinking .dot:nth-child(1) { animation-delay: -0.32s; }
 .message.thinking .dot:nth-child(2) { animation-delay: -0.16s; }
 
+.message.processing svg {
+    animation: spin 1.5s linear infinite;
+}
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+
 /* File attachments */
 .message-attachments {
     display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 8px; margin-top: 8px;
+    gap: 8px; margin-bottom: 8px;
 }
 .user .message-attachments { margin-bottom: 4px; margin-top: 0; }
 .attachment-media { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
@@ -546,6 +554,7 @@ textarea#chat-input {
     -webkit-appearance: none; appearance: none;
     width: 150px; height: 6px; background: var(--border-color);
     outline: none; border-radius: 3px;
+    vertical-align: middle;
 }
 .volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none; appearance: none;
@@ -556,6 +565,20 @@ textarea#chat-input {
     width: 18px; height: 18px; border-radius: 50%;
     background: var(--accent-color); cursor: pointer; border: none;
 }
+
+/* Switch Toggle */
+.switch { position: relative; display: inline-block; width: 50px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+    position: absolute; inset: 0; cursor: pointer; background-color: var(--icon-hover-bg);
+    border-radius: 24px; transition: 0.4s;
+}
+.slider:before {
+    position: absolute; content: ""; bottom: 3px; left: 3px; width: 18px; height: 18px;
+    background-color: #fff; border-radius: 50%; transition: 0.4s;
+}
+input:checked + .slider { background-color: var(--accent-color); }
+input:checked + .slider:before { transform: translateX(26px); }
 
 /* ==========================================================================
    4. Responsive Design
