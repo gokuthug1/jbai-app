@@ -42,10 +42,6 @@ const ChatApp = {
         currentChatId: null,
         isGenerating: false,
         typingInterval: null,
-        ttsEnabled: false,
-        selectedVoice: null,
-        ttsVolume: 1,
-        filteredVoices: [],
         attachedFiles: [],
 
         /**
@@ -248,7 +244,9 @@ const ChatApp = {
             } else {
                 const { content, attachments } = message;
                 const sender = content.role === 'model' ? 'bot' : 'user';
-                const textContent = content.parts[0]?.text || '';
+
+                const textPart = content.parts.find(p => p.text);
+                const textContent = textPart ? textPart.text : '';
                 const rawText = textContent;
 
                 messageEl.className = `message ${sender}`;
@@ -274,11 +272,9 @@ const ChatApp = {
             attachments.forEach(file => {
                 const item = document.createElement('div');
                 item.className = 'attachment-item';
-                if (file.type.startsWith('image/')) {
-                    item.innerHTML = `<img src="${file.dataUrl}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
-                } else if (file.type.startsWith('video/')) {
-                    item.innerHTML = `<video src="${file.dataUrl}" controls class="attachment-media"></video>`;
-                }
+                // Use inline styles to create a text-based representation within the existing box model
+                const fileIconHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
+                item.innerHTML = fileIconHTML;
                 container.appendChild(item);
             });
             return container;
@@ -295,26 +291,18 @@ const ChatApp = {
             ChatApp.State.attachedFiles.forEach((file, index) => {
                 const previewItem = document.createElement('div');
                 previewItem.className = 'file-preview-item';
+                
+                // Use inline styles to provide a text-based preview without needing a file reader
+                const fileIconHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
 
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    let previewContent = '';
-                    if (file.type.startsWith('image/')) {
-                        previewContent = `<img src="${e.target.result}" alt="${ChatApp.Utils.escapeHTML(file.name)}">`;
-                    } else if (file.type.startsWith('video/')) {
-                         previewContent = `<video src="${e.target.result}" muted playsinline></video>`;
-                    } else {
-                        previewContent = `<span>${ChatApp.Utils.escapeHTML(file.name)}</span>`;
-                    }
-                    previewItem.innerHTML = `
-                        ${previewContent}
-                        <button class="remove-preview-btn" title="Remove file" type="button">&times;</button>
-                    `;
-                    previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => {
-                        ChatApp.Controller.removeAttachedFile(index);
-                    });
-                };
-                reader.readAsDataURL(file);
+                previewItem.innerHTML = `
+                    ${fileIconHTML}
+                    <button class="remove-preview-btn" title="Remove file" type="button">&times;</button>
+                `;
+                previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => {
+                    ChatApp.Controller.removeAttachedFile(index);
+                });
+
                 this.elements.filePreviewsContainer.appendChild(previewItem);
             });
             this.toggleSendButtonState();
@@ -480,18 +468,6 @@ const ChatApp = {
                         </optgroup>
                     </select>
                 </div>
-                <div class="settings-row">
-                    <label for="ttsToggle">Enable TTS</label>
-                    <label class="switch"><input type="checkbox" id="ttsToggle"><span class="slider"></span></label>
-                </div>
-                <div class="settings-row">
-                    <label for="volumeSlider">Voice Volume</label>
-                    <input type="range" min="0" max="1" step="0.1" value="${ChatApp.State.ttsVolume}" id="volumeSlider" class="volume-slider">
-                </div>
-                <div class="settings-row">
-                    <label for="voiceSelect">Bot Voice</label>
-                    <select id="voiceSelect" disabled></select>
-                </div>
                 <hr>
                 <div class="data-actions">
                     <button id="upload-data-btn" type="button">Import Data</button>
@@ -508,57 +484,10 @@ const ChatApp = {
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
 
-            overlay.querySelector('#ttsToggle').checked = ChatApp.State.ttsEnabled;
-            overlay.querySelector('#ttsToggle').addEventListener('change', e => { ChatApp.State.ttsEnabled = e.target.checked; });
-            overlay.querySelector('#volumeSlider').addEventListener('input', e => { ChatApp.State.ttsVolume = parseFloat(e.target.value); });
-            overlay.querySelector('#voiceSelect').addEventListener('change', e => { 
-                if(ChatApp.State.filteredVoices[e.target.value]) ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[e.target.value]; 
-            });
-
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
             overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
             overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
-            
-            this._populateVoiceList();
-        },
-
-        speakTTS(text) {
-            if (!window.speechSynthesis || !ChatApp.State.ttsEnabled || !text.trim() || text.startsWith('[IMAGE:')) return;
-            
-            window.speechSynthesis.cancel();
-            const speechText = text.replace(/```[\s\S]*?```/g, '... Code block ...').replace(/\[IMAGE:.*?\]\(.*?\)/g, '... Image ...');
-            const utterance = new SpeechSynthesisUtterance(speechText);
-            utterance.volume = ChatApp.State.ttsVolume;
-            if (ChatApp.State.selectedVoice) utterance.voice = ChatApp.State.selectedVoice;
-            window.speechSynthesis.speak(utterance);
-        },
-
-        _populateVoiceList() {
-            const voiceSelect = document.getElementById('voiceSelect');
-            if (!voiceSelect || typeof speechSynthesis === 'undefined') return;
-            const setVoices = () => {
-                ChatApp.State.filteredVoices = window.speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"));
-                voiceSelect.innerHTML = '';
-                if (ChatApp.State.filteredVoices.length === 0) {
-                    voiceSelect.disabled = true; voiceSelect.innerHTML = '<option>No English voices found</option>'; return;
-                }
-                voiceSelect.disabled = !ChatApp.State.ttsEnabled;
-                let selectedIdx = 0;
-                ChatApp.State.filteredVoices.forEach((voice, i) => {
-                    const option = new Option(`${voice.name} (${voice.lang})`, i);
-                    voiceSelect.add(option);
-                    if (ChatApp.State.selectedVoice && ChatApp.State.selectedVoice.name === voice.name) {
-                        selectedIdx = i;
-                    }
-                });
-                voiceSelect.selectedIndex = selectedIdx;
-                if (!ChatApp.State.selectedVoice) ChatApp.State.selectedVoice = ChatApp.State.filteredVoices[0];
-            };
-            setVoices();
-            if (speechSynthesis.onvoiceschanged !== undefined) {
-                speechSynthesis.onvoiceschanged = setVoices;
-            }
         }
     },
 
@@ -695,7 +624,6 @@ Rules:
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
 
-            // FIX: Bind 'this' to ensure the correct context inside the event handler
             elements.sendButton.addEventListener('click', Controller.handleChatSubmission.bind(Controller));
             
             elements.chatInput.addEventListener('keydown', (e) => {
@@ -713,7 +641,6 @@ Rules:
                 ChatApp.UI.toggleSendButtonState();
             });
 
-            // FIX: Bind 'this' for these methods as well
             elements.newChatBtn.addEventListener('click', Controller.startNewChat.bind(Controller));
             elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
             
@@ -740,33 +667,36 @@ Rules:
             
             ChatApp.State.setGenerating(true);
 
-            // 1. Process and prepare file data for local display
+            // 1. Convert attached files to Base64 for the API
             const fileDataPromises = files.map(file => {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = e => resolve({
-                        name: file.name,
-                        type: file.type,
-                        dataUrl: e.target.result
+                        mimeType: file.type || 'text/plain',
+                        data: e.target.result.split(',')[1] // Extract base64 data
                     });
                     reader.onerror = reject;
                     reader.readAsDataURL(file);
                 });
             });
-
-            const attachments = await Promise.all(fileDataPromises);
+            const fileApiData = await Promise.all(fileDataPromises);
 
             // 2. Clear inputs
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
             this.clearAttachedFiles();
 
-            // 3. Create and render the user's message
+            // 3. Create the user's message object for state and API
             const userMessageId = ChatApp.Utils.generateUUID();
+            const messageParts = fileApiData.map(p => ({ inlineData: p }));
+            if (userInput) {
+                messageParts.push({ text: userInput });
+            }
             const userMessage = {
                 id: userMessageId,
-                content: { role: "user", parts: [{ text: userInput }] },
-                attachments: attachments
+                content: { role: "user", parts: messageParts },
+                // attachments is for UI rendering only
+                attachments: files.map(f => ({ name: f.name, type: f.type }))
             };
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
@@ -823,7 +753,6 @@ Rules:
             const botMessage = { id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } };
             ChatApp.State.addMessage(botMessage);
             this.saveCurrentChat();
-            ChatApp.UI.speakTTS(botResponseText);
             ChatApp.State.setGenerating(false);
         },
         
