@@ -365,6 +365,43 @@ const ChatApp = {
         
         _formatMessageContent(text) {
              if (!text) return '';
+
+            // NEW: Special handling for SVG responses
+            const trimmedText = text.trim();
+            if (trimmedText.startsWith('<svg') && trimmedText.endsWith('</svg>')) {
+                const svgCode = trimmedText;
+                const escapedSvgCode = ChatApp.Utils.escapeHTML(svgCode);
+
+                const htmlPreviewCode = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Preview</title>
+    <style>
+        body { margin: 0; display: grid; place-items: center; min-height: 100vh; background-color: #f0f0f0; }
+        svg { max-width: 90%; max-height: 90vh; }
+    </style>
+</head>
+<body>
+    ${svgCode}
+</body>
+</html>`;
+                const escapedHtmlPreviewCode = ChatApp.Utils.escapeHTML(htmlPreviewCode);
+
+                return `
+                    <div class="svg-preview-container">
+                        <h4>SVG Preview</h4>
+                        <div class="svg-render-box">${svgCode}</div>
+                        <h4>Full HTML</h4>
+                        <pre><code class="language-html">${escapedHtmlPreviewCode}</code></pre>
+                        <h4>SVG Code Only</h4>
+                        <pre><code class="language-xml">${escapedSvgCode}</code></pre>
+                    </div>
+                `;
+            }
+            // END NEW
+
             let html = ChatApp.Utils.escapeHTML(text)
                 // Custom Block: Image format
                 .replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
@@ -410,7 +447,8 @@ const ChatApp = {
             
             const { COPY, CHECK } = ChatApp.Config.ICONS;
             
-            if (rawText && !rawText.startsWith('[IMAGE:')) {
+            // Do not add a general copy button if it's a special SVG preview
+            if (rawText && !contentEl.querySelector('.svg-preview-container')) {
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button';
                 copyBtn.title = 'Copy message text';
@@ -526,7 +564,7 @@ Current Date/Time: ${new Date().toLocaleString()}
 Abilities:  
 - Generate creative, technical, or helpful text  
 - Generate images in response to visual prompts  
-- Format HTML code as one complete file (HTML, CSS, and JS combined)  
+- Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). Always enclose the full HTML code within a \`\`\`html markdown block.
 - Interpret and follow Jeremiah’s commands  
 - Avoid fluff or overexplaining—stay smart, fast, and clear
 
