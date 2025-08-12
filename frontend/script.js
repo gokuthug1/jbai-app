@@ -1,5 +1,3 @@
---- START OF FILE script.js ---
-
 /**
  * A self-contained Chat Application object.
  * This object encapsulates all logic for configuration, state management,
