@@ -14,10 +14,7 @@ const ChatApp = {
      */
     Config: {
         API_URLS: {
-            TEXT: 'https://jbai-app.onrender.com/api/generate',
-            // FIX: Added the IMAGE URL to prevent runtime errors.
-            // Replace with your actual image generation endpoint.
-            IMAGE: 'https://jbai-app.onrender.com/api/generate_image',
+            TEXT: 'https://jbai-app.onrender.com/api/generate'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
