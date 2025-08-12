@@ -474,12 +474,12 @@ const ChatApp = {
 
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
-                copyCodeBtn.innerHTML = `${COPY}<span></span>`;
+                copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`;
                 copyCodeBtn.addEventListener('click', e => {
                     e.stopPropagation();
                     navigator.clipboard.writeText(pre.textContent).then(() => {
                         copyCodeBtn.innerHTML = `${CHECK}<span>Copied!</span>`;
-                        setTimeout(() => { copyCodeBtn.innerHTML = `${COPY}<span></span>`; }, 2000);
+                        setTimeout(() => { copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`; }, 2000);
                     });
                 });
                 pre.appendChild(copyCodeBtn);
