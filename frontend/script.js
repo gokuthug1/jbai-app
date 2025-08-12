@@ -15,7 +15,6 @@ const ChatApp = {
     Config: {
         API_URLS: {
             TEXT: 'https://jbai-app.onrender.com/api/generate',
-            IMAGE: '/api/img-gen'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
@@ -41,6 +40,7 @@ const ChatApp = {
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
+        isAwaitingImagePrompt: false, // New flag for image generation flow
         typingInterval: null,
         attachedFiles: [],
 
@@ -87,6 +87,7 @@ const ChatApp = {
         resetCurrentChat() {
             this.setCurrentConversation([]);
             this.currentChatId = null;
+            this.isAwaitingImagePrompt = false; // Reset the flag
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
             if (this.isGenerating) {
@@ -662,12 +663,55 @@ Rules:
         async handleChatSubmission() {
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = ChatApp.State.attachedFiles;
-
+        
             if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
-            
+        
+            // Clear input immediately, since we are processing the submission
+            ChatApp.UI.elements.chatInput.value = "";
+            ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+        
+            // Case 1: We are waiting for an image prompt from the user
+            if (ChatApp.State.isAwaitingImagePrompt) {
+                ChatApp.State.isAwaitingImagePrompt = false; // Reset flag immediately
+                ChatApp.State.setGenerating(true);
+        
+                // Render user's prompt message
+                const userMessageId = ChatApp.Utils.generateUUID();
+                const userMessage = {
+                    id: userMessageId,
+                    content: { role: "user", parts: [{ text: userInput }] }
+                };
+                ChatApp.State.addMessage(userMessage);
+                ChatApp.UI.renderMessage(userMessage);
+                
+                await this._generateImage(userInput);
+                return;
+            }
+        
+            // Case 2: The user is initiating the image generation flow
+            if (userInput.toLowerCase() === '.pollinations.ai/prompt') {
+                // Render user's trigger message
+                const userMessageId = ChatApp.Utils.generateUUID();
+                const userMessage = { id: userMessageId, content: { role: 'user', parts: [{ text: userInput }] } };
+                ChatApp.State.addMessage(userMessage);
+                ChatApp.UI.renderMessage(userMessage);
+        
+                // Render bot's follow-up question
+                const botResponseText = "Sure, what is the prompt for the image?";
+                const botMessageId = ChatApp.Utils.generateUUID();
+                const botMessage = { id: botMessageId, content: { role: 'model', parts: [{ text: botResponseText }] } };
+                ChatApp.State.addMessage(botMessage);
+                ChatApp.UI.renderMessage(botMessage);
+        
+                ChatApp.State.isAwaitingImagePrompt = true;
+                this.saveCurrentChat();
+                return;
+            }
+        
+            // --- Default Text/File Handling ---
             ChatApp.State.setGenerating(true);
-
-            // 1. Convert attached files to Base64 for the API
+        
+            // Prepare files (if any)
             const fileDataPromises = files.map(file => {
                 return new Promise((resolve, reject) => {
                     const reader = new FileReader();
@@ -680,13 +724,9 @@ Rules:
                 });
             });
             const fileApiData = await Promise.all(fileDataPromises);
-
-            // 2. Clear inputs
-            ChatApp.UI.elements.chatInput.value = "";
-            ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
-            this.clearAttachedFiles();
-
-            // 3. Create the user's message object for state and API
+            this.clearAttachedFiles(); // Clear UI previews
+        
+            // Create and render user message with text and/or files
             const userMessageId = ChatApp.Utils.generateUUID();
             const messageParts = fileApiData.map(p => ({ inlineData: p }));
             if (userInput) {
@@ -695,23 +735,13 @@ Rules:
             const userMessage = {
                 id: userMessageId,
                 content: { role: "user", parts: messageParts },
-                // attachments is for UI rendering only
                 attachments: files.map(f => ({ name: f.name, type: f.type }))
             };
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
-            
-            // 4. Handle different generation types
-            if (userInput.toLowerCase().startsWith('/img ')) {
-                const prompt = userInput.substring(5).trim();
-                if (prompt) this._generateImage(prompt);
-                else {
-                    ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: "Please provide a prompt after `/img`." }] } });
-                    ChatApp.State.setGenerating(false);
-                }
-            } else {
-                this._generateText();
-            }
+        
+            // Generate the text response
+            await this._generateText();
         },
 
         handleFileSelection(event) {
