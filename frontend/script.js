@@ -364,68 +364,85 @@ const ChatApp = {
         },
         
         _formatMessageContent(text) {
-             if (!text) return '';
+            if (!text) return '';
 
-            // NEW: Special handling for SVG responses
+            // --- Start of Special Formatting ---
             const trimmedText = text.trim();
+
+            // Case 1: The entire message is a single HTML code block (for live preview)
+            const htmlBlockRegex = /^```html\n([\s\S]*?)\n```$/;
+            const htmlMatch = trimmedText.match(htmlBlockRegex);
+            if (htmlMatch) {
+                const rawHtmlCode = htmlMatch[1].trim();
+                const escapedHtmlForAttribute = ChatApp.Utils.escapeHTML(rawHtmlCode);
+                return `
+                    <div class="html-preview-container">
+                        <h4>Live Preview</h4>
+                        <div class="html-render-box">
+                            <iframe srcdoc="${escapedHtmlForAttribute}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe>
+                        </div>
+                        <h4>HTML Code</h4>
+                        <pre data-raw-code="${escapedHtmlForAttribute}"><code class="language-html">${escapedHtmlForAttribute}</code></pre>
+                    </div>`;
+            }
+
+            // Case 2: The entire message is a raw SVG (for direct rendering)
             if (trimmedText.startsWith('<svg') && trimmedText.endsWith('</svg>')) {
-                const svgCode = trimmedText;
-                const escapedSvgCode = ChatApp.Utils.escapeHTML(svgCode);
-
-                const htmlPreviewCode = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SVG Preview</title>
-    <style>
-        body { margin: 0; display: grid; place-items: center; min-height: 100vh; background-color: #f0f0f0; }
-        svg { max-width: 90%; max-height: 90vh; }
-    </style>
-</head>
-<body>
-    ${svgCode}
-</body>
-</html>`;
-                const escapedHtmlPreviewCode = ChatApp.Utils.escapeHTML(htmlPreviewCode);
-
+                const rawSvgCode = trimmedText;
+                const escapedSvgForAttribute = ChatApp.Utils.escapeHTML(rawSvgCode);
                 return `
                     <div class="svg-preview-container">
                         <h4>SVG Preview</h4>
-                        <div class="svg-render-box">${svgCode}</div>
-                        <h4>Full HTML</h4>
-                        <pre><code class="language-html">${escapedHtmlPreviewCode}</code></pre>
-                        <h4>SVG Code Only</h4>
-                        <pre><code class="language-xml">${escapedSvgCode}</code></pre>
-                    </div>
-                `;
-            }
-            // END NEW
-
-            let html = ChatApp.Utils.escapeHTML(text)
-                // Custom Block: Image format
-                .replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
-                    const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
-                    return `
-                    <div class="generated-image-wrapper">
-                        <p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p>
-                        <div class="image-container">
-                            <img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image">
-                            <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
-                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                            </a>
-                        </div>
+                        <div class="svg-render-box">${rawSvgCode}</div>
+                        <h4>SVG Code</h4>
+                        <pre data-raw-code="${escapedSvgForAttribute}"><code class="language-xml">${escapedSvgForAttribute}</code></pre>
                     </div>`;
-                });
+            }
+
+            // --- Start of General Markdown Formatting ---
+            let processedText = text;
+            const codeBlocks = [];
+            // First, extract all code blocks and replace them with placeholders
+            processedText = processedText.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+                const rawCode = code.trim();
+                const id = codeBlocks.length;
+                codeBlocks.push({ lang: lang || 'plaintext', rawCode });
+                return `__CODE_BLOCK_${id}__`;
+            });
             
-            // Process block-level Markdown first
-            html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (m, lang, code) => `<pre><code class="language-${lang || 'plaintext'}">${code.trim()}</code></pre>`);
+            // Now, safely escape the remaining text
+            let html = ChatApp.Utils.escapeHTML(processedText);
+
+            // Re-insert the code blocks with proper formatting and the raw code in a data-attribute
+            html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, id) => {
+                const { lang, rawCode } = codeBlocks[id];
+                const escapedRawCodeForAttribute = ChatApp.Utils.escapeHTML(rawCode);
+                const escapedRawCodeForDisplay = ChatApp.Utils.escapeHTML(rawCode);
+                return `<pre data-raw-code="${escapedRawCodeForAttribute}"><code class="language-${lang}">${escapedRawCodeForDisplay}</code></pre>`;
+            });
+
+            // Process other custom formats like images
+            html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
+                const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
+                return `
+                <div class="generated-image-wrapper">
+                    <p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p>
+                    <div class="image-container">
+                        <img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image">
+                        <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        </a>
+                    </div>
+                </div>`;
+            });
+            
+            // Process standard block-level Markdown
             html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
             html = html.replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
             html = html.replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
             html = html.replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
             
-            // Process inline-level Markdown
+            // Process standard inline-level Markdown
             html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
             html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
             html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
@@ -447,8 +464,9 @@ const ChatApp = {
             
             const { COPY, CHECK } = ChatApp.Config.ICONS;
             
-            // Do not add a general copy button if it's a special SVG preview
-            if (rawText && !contentEl.querySelector('.svg-preview-container')) {
+            // Do not add a general copy button if it's a special preview message
+            const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
+            if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button';
                 copyBtn.title = 'Copy message text';
@@ -464,12 +482,16 @@ const ChatApp = {
             }
             
             contentEl.querySelectorAll('pre').forEach(pre => {
+                // Only add a copy button if the pre element has raw code data
+                if (!pre.dataset.rawCode) return;
+
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
                 copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`;
                 copyCodeBtn.addEventListener('click', e => {
                     e.stopPropagation();
-                    navigator.clipboard.writeText(pre.querySelector('code').textContent).then(() => {
+                    // THE FIX: Copy the raw, unescaped code from the data attribute
+                    navigator.clipboard.writeText(pre.dataset.rawCode).then(() => {
                         copyCodeBtn.innerHTML = `${CHECK}<span>Copied!</span>`;
                         setTimeout(() => { copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`; }, 2000);
                     });
@@ -564,7 +586,7 @@ Current Date/Time: ${new Date().toLocaleString()}
 Abilities:  
 - Generate creative, technical, or helpful text  
 - Generate images in response to visual prompts  
-- Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). Always enclose the full HTML code within a \`\`\`html markdown block.
+- Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
 - Interpret and follow Jeremiah’s commands  
 - Avoid fluff or overexplaining—stay smart, fast, and clear
 
