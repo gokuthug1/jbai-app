@@ -10,6 +10,11 @@
     to   { opacity: 0; transform: scale(0.9); }
 }
 
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
 @keyframes slideIn {
     from { opacity: 0; transform: translateY(20px); }
     to   { opacity: 1; transform: translateY(0); }
@@ -473,6 +478,11 @@ body {
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
+
 /* --- 2.2 Main Layout (Mobile First: Overlay Sidebar) --- */
 .sidebar {
     position: fixed;
@@ -784,12 +794,14 @@ body.sidebar-open .open-icon { display: none; }
     border: 1px solid var(--border-color);
     border-radius: 8px;
     overflow: hidden; /* To contain the iframe's border-radius */
+    cursor: zoom-in;
 }
 .html-render-box iframe {
     width: 100%;
     height: 100%;
     border: none;
     background-color: #fff; /* Ensure iframe has a bg */
+    pointer-events: none; /* Make the box clickable, not the iframe content */
 }
 .svg-render-box {
     padding: 1rem;
@@ -800,11 +812,11 @@ body.sidebar-open .open-icon { display: none; }
     justify-content: center;
     align-items: center;
     min-height: 100px;
+    cursor: zoom-in;
 }
 .svg-render-box svg {
     max-width: 100%;
     max-height: 300px;
-    /* Use 'currentColor' to respect the theme's text color for svgs without explicit fill */
     fill: currentColor; 
 }
 .html-preview-container pre,
@@ -943,6 +955,7 @@ body.sidebar-open .open-icon { display: none; }
     display: block;
     max-width: 100%;
     border-radius: 8px;
+    cursor: zoom-in;
 }
 .download-image-button {
     position: absolute;
@@ -1137,6 +1150,7 @@ textarea:focus-visible {
     background-color: rgba(0, 0, 0, 0.6);
     -webkit-backdrop-filter: blur(5px);
     backdrop-filter: blur(5px);
+    animation: fadeIn 0.3s ease;
 }
 
 .settings-card {
@@ -1314,4 +1328,72 @@ input:focus-visible + .slider {
     }
     body.sidebar-open .close-icon { display: block; }
     body.sidebar-open .open-icon { display: none; }
+}
+
+/* ==========================================================================
+   6. Fullscreen Modal
+   ========================================================================== */
+.fullscreen-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background-color: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: none; /* Hidden by default */
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+.fullscreen-close-btn {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    font-size: 30px;
+    line-height: 1;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: transform 0.2s, background-color 0.2s;
+}
+.fullscreen-close-btn:hover {
+    transform: scale(1.1);
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.fullscreen-content {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fullscreen-content img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+.fullscreen-content svg {
+    width: 100%;
+    height: 100%;
+    max-width: 90vw;
+    max-height: 90vh;
+    object-fit: contain;
+}
+
+.fullscreen-content iframe {
+    width: 100%;
+    height: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: #fff;
 }
