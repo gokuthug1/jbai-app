@@ -20,7 +20,7 @@
         </div>
         <div class="conversation-list" id="conversation-list"></div>
     </div>
-        <div class="chat-container">
+    <div class="chat-container">
         <div id="message-area" class="message-area"></div>
         <div class="chat-input-container">
             <div id="file-previews-container"></div>
@@ -39,6 +39,12 @@
         </div>
     </div>
     <input type="file" id="file-input" multiple hidden accept="text/plain,text/html,text/css,text/javascript,.js,.html,.css,.txt">
+
+    <!-- Fullscreen Preview Modal -->
+    <div id="fullscreen-preview-overlay" class="fullscreen-overlay">
+        <button id="fullscreen-close-btn" class="fullscreen-close-btn" title="Close (Esc)" aria-label="Close Preview">&times;</button>
+        <div id="fullscreen-content" class="fullscreen-content"></div>
+    </div>
 
     <script src="script.js" defer></script>
 </body>
