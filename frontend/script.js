@@ -25,7 +25,8 @@ const ChatApp = {
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
-            DELETE: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`
+            DELETE: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`,
+            OPEN_NEW_TAB: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`
         }
     },
 
@@ -344,7 +345,7 @@ const ChatApp = {
         },
 
         _addMessageInteractions(messageEl, rawText, messageId) {
-            this._addCopyButtons(messageEl, rawText);
+            this._addMessageAndCodeActions(messageEl, rawText);
             
             let pressTimer = null;
             const startDeleteTimer = () => {
@@ -384,8 +385,11 @@ const ChatApp = {
                             <iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe>
                         </div>
                         <h4>HTML Code</h4>
-                        <div class="code-block-wrapper">
-                            <div class="code-block-header"><span>&lt;&gt; Code</span></div>
+                        <div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
+                            <div class="code-block-header">
+                                <span>&lt;&gt; Code</span>
+                                <div class="code-block-actions"></div>
+                            </div>
                             <pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre>
                         </div>
                     </div>`;
@@ -399,8 +403,11 @@ const ChatApp = {
                         <h4>SVG Preview</h4>
                         <div class="svg-render-box">${rawSvgCode}</div>
                         <h4>SVG Code</h4>
-                        <div class="code-block-wrapper">
-                           <div class="code-block-header"><span>&lt;&gt; Code</span></div>
+                        <div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
+                           <div class="code-block-header">
+                               <span>&lt;&gt; Code</span>
+                               <div class="code-block-actions"></div>
+                           </div>
                            <pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre>
                         </div>
                     </div>`;
@@ -424,6 +431,7 @@ const ChatApp = {
                     <div class="code-block-wrapper">
                         <div class="code-block-header">
                             <span>&lt;&gt; Code</span>
+                            <div class="code-block-actions"></div>
                         </div>
                         <pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>
                     </div>`;
@@ -462,12 +470,13 @@ const ChatApp = {
             }).join('');
         },
 
-        _addCopyButtons(messageEl, rawText) {
+        _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
             
-            const { COPY, CHECK } = ChatApp.Config.ICONS;
+            const { COPY, CHECK, OPEN_NEW_TAB } = ChatApp.Config.ICONS;
             
+            // 1. Handle main message copy button
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
@@ -484,11 +493,37 @@ const ChatApp = {
                 messageEl.appendChild(copyBtn);
             }
             
+            // 2. Handle actions for all code blocks
             contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
                 const pre = wrapper.querySelector('pre');
-                const header = wrapper.querySelector('.code-block-header');
-                if (!pre || !header || !pre.dataset.rawCode) return;
-
+                const actionsContainer = wrapper.querySelector('.code-block-actions');
+                if (!pre || !actionsContainer || !pre.dataset.rawCode) return;
+        
+                // Add "Open in New Tab" button if applicable
+                if (wrapper.dataset.previewable) {
+                    const type = wrapper.dataset.previewable;
+                    const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
+                    
+                    const openBtn = document.createElement('button');
+                    openBtn.className = 'open-new-tab-button';
+                    openBtn.title = 'Open in new tab';
+                    openBtn.innerHTML = OPEN_NEW_TAB;
+                    openBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        let dataUrl;
+                        if (type === 'html') {
+                            dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(rawContent);
+                        } else if (type === 'svg') {
+                            dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(rawContent);
+                        }
+                        if (dataUrl) {
+                            window.open(dataUrl, '_blank');
+                        }
+                    });
+                    actionsContainer.appendChild(openBtn);
+                }
+        
+                // Add "Copy Code" button
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
                 copyCodeBtn.title = 'Copy code';
@@ -500,7 +535,7 @@ const ChatApp = {
                         setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000);
                     });
                 });
-                header.appendChild(copyCodeBtn);
+                actionsContainer.appendChild(copyCodeBtn);
             });
         },
         
