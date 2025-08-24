@@ -173,6 +173,9 @@ const ChatApp = {
                 attachFileButton: document.getElementById('attach-file-button'),
                 fileInput: document.getElementById('file-input'),
                 filePreviewsContainer: document.getElementById('file-previews-container'),
+                fullscreenOverlay: document.getElementById('fullscreen-preview-overlay'),
+                fullscreenContent: document.getElementById('fullscreen-content'),
+                fullscreenCloseBtn: document.getElementById('fullscreen-close-btn'),
             };
         },
 
@@ -550,7 +553,32 @@ const ChatApp = {
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
             overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
             overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
-        }
+        },
+
+        showFullscreenPreview(content, type) {
+            const { fullscreenContent, fullscreenOverlay, body } = this.elements;
+            fullscreenContent.innerHTML = '';
+            
+            switch(type) {
+                case 'image':
+                    const img = document.createElement('img');
+                    img.src = content;
+                    fullscreenContent.appendChild(img);
+                    break;
+                case 'svg':
+                    fullscreenContent.innerHTML = content;
+                    break;
+                case 'html':
+                    const iframe = document.createElement('iframe');
+                    iframe.srcdoc = content;
+                    iframe.sandbox = "allow-scripts allow-same-origin";
+                    fullscreenContent.appendChild(iframe);
+                    break;
+            }
+            
+            fullscreenOverlay.style.display = 'flex';
+            body.classList.add('modal-open');
+        },
     },
 
     // --- API Module ---
@@ -713,6 +741,20 @@ Rules:
             // Sidebar toggle for mobile
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
+        
+            // Fullscreen preview listeners
+            elements.messageArea.addEventListener('click', Controller.handlePreviewClick.bind(Controller));
+            elements.fullscreenCloseBtn.addEventListener('click', Controller.closeFullscreenPreview.bind(Controller));
+            elements.fullscreenOverlay.addEventListener('click', (e) => {
+                if (e.target === elements.fullscreenOverlay) {
+                    Controller.closeFullscreenPreview();
+                }
+            });
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) {
+                    Controller.closeFullscreenPreview();
+                }
+            });
         },
         
         startNewChat() {
@@ -978,16 +1020,42 @@ Rules:
             fileInput.click();
         },
 
-        // FIX: Added the missing deleteAllData function
         deleteAllData() {
             if (confirm('DANGER: This will delete ALL conversations and settings permanently. This action cannot be undone. Are you sure?')) {
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
-                // Also clear the current state to reflect the change immediately
                 ChatApp.State.allConversations = [];
                 alert('All data has been deleted. The application will now reload.');
                 location.reload();
             }
+        },
+
+        handlePreviewClick(event) {
+            const image = event.target.closest('.generated-image');
+            const svgBox = event.target.closest('.svg-render-box');
+            const htmlBox = event.target.closest('.html-render-box');
+
+            if (image) {
+                event.preventDefault();
+                ChatApp.UI.showFullscreenPreview(image.src, 'image');
+            } else if (svgBox) {
+                const svgElement = svgBox.querySelector('svg');
+                if (svgElement) {
+                    ChatApp.UI.showFullscreenPreview(svgElement.outerHTML, 'svg');
+                }
+            } else if (htmlBox) {
+                const iframe = htmlBox.querySelector('iframe');
+                if (iframe) {
+                    ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html');
+                }
+            }
+        },
+        
+        closeFullscreenPreview() {
+            const { fullscreenOverlay, fullscreenContent, body } = ChatApp.UI.elements;
+            fullscreenOverlay.style.display = 'none';
+            fullscreenContent.innerHTML = '';
+            body.classList.remove('modal-open');
         }
     }
 };
