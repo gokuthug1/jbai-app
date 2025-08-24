@@ -836,63 +836,91 @@ body.sidebar-open .open-icon { display: none; }
 
 
 /* Code Blocks & Copy Buttons */
-.message-content pre {
-    position: relative;
-    padding: 12px;
-    padding-top: 35px; /* Space for copy button */
+.code-block-wrapper {
+    background-color: var(--sidebar-hover);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
     margin: 8px 0;
+    overflow: hidden;
+}
+
+.code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: color-mix(in srgb, var(--sidebar-bg) 50%, transparent);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+.code-block-header span {
+    font-family: 'SF Mono', 'Fira Code', 'Courier New', Courier, monospace;
+    font-weight: 500;
+}
+
+.message-content pre {
+    padding: 12px;
+    margin: 0;
     overflow-x: auto;
     white-space: pre;
     cursor: text;
     color: var(--code-text);
     background-color: var(--code-bg);
-    border-radius: 8px;
+    border-radius: 0;
     font-family: 'SF Mono', 'Fira Code', 'Courier New', Courier, monospace;
     font-size: 0.9em;
 }
 
-.copy-button,
-.copy-code-button {
-    position: absolute;
+.copy-button, .copy-code-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0;
     cursor: pointer;
     border: none;
     border-radius: 5px;
     transition: opacity 0.2s, background-color 0.2s;
 }
+
 .message-content:hover .copy-button,
-.message-content pre:hover .copy-code-button {
+.code-block-header:hover .copy-code-button {
     opacity: 0.7;
 }
+
 .copy-button:hover,
 .copy-code-button:hover {
     opacity: 1;
 }
 
 .copy-button {
+    position: absolute;
     right: 8px;
     bottom: 8px;
     padding: 4px;
+    opacity: 0;
     color: var(--text-color);
     background: rgba(0,0,0,0.1);
 }
 .copy-button:hover { background: rgba(0,0,0,0.2); }
 .copy-button svg { width: 16px; height: 16px; stroke: currentColor; }
 
+
 .copy-code-button {
-    top: 8px;
-    right: 8px;
-    padding: 4px 8px;
-    color: var(--code-text);
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid var(--border-color);
-    font-size: 12px;
+    padding: 4px;
+    color: var(--text-secondary);
+    background: transparent;
 }
-.copy-code-button:hover { background: rgba(255, 255, 255, 0.2); }
-.copy-code-button svg { width: 14px; height: 14px; margin-right: 5px; stroke: currentColor; }
+.copy-code-button:hover {
+    color: var(--text-color);
+    background: var(--sidebar-hover);
+}
+.copy-code-button svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+}
+
 
 /* Image Previews */
 .generated-image-wrapper {
