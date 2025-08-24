@@ -381,7 +381,10 @@ const ChatApp = {
                             <iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe>
                         </div>
                         <h4>HTML Code</h4>
-                        <pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre>
+                        <div class="code-block-wrapper">
+                            <div class="code-block-header"><span>&lt;&gt; Code</span></div>
+                            <pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre>
+                        </div>
                     </div>`;
             }
 
@@ -393,7 +396,10 @@ const ChatApp = {
                         <h4>SVG Preview</h4>
                         <div class="svg-render-box">${rawSvgCode}</div>
                         <h4>SVG Code</h4>
-                        <pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre>
+                        <div class="code-block-wrapper">
+                           <div class="code-block-header"><span>&lt;&gt; Code</span></div>
+                           <pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre>
+                        </div>
                     </div>`;
             }
 
@@ -411,7 +417,13 @@ const ChatApp = {
             html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, id) => {
                 const { lang, rawCode } = codeBlocks[id];
                 const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
-                return `<pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>`;
+                return `
+                    <div class="code-block-wrapper">
+                        <div class="code-block-header">
+                            <span>&lt;&gt; Code</span>
+                        </div>
+                        <pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>
+                    </div>`;
             });
 
             html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
@@ -469,20 +481,23 @@ const ChatApp = {
                 messageEl.appendChild(copyBtn);
             }
             
-            contentEl.querySelectorAll('pre').forEach(pre => {
-                if (!pre.dataset.rawCode) return;
+            contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
+                const pre = wrapper.querySelector('pre');
+                const header = wrapper.querySelector('.code-block-header');
+                if (!pre || !header || !pre.dataset.rawCode) return;
 
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
-                copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`;
+                copyCodeBtn.title = 'Copy code';
+                copyCodeBtn.innerHTML = COPY;
                 copyCodeBtn.addEventListener('click', e => {
                     e.stopPropagation();
                     navigator.clipboard.writeText(pre.textContent).then(() => {
-                        copyCodeBtn.innerHTML = `${CHECK}<span>Copied!</span>`;
-                        setTimeout(() => { copyCodeBtn.innerHTML = `${COPY}<span>Copy Code</span>`; }, 2000);
+                        copyCodeBtn.innerHTML = CHECK;
+                        setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000);
                     });
                 });
-                pre.appendChild(copyCodeBtn);
+                header.appendChild(copyCodeBtn);
             });
         },
         
