@@ -19,9 +19,13 @@ const ChatApp = {
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
-            CONVERSATIONS: 'jbai_conversations'
+            CONVERSATIONS: 'jbai_conversations',
+            USER_KEY: 'jbai_user_key' // Key for storing the user's entered key
         },
         DEFAULT_THEME: 'light',
+        // SECURE: Reads the secret key from Vercel's Environment Variables.
+        // The Key in Vercel must be named VITE_JEREMIAH_VERCEL_KEY
+        JEREMIAH_VERCEL_KEY: import.meta.env.VITE_JEREMIAH_VERCEL_KEY,
         TYPING_SPEED_MS: 0, // Milliseconds per character
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -32,30 +36,19 @@ const ChatApp = {
     },
 
     // --- State Management Module ---
-    /**
-     * @memberof ChatApp
-     * @namespace State
-     * @description Manages the dynamic state of the application.
-     */
     State: {
         currentConversation: [],
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
-        isAwaitingImagePrompt: false, // New flag for image generation flow
+        isAwaitingImagePrompt: false,
         typingInterval: null,
         attachedFiles: [],
-
-        /**
-         * Sets the current conversation, migrating old data formats if necessary.
-         * @param {Array<Object>} history - The conversation history array.
-         */
+        userKey: null, // Holds the key entered by the user in settings
         setCurrentConversation(history) {
             this.currentConversation = history.map(msg => {
                 if (!msg) return null;
-                // Already in new format
                 if (msg.id && msg.content && Array.isArray(msg.content.parts)) return msg;
-                // Old format: { role: 'user'/'bot', text: '...' }
                 if (msg.role && typeof msg.text !== 'undefined') {
                     return {
                         id: ChatApp.Utils.generateUUID(),
@@ -68,15 +61,8 @@ const ChatApp = {
                 return null;
             }).filter(Boolean);
         },
-
-        addMessage(message) {
-            this.currentConversation.push(message);
-        },
-
-        removeMessage(messageId) {
-            this.currentConversation = this.currentConversation.filter(msg => msg.id !== messageId);
-        },
-
+        addMessage(message) { this.currentConversation.push(message); },
+        removeMessage(messageId) { this.currentConversation = this.currentConversation.filter(msg => msg.id !== messageId); },
         setGenerating(status) {
             this.isGenerating = status;
             ChatApp.UI.toggleSendButtonState();
@@ -85,56 +71,29 @@ const ChatApp = {
                 this.typingInterval = null;
             }
         },
-        
         resetCurrentChat() {
             this.setCurrentConversation([]);
             this.currentChatId = null;
-            this.isAwaitingImagePrompt = false; // Reset the flag
+            this.isAwaitingImagePrompt = false;
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
-            if (this.isGenerating) {
-                this.setGenerating(false);
-            }
+            if (this.isGenerating) { this.setGenerating(false); }
         }
     },
 
     // --- Utility Module ---
-    /**
-     * @memberof ChatApp
-     * @namespace Utils
-     * @description Provides helper and utility functions.
-     */
     Utils: {
-        /**
-         * Escapes HTML special characters in a string to prevent XSS.
-         * @param {string} str - The string to escape.
-         * @returns {string} The escaped string.
-         */
         escapeHTML(str) {
             const p = document.createElement('p');
             p.textContent = str;
             return p.innerHTML;
         },
-
-        /**
-         * Generates a universally unique identifier.
-         * @returns {string} A UUID string.
-         */
-        generateUUID() {
-            return crypto.randomUUID();
-        }
+        generateUUID() { return crypto.randomUUID(); }
     },
 
     // --- Local Storage Module ---
-    /**
-     * @memberof ChatApp
-     * @namespace Store
-     * @description Handles all interactions with browser localStorage.
-     */
     Store: {
-        saveAllConversations() {
-            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations));
-        },
+        saveAllConversations() { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations)); },
         loadAllConversations() {
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
@@ -144,23 +103,15 @@ const ChatApp = {
                 ChatApp.State.allConversations = [];
             }
         },
-        saveTheme(themeName) {
-            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName);
-        },
-        getTheme() {
-            return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME;
-        }
+        saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
+        getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
+        saveUserKey(key) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.USER_KEY, key); },
+        getUserKey() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.USER_KEY) || ''; }
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
-    /**
-     * @memberof ChatApp
-     * @namespace UI
-     * @description Manages all DOM manipulations, rendering, and UI event handling.
-     */
     UI: {
         elements: {},
-
         cacheElements() {
             this.elements = {
                 body: document.body,
@@ -180,158 +131,105 @@ const ChatApp = {
                 fullscreenCloseBtn: document.getElementById('fullscreen-close-btn'),
             };
         },
-
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
         },
-        
-        scrollToBottom() {
-            this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight;
-        },
-        
+        scrollToBottom() { this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight; },
         clearChatArea() {
             this.elements.messageArea.innerHTML = '';
             this.elements.chatInput.value = '';
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
         },
-
         toggleSendButtonState() {
             const hasText = this.elements.chatInput.value.trim().length > 0;
             const hasFiles = ChatApp.State.attachedFiles.length > 0;
             const isGenerating = ChatApp.State.isGenerating;
             this.elements.sendButton.disabled = (!hasText && !hasFiles) || isGenerating;
         },
-        
         renderSidebar() {
             this.elements.conversationList.innerHTML = '';
-            // Sort conversations by ID (timestamp) descending to show newest first
             const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => b.id - a.id);
-            
             sortedConversations.forEach(chat => {
                 const item = document.createElement('div');
                 item.className = 'conversation-item';
                 item.dataset.chatId = chat.id;
-                if (chat.id === ChatApp.State.currentChatId) {
-                    item.classList.add('active');
-                }
-                
+                if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); }
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
                 item.innerHTML = `
                     <span class="conversation-title" title="${title}">${title}</span>
                     <button type="button" class="delete-btn" title="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
-                
                 item.addEventListener('click', () => ChatApp.Controller.loadChat(chat.id));
                 item.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     ChatApp.Controller.deleteConversation(chat.id);
                 });
-
                 this.elements.conversationList.appendChild(item);
             });
         },
-
-        /**
-         * Renders a single message in the chat area.
-         * @param {object} message - The full message object from the state.
-         * @param {boolean} [isTyping=false] - If true, renders a "thinking" indicator.
-         */
         renderMessage(message, isTyping = false) {
             const messageEl = document.createElement('div');
             messageEl.dataset.messageId = message.id;
-
             const contentEl = document.createElement('div');
             contentEl.className = 'message-content';
-            
-            let rawText = ''; // Defined here to be available after the element is appended
-
+            let rawText = '';
             if (isTyping) {
                 messageEl.className = 'message bot thinking';
                 contentEl.innerHTML = `<span></span><span></span><span></span>`;
             } else {
                 const { content, attachments } = message;
                 const sender = content.role === 'model' ? 'bot' : 'user';
-
                 const textPart = content.parts.find(p => p.text);
                 const textContent = textPart ? textPart.text : '';
-                rawText = textContent; // Set rawText for later use
-
+                rawText = textContent;
                 messageEl.className = `message ${sender}`;
                 contentEl.innerHTML = this._formatMessageContent(textContent);
-                
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
                     contentEl.prepend(attachmentsContainer);
                 }
             }
-            
             messageEl.appendChild(contentEl);
             this.elements.messageArea.appendChild(messageEl);
-
-            // Add interactions *after* the element is in the live DOM to ensure reliability
-            if (!isTyping) {
-                this._addMessageInteractions(messageEl, rawText, message.id);
-            }
-
+            if (!isTyping) { this._addMessageInteractions(messageEl, rawText, message.id); }
             this.scrollToBottom();
             return messageEl;
         },
-
         _createAttachmentsContainer(attachments) {
             const container = document.createElement('div');
             container.className = 'message-attachments';
             attachments.forEach(file => {
                 const item = document.createElement('div');
                 item.className = 'attachment-item';
-                // Use inline styles to create a text-based representation within the existing box model
                 const fileIconHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
                 item.innerHTML = fileIconHTML;
                 container.appendChild(item);
             });
             return container;
         },
-
         renderFilePreviews() {
             this.elements.filePreviewsContainer.innerHTML = '';
             if (ChatApp.State.attachedFiles.length === 0) {
                 this.elements.filePreviewsContainer.style.display = 'none';
                 return;
             }
-
             this.elements.filePreviewsContainer.style.display = 'flex';
             ChatApp.State.attachedFiles.forEach((file, index) => {
                 const previewItem = document.createElement('div');
                 previewItem.className = 'file-preview-item';
-                
-                // Use inline styles to provide a text-based preview without needing a file reader
                 const fileIconHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
-
-                previewItem.innerHTML = `
-                    ${fileIconHTML}
-                    <button class="remove-preview-btn" title="Remove file" type="button">&times;</button>
-                `;
-                previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => {
-                    ChatApp.Controller.removeAttachedFile(index);
-                });
-
+                previewItem.innerHTML = `${fileIconHTML}<button class="remove-preview-btn" title="Remove file" type="button">&times;</button>`;
+                previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => { ChatApp.Controller.removeAttachedFile(index); });
                 this.elements.filePreviewsContainer.appendChild(previewItem);
             });
             this.toggleSendButtonState();
         },
-        
-        /**
-         * Finalizes a bot message element by typing out the response and rendering it.
-         * @param {HTMLElement} messageEl - The placeholder message element (usually the "thinking" one).
-         * @param {string} fullText - The full text of the bot's response.
-         * @param {string} messageId - The new message's unique ID.
-         */
         finalizeBotMessage(messageEl, fullText, messageId) {
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
-            contentEl.innerHTML = ''; // Clear thinking dots
-
+            contentEl.innerHTML = '';
             let i = 0;
             ChatApp.State.typingInterval = setInterval(() => {
                 if (i < fullText.length) {
@@ -341,44 +239,26 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    
                     contentEl.innerHTML = this._formatMessageContent(fullText);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     this.scrollToBottom();
-
                     ChatApp.Controller.completeGeneration(fullText, messageId);
                 }
             }, ChatApp.Config.TYPING_SPEED_MS);
         },
-
         _addMessageInteractions(messageEl, rawText, messageId) {
             this._addMessageAndCodeActions(messageEl, rawText);
-            
             let pressTimer = null;
-            const startDeleteTimer = () => {
-                pressTimer = setTimeout(() => {
-                    if (navigator.vibrate) navigator.vibrate(50);
-                    ChatApp.Controller.deleteMessage(messageId);
-                }, 800);
-            };
+            const startDeleteTimer = () => { pressTimer = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); ChatApp.Controller.deleteMessage(messageId); }, 800); };
             const clearDeleteTimer = () => clearTimeout(pressTimer);
-            
-            messageEl.addEventListener('click', e => { 
-                if (e.shiftKey) { 
-                    e.preventDefault(); 
-                    ChatApp.Controller.deleteMessage(messageId); 
-                } 
-            });
+            messageEl.addEventListener('click', e => { if (e.shiftKey) { e.preventDefault(); ChatApp.Controller.deleteMessage(messageId); } });
             messageEl.addEventListener('touchstart', startDeleteTimer, { passive: true });
             messageEl.addEventListener('touchend', clearDeleteTimer);
             messageEl.addEventListener('touchmove', clearDeleteTimer);
         },
-        
         _formatMessageContent(text) {
             if (!text) return '';
-
             const trimmedText = text.trim();
-
             const htmlBlockRegex = /^```html\n([\s\S]*?)\n```$/;
             const htmlMatch = trimmedText.match(htmlBlockRegex);
             if (htmlMatch) {
@@ -388,20 +268,14 @@ const ChatApp = {
                 return `
                     <div class="html-preview-container">
                         <h4>Live Preview</h4>
-                        <div class="html-render-box">
-                            <iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe>
-                        </div>
+                        <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe></div>
                         <h4>HTML Code</h4>
                         <div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
-                            <div class="code-block-header">
-                                <span>&lt;&gt; Code</span>
-                                <div class="code-block-actions"></div>
-                            </div>
+                            <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
                             <pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre>
                         </div>
                     </div>`;
             }
-
             if (trimmedText.startsWith('<svg') && trimmedText.endsWith('</svg>')) {
                 const rawSvgCode = trimmedText;
                 const escapedSvgCode = ChatApp.Utils.escapeHTML(rawSvgCode);
@@ -411,15 +285,11 @@ const ChatApp = {
                         <div class="svg-render-box">${rawSvgCode}</div>
                         <h4>SVG Code</h4>
                         <div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
-                           <div class="code-block-header">
-                               <span>&lt;&gt; Code</span>
-                               <div class="code-block-actions"></div>
-                           </div>
+                           <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
                            <pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre>
                         </div>
                     </div>`;
             }
-
             let processedText = text;
             const codeBlocks = [];
             processedText = processedText.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
@@ -428,47 +298,29 @@ const ChatApp = {
                 codeBlocks.push({ lang: lang || 'plaintext', rawCode });
                 return `__CODE_BLOCK_${id}__`;
             });
-            
             let html = ChatApp.Utils.escapeHTML(processedText);
-
             html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, id) => {
                 const { lang, rawCode } = codeBlocks[id];
                 const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
                 return `
                     <div class="code-block-wrapper">
-                        <div class="code-block-header">
-                            <span>&lt;&gt; Code</span>
-                            <div class="code-block-actions"></div>
-                        </div>
+                        <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
                         <pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>
                     </div>`;
             });
-
             html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
-                return `
-                <div class="generated-image-wrapper">
-                    <p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p>
-                    <div class="image-container">
-                        <img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image">
-                        <a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                        </a>
-                    </div>
-                </div>`;
+                return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
             });
-            
             html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
             html = html.replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
             html = html.replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
             html = html.replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
-            
             html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
             html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
             html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
             html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
             html = html.replace(/~~(.*?)~~/g, '<s>$1</s>');
-            
             return html.split('\n').map(line => {
                 const trimmed = line.trim();
                 if (trimmed === '') return '';
@@ -476,72 +328,38 @@ const ChatApp = {
                 return isBlockElement ? line : `<p>${line}</p>`;
             }).join('');
         },
-
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
-            
             const { COPY, CHECK, OPEN_NEW_TAB } = ChatApp.Config.ICONS;
-            
-            // 1. Handle main message copy button
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
-                copyBtn.className = 'copy-button';
-                copyBtn.title = 'Copy message text';
-                copyBtn.innerHTML = COPY;
-                copyBtn.addEventListener('click', e => {
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(rawText).then(() => {
-                        copyBtn.innerHTML = CHECK;
-                        setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000);
-                    });
-                });
+                copyBtn.className = 'copy-button'; copyBtn.title = 'Copy message text'; copyBtn.innerHTML = COPY;
+                copyBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(rawText).then(() => { copyBtn.innerHTML = CHECK; setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000); }); });
                 messageEl.appendChild(copyBtn);
             }
-            
-            // 2. Handle actions for all code blocks
             contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
                 const pre = wrapper.querySelector('pre');
                 const actionsContainer = wrapper.querySelector('.code-block-actions');
                 if (!pre || !actionsContainer || !pre.dataset.rawCode) return;
-        
-                // Add "Open in New Tab" button if applicable
                 if (wrapper.dataset.previewable) {
                     const openBtn = document.createElement('button');
-                    openBtn.className = 'open-new-tab-button';
-                    openBtn.title = 'Open in new tab';
-                    openBtn.innerHTML = OPEN_NEW_TAB;
+                    openBtn.className = 'open-new-tab-button'; openBtn.title = 'Open in new tab'; openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
                         const newWindow = window.open('about:blank', '_blank');
-                        if (newWindow) {
-                            newWindow.document.write(rawContent);
-                            newWindow.document.close();
-                        } else {
-                            alert('Popup blocker might be preventing the new tab from opening.');
-                        }
+                        if (newWindow) { newWindow.document.write(rawContent); newWindow.document.close(); } else { alert('Popup blocker might be preventing the new tab from opening.'); }
                     });
                     actionsContainer.appendChild(openBtn);
                 }
-        
-                // Add "Copy Code" button
                 const copyCodeBtn = document.createElement('button');
-                copyCodeBtn.className = 'copy-code-button';
-                copyCodeBtn.title = 'Copy code';
-                copyCodeBtn.innerHTML = COPY;
-                copyCodeBtn.addEventListener('click', e => {
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(pre.textContent).then(() => {
-                        copyCodeBtn.innerHTML = CHECK;
-                        setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000);
-                    });
-                });
+                copyCodeBtn.className = 'copy-code-button'; copyCodeBtn.title = 'Copy code'; copyCodeBtn.innerHTML = COPY;
+                copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
                 actionsContainer.appendChild(copyCodeBtn);
             });
         },
-        
         renderSettingsModal() {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
@@ -551,25 +369,13 @@ const ChatApp = {
                 <div class="settings-row">
                     <label for="themeSelect">Theme</label>
                     <select id="themeSelect">
-                        <optgroup label="Light Themes">
-                            <option value="light">Light</option>
-                            <option value="github-light">GitHub Light</option>
-                            <option value="paper">Paper</option>
-                            <option value="solarized-light">Solarized Light</option>
-                        </optgroup>
-                        <optgroup label="Dark Themes">
-                            <option value="ayu-mirage">Ayu Mirage</option>
-                            <option value="cobalt2">Cobalt2</option>
-                            <option value="dark">Dark</option>
-                            <option value="dracula">Dracula</option>
-                            <option value="gruvbox-dark">Gruvbox Dark</option>
-                            <option value="midnight">Midnight</option>
-                            <option value="monokai">Monokai</option>
-                            <option value="nord">Nord</option>
-                            <option value="oceanic-next">Oceanic Next</option>
-                            <option value="tomorrow-night-eighties">Tomorrow Night</option>
-                        </optgroup>
+                        <optgroup label="Light Themes"><option value="light">Light</option><option value="github-light">GitHub Light</option><option value="paper">Paper</option><option value="solarized-light">Solarized Light</option></optgroup>
+                        <optgroup label="Dark Themes"><option value="ayu-mirage">Ayu Mirage</option><option value="cobalt2">Cobalt2</option><option value="dark">Dark</option><option value="dracula">Dracula</option><option value="gruvbox-dark">Gruvbox Dark</option><option value="midnight">Midnight</option><option value="monokai">Monokai</option><option value="nord">Nord</option><option value="oceanic-next">Oceanic Next</option><option value="tomorrow-night-eighties">Tomorrow Night</option></optgroup>
                     </select>
+                </div>
+                <div class="settings-row">
+                    <label for="userKeyInput">Vercel User Key</label>
+                    <input type="password" id="userKeyInput" placeholder="Enter key for personalized profile">
                 </div>
                 <hr>
                 <div class="data-actions">
@@ -579,55 +385,37 @@ const ChatApp = {
                 </div>
                 <button id="closeSettingsBtn" type="button" class="btn-primary">Close</button>
             </div>`;
-            
             document.body.appendChild(overlay);
             overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-            
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
-
+            const userKeyInput = overlay.querySelector('#userKeyInput');
+            userKeyInput.value = ChatApp.State.userKey || '';
+            userKeyInput.addEventListener('input', (e) => { ChatApp.Controller.updateUserKey(e.target.value); });
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
             overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
             overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
         },
-
         showFullscreenPreview(content, type) {
             const { fullscreenContent, fullscreenOverlay, body } = this.elements;
             fullscreenContent.innerHTML = '';
-            
             switch(type) {
-                case 'image':
-                    const img = document.createElement('img');
-                    img.src = content;
-                    fullscreenContent.appendChild(img);
-                    break;
-                case 'svg':
-                    fullscreenContent.innerHTML = content;
-                    break;
-                case 'html':
-                    const iframe = document.createElement('iframe');
-                    iframe.srcdoc = content;
-                    iframe.sandbox = "allow-scripts allow-same-origin";
-                    fullscreenContent.appendChild(iframe);
-                    break;
+                case 'image': const img = document.createElement('img'); img.src = content; fullscreenContent.appendChild(img); break;
+                case 'svg': fullscreenContent.innerHTML = content; break;
+                case 'html': const iframe = document.createElement('iframe'); iframe.srcdoc = content; iframe.sandbox = "allow-scripts allow-same-origin"; fullscreenContent.appendChild(iframe); break;
             }
-            
             fullscreenOverlay.style.display = 'flex';
             body.classList.add('modal-open');
         },
     },
 
     // --- API Module ---
-    /**
-     * @memberof ChatApp
-     * @namespace Api
-     * @description Handles all fetch requests to external APIs.
-     */
     Api: {
         async getSystemContext() {
-            return `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online.
+            // --- PROMPT FOR JEREMIAH (gokuthug1) ---
+            const jeremiahPrompt = `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online.
 
 You were developed by Jeremiah, also known as 'gokuthug1,' your creator.
 He has custom commands that users can use, and you must follow them.
@@ -636,27 +424,16 @@ He has custom commands that users can use, and you must follow them.
 This profile describes your creator, Jeremiah. Use this information to personalize your interactions, understand his perspective, and tailor your responses to his interests.
 
 Identity: 16-year-old Black American boy (born January 12, 2009).
-
 Vibe: A tech-savvy teen with chill energy. Mixes playfulness (games, anime, memes) with ambition (coding, building, experimenting).
-
 Personality: Curious, creative, laid-back but sharp. Has a playful sense of humor, is persistent, and thoughtful when problem-solving.
-
 Core Interests:
-
 Coding: Roblox, HTML/JS, experimenting with scripts, making tools.
-
 Gaming: Competitive shooters, sandbox building, and casual games.
-
 Media: Watches anime (gems, comedy, and hidden gems), and a wide variety of YouTube content (gaming, tutorials, tech, anime clips).
-
 Tech: Experimenting with AI, creating commands, and building fun projects.
-
 Strengths: Quick learner, problem-solver, creative builder, good at connecting ideas across different tech domains.
-
 Values: Creativity, independence, freedom, and a balance between fun and productivity.
-
 Habits: Late-night coding/gaming sessions, loves learning shortcuts/hacks, often multitasks (e.g., coding while listening to music/anime).
-
 Aesthetic: Prefers clean, functional, and futuristic/tech designs that are sleek but not overcomplicated.
 
 Use standard Markdown in your responses.
@@ -667,26 +444,18 @@ For images, always use this format:
 
 Real-Time Context:
 You have access to the user's current context, preferences, and command system. Use this to:
-
-Personalize answers based on the gokuthug1 profile.
-
-Avoid repeating known info
-
-Act in line with the user's instructions
+- Personalize answers based on the gokuthug1 profile.
+- Avoid repeating known info
+- Act in line with the user's instructions
 
 Current Date/Time: ${new Date().toLocaleString()}
 
 Abilities:
-
-Generate creative, technical, or helpful text
-
-Generate images in response to visual prompts
-
-Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
-
-Interpret and follow Jeremiah’s commands
-
-Avoid fluff or overexplaining—stay smart, fast, and clear
+- Generate creative, technical, or helpful text
+- Generate images in response to visual prompts
+- Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
+- Interpret and follow Jeremiah’s commands
+- Avoid fluff or overexplaining—stay smart, fast, and clear
 
 Jeremiah's Custom Commands:
 /html → Give a random HTML code that’s interesting and fun.
@@ -701,16 +470,36 @@ Jeremiah's Custom Commands:
 /bdw → Break down a word: pronunciation, definition, and similar-sounding word.
 
 Rules:
+- Do not ask what a command means. Follow it exactly as written.
+- Never add unnecessary text after image links.`;
 
-Do not ask what a command means. Follow it exactly as written.
+            // --- GENERIC PROMPT FOR ALL OTHER USERS ---
+            const defaultPrompt = `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online.
 
-Never add unnecessary text after image links.`;
+Use standard Markdown in your responses.
+You can generate both text and images.
+
+For images, always use this format:
+[IMAGE: user's prompt](URL_to_image)
+
+Current Date/Time: ${new Date().toLocaleString()}
+
+Abilities:
+- Generate creative, technical, or helpful text.
+- Generate images in response to visual prompts.
+- Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
+- Avoid fluff or overexplaining—stay smart, fast, and clear.`;
+
+            // Check if the user's key matches the secret key from Vercel
+            if (ChatApp.Config.JEREMIAH_VERCEL_KEY && ChatApp.State.userKey === ChatApp.Config.JEREMIAH_VERCEL_KEY) {
+                return jeremiahPrompt;
+            } else {
+                return defaultPrompt;
+            }
         },
-
         async fetchTitle(chatHistory) {
             const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
             if (safeHistory.length < 2) return "New Chat";
-
             const prompt = `Based on this conversation, create a short, concise title (4 words max). Output only the title, no quotes or markdown.\nUser: ${safeHistory[0].content.parts[0].text}\nAI: ${safeHistory[1].content.parts[0].text}`;
             try {
                 const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
@@ -726,7 +515,6 @@ Never add unnecessary text after image links.`;
                 return "Titled Chat";
             }
         },
-
         async fetchTextResponse(apiContents, systemInstruction) {
              const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
                 method: "POST",
@@ -739,22 +527,13 @@ Never add unnecessary text after image links.`;
             if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
             return botResponseText;
         },
-
         async fetchImageResponse(prompt) {
             const encodedPrompt = encodeURIComponent(prompt);
             const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}`;
-        
             const response = await fetch(fullUrl);
-        
-            if (!response.ok) {
-                throw new Error(`Server error: ${response.status} ${response.statusText}`);
-            }
+            if (!response.ok) { throw new Error(`Server error: ${response.status} ${response.statusText}`); }
             const imageBlob = await response.blob();
-        
-            if (imageBlob.type.startsWith('text/')) { // Handle cases where the API returns an error page
-                throw new Error("Image generation failed. The API may be down or the prompt was invalid.");
-            }
-        
+            if (imageBlob.type.startsWith('text/')) { throw new Error("Image generation failed. The API may be down or the prompt was invalid."); }
             const imageUrl = URL.createObjectURL(imageBlob);
             if (!imageUrl) throw new Error("Could not create image URL from the API response.");
             return imageUrl;
@@ -762,190 +541,105 @@ Never add unnecessary text after image links.`;
     },
     
     // --- Controller Module (Application Logic) ---
-    /**
-     * @memberof ChatApp
-     * @namespace Controller
-     * @description Orchestrates the application, connecting user actions to state changes and UI updates.
-     */
     Controller: {
-        /**
-         * Initializes the application by caching elements, loading data, and setting up event listeners.
-         */
         init() {
-            // 1. Find all our HTML elements first
             ChatApp.UI.cacheElements();
-            
-            // 2. Load settings and data
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
-            
-            // 3. Render the initial UI
+            ChatApp.State.userKey = ChatApp.Store.getUserKey(); // Load the user key on startup
             ChatApp.UI.renderSidebar();
-            ChatApp.UI.toggleSendButtonState(); // Set initial button state
-
-            // 4. Connect UI elements to controller functions (THE CRITICAL STEP)
+            ChatApp.UI.toggleSendButtonState();
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
-
             elements.sendButton.addEventListener('click', Controller.handleChatSubmission.bind(Controller));
-            
-            elements.chatInput.addEventListener('keydown', (e) => {
-                // Submit on Enter, but allow Shift+Enter for new lines
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault(); // Prevents new line in textarea
-                    Controller.handleChatSubmission();
-                }
-            });
-
-            // Auto-resize textarea and toggle send button on input
+            elements.chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); Controller.handleChatSubmission(); } });
             elements.chatInput.addEventListener('input', () => {
                 elements.chatInput.style.height = 'auto';
                 elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
                 ChatApp.UI.toggleSendButtonState();
             });
-
             elements.newChatBtn.addEventListener('click', Controller.startNewChat.bind(Controller));
             elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
-            
-            // Wire up the file attachment functionality
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
             elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
-            
-            // Sidebar toggle for mobile
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
-        
-            // Fullscreen preview listeners
             elements.messageArea.addEventListener('click', Controller.handlePreviewClick.bind(Controller));
             elements.fullscreenCloseBtn.addEventListener('click', Controller.closeFullscreenPreview.bind(Controller));
-            elements.fullscreenOverlay.addEventListener('click', (e) => {
-                if (e.target === elements.fullscreenOverlay) {
-                    Controller.closeFullscreenPreview();
-                }
-            });
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) {
-                    Controller.closeFullscreenPreview();
-                }
-            });
+            elements.fullscreenOverlay.addEventListener('click', (e) => { if (e.target === elements.fullscreenOverlay) { Controller.closeFullscreenPreview(); } });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) { Controller.closeFullscreenPreview(); } });
         },
-        
         startNewChat() {
             ChatApp.State.resetCurrentChat();
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar();
         },
-
+        updateUserKey(key) {
+            ChatApp.State.userKey = key;
+            ChatApp.Store.saveUserKey(key);
+        },
         async handleChatSubmission() {
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = ChatApp.State.attachedFiles;
-        
             if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
-        
-            // Clear input immediately, since we are processing the submission
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
-        
-            // Case 1: We are waiting for an image prompt from the user
             if (ChatApp.State.isAwaitingImagePrompt) {
-                ChatApp.State.isAwaitingImagePrompt = false; // Reset flag immediately
+                ChatApp.State.isAwaitingImagePrompt = false;
                 ChatApp.State.setGenerating(true);
-        
-                // Render user's prompt message
-                const userMessageId = ChatApp.Utils.generateUUID();
-                const userMessage = {
-                    id: userMessageId,
-                    content: { role: "user", parts: [{ text: userInput }] }
-                };
+                const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: [{ text: userInput }] } };
                 ChatApp.State.addMessage(userMessage);
                 ChatApp.UI.renderMessage(userMessage);
-                
                 await this._generateImage(userInput);
                 return;
             }
-        
-            // Case 2: The user is initiating the image generation flow
             if (userInput.toLowerCase() === '.pollinations.ai/prompt') {
-                // Render user's trigger message
-                const userMessageId = ChatApp.Utils.generateUUID();
-                const userMessage = { id: userMessageId, content: { role: 'user', parts: [{ text: userInput }] } };
+                const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'user', parts: [{ text: userInput }] } };
                 ChatApp.State.addMessage(userMessage);
                 ChatApp.UI.renderMessage(userMessage);
-        
-                // Render bot's follow-up question
                 const botResponseText = "Sure, what is the prompt for the image?";
-                const botMessageId = ChatApp.Utils.generateUUID();
-                const botMessage = { id: botMessageId, content: { role: 'model', parts: [{ text: botResponseText }] } };
+                const botMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: botResponseText }] } };
                 ChatApp.State.addMessage(botMessage);
                 ChatApp.UI.renderMessage(botMessage);
-        
                 ChatApp.State.isAwaitingImagePrompt = true;
                 this.saveCurrentChat();
                 return;
             }
-        
-            // --- Default Text/File Handling ---
             ChatApp.State.setGenerating(true);
-        
-            // Prepare files (if any)
-            const fileDataPromises = files.map(file => {
-                return new Promise((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onload = e => resolve({
-                        mimeType: file.type || 'text/plain',
-                        data: e.target.result.split(',')[1] // Extract base64 data
-                    });
-                    reader.onerror = reject;
-                    reader.readAsDataURL(file);
-                });
-            });
+            const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve({ mimeType: file.type || 'text/plain', data: e.target.result.split(',')[1] });
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            }));
             const fileApiData = await Promise.all(fileDataPromises);
-            this.clearAttachedFiles(); // Clear UI previews
-        
-            // Create and render user message with text and/or files
-            const userMessageId = ChatApp.Utils.generateUUID();
+            this.clearAttachedFiles();
             const messageParts = fileApiData.map(p => ({ inlineData: p }));
-            if (userInput) {
-                messageParts.push({ text: userInput });
-            }
-            const userMessage = {
-                id: userMessageId,
-                content: { role: "user", parts: messageParts },
-                attachments: files.map(f => ({ name: f.name, type: f.type }))
-            };
+            if (userInput) { messageParts.push({ text: userInput }); }
+            const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: files.map(f => ({ name: f.name, type: f.type })) };
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
-        
-            // Generate the text response
             await this._generateText();
         },
-
         handleFileSelection(event) {
-            const files = Array.from(event.target.files);
-            ChatApp.State.attachedFiles.push(...files);
+            ChatApp.State.attachedFiles.push(...Array.from(event.target.files));
             ChatApp.UI.renderFilePreviews();
-            // Reset input so the same file can be selected again
             event.target.value = null;
         },
-
         removeAttachedFile(index) {
             ChatApp.State.attachedFiles.splice(index, 1);
             ChatApp.UI.renderFilePreviews();
         },
-
         clearAttachedFiles() {
             ChatApp.State.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
         },
-
         async _generateText() {
             const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null }, true);
-
             try {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
                 const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
-                
                 ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
             } catch (error) {
                 console.error("Text generation failed:", error);
@@ -954,23 +648,18 @@ Never add unnecessary text after image links.`;
                 ChatApp.State.setGenerating(false);
             }
         },
-
         completeGeneration(botResponseText, messageId) {
             const botMessage = { id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } };
             ChatApp.State.addMessage(botMessage);
             this.saveCurrentChat();
             ChatApp.State.setGenerating(false);
         },
-        
         async _generateImage(prompt) {
             const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null, content: { role: 'model', parts: [{ text: `Generating image for: "${prompt}"...` }] }}, true);
-
             try {
                 const imageUrl = await ChatApp.Api.fetchImageResponse(prompt);
                 const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
-                const botMessageId = ChatApp.Utils.generateUUID();
-                const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
-                
+                const botMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "model", parts: [{ text: imageMarkdown }] } };
                 ChatApp.State.addMessage(botMessage);
                 thinkingMessageEl.remove();
                 ChatApp.UI.renderMessage(botMessage);
@@ -983,76 +672,48 @@ Never add unnecessary text after image links.`;
                 ChatApp.State.setGenerating(false);
             }
         },
-
         async saveCurrentChat() {
             if (ChatApp.State.currentConversation.length === 0) return;
-
             if (ChatApp.State.currentChatId) {
                 const chat = ChatApp.State.allConversations.find(c => c.id === ChatApp.State.currentChatId);
-                if (chat) {
-                    chat.history = ChatApp.State.currentConversation;
-                }
-            } else { // Create a new chat only if there's a user message and a bot response
+                if (chat) { chat.history = ChatApp.State.currentConversation; }
+            } else {
                  const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
                  const modelMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'model').length;
                  if (userMessages > 0 && modelMessages > 0) {
                     const newTitle = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation);
                     ChatApp.State.currentChatId = Date.now();
-                    ChatApp.State.allConversations.push({ 
-                        id: ChatApp.State.currentChatId, 
-                        title: newTitle, 
-                        history: ChatApp.State.currentConversation 
-                    });
+                    ChatApp.State.allConversations.push({ id: ChatApp.State.currentChatId, title: newTitle, history: ChatApp.State.currentConversation });
                 }
             }
             ChatApp.Store.saveAllConversations();
             ChatApp.UI.renderSidebar();
         },
-        
         loadChat(chatId) {
             if (ChatApp.State.currentChatId === chatId) return;
             const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
-            if (!chat || !Array.isArray(chat.history)) {
-                console.error("Chat not found or is corrupted:", chatId);
-                alert("Could not load the selected chat.");
-                return;
-            }
-
-            this.startNewChat(); // Clear state and UI before loading
+            if (!chat || !Array.isArray(chat.history)) { console.error("Chat not found or is corrupted:", chatId); alert("Could not load the selected chat."); return; }
+            this.startNewChat();
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
-            
             ChatApp.UI.clearChatArea();
-            ChatApp.State.currentConversation.forEach(msg => {
-                ChatApp.UI.renderMessage(msg);
-            });
-
+            ChatApp.State.currentConversation.forEach(msg => { ChatApp.UI.renderMessage(msg); });
             setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             ChatApp.UI.renderSidebar();
         },
-
         deleteMessage(messageId) {
             if (!confirm('Are you sure you want to delete this message?')) return;
             ChatApp.State.removeMessage(messageId);
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
-            if (messageEl) {
-                messageEl.classList.add('fade-out');
-                setTimeout(() => messageEl.remove(), 400);
-            }
+            if (messageEl) { messageEl.classList.add('fade-out'); setTimeout(() => messageEl.remove(), 400); }
             this.saveCurrentChat();
         },
-
         deleteConversation(chatId) {
             if (!confirm('Are you sure you want to delete this chat permanently?')) return;
             ChatApp.State.allConversations = ChatApp.State.allConversations.filter(c => c.id !== chatId);
             ChatApp.Store.saveAllConversations();
-            if (ChatApp.State.currentChatId === chatId) {
-                this.startNewChat();
-            } else {
-                ChatApp.UI.renderSidebar();
-            }
+            if (ChatApp.State.currentChatId === chatId) { this.startNewChat(); } else { ChatApp.UI.renderSidebar(); }
         },
-        
         downloadAllData() {
             const dataStr = JSON.stringify(ChatApp.State.allConversations, null, 2);
             if (!dataStr || dataStr === '[]') { alert('No conversation data to download.'); return; }
@@ -1063,11 +724,9 @@ Never add unnecessary text after image links.`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
         },
-
         handleDataUpload() {
             const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = '.json,application/json';
+            fileInput.type = 'file'; fileInput.accept = '.json,application/json';
             fileInput.onchange = (event) => {
                 const file = event.target.files[0];
                 if (!file) return;
@@ -1075,26 +734,21 @@ Never add unnecessary text after image links.`;
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
-                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) {
-                            throw new Error("Invalid data format. Expected an array of chat objects.");
-                        }
-                        if (confirm('This will replace all current conversations. Are you sure? This action cannot be undone.')) {
+                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) { throw new Error("Invalid data format."); }
+                        if (confirm('This will replace all current conversations. Are you sure?')) {
                             ChatApp.State.allConversations = importedData;
                             ChatApp.Store.saveAllConversations();
                             alert('Data successfully imported. The application will now reload.');
                             location.reload();
                         }
-                    } catch (error) {
-                        alert(`Error importing data: ${error.message}`);
-                    }
+                    } catch (error) { alert(`Error importing data: ${error.message}`); }
                 };
                 reader.readAsText(file);
             };
             fileInput.click();
         },
-
         deleteAllData() {
-            if (confirm('DANGER: This will delete ALL conversations and settings permanently. This action cannot be undone. Are you sure?')) {
+            if (confirm('DANGER: This will delete ALL conversations and settings permanently. Are you sure?')) {
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
                 ChatApp.State.allConversations = [];
@@ -1102,28 +756,14 @@ Never add unnecessary text after image links.`;
                 location.reload();
             }
         },
-
         handlePreviewClick(event) {
             const image = event.target.closest('.generated-image');
             const svgBox = event.target.closest('.svg-render-box');
             const htmlBox = event.target.closest('.html-render-box');
-
-            if (image) {
-                event.preventDefault();
-                ChatApp.UI.showFullscreenPreview(image.src, 'image');
-            } else if (svgBox) {
-                const svgElement = svgBox.querySelector('svg');
-                if (svgElement) {
-                    ChatApp.UI.showFullscreenPreview(svgElement.outerHTML, 'svg');
-                }
-            } else if (htmlBox) {
-                const iframe = htmlBox.querySelector('iframe');
-                if (iframe) {
-                    ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html');
-                }
-            }
+            if (image) { event.preventDefault(); ChatApp.UI.showFullscreenPreview(image.src, 'image'); } 
+            else if (svgBox) { const svgElement = svgBox.querySelector('svg'); if (svgElement) { ChatApp.UI.showFullscreenPreview(svgElement.outerHTML, 'svg'); } } 
+            else if (htmlBox) { const iframe = htmlBox.querySelector('iframe'); if (iframe) { ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); } }
         },
-        
         closeFullscreenPreview() {
             const { fullscreenOverlay, fullscreenContent, body } = ChatApp.UI.elements;
             fullscreenOverlay.style.display = 'none';
