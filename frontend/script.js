@@ -345,6 +345,7 @@ const ChatApp = {
         },
 
         _addMessageInteractions(messageEl, rawText, messageId) {
+            // FIX: Renamed this function call to correctly add all icons on chat reload.
             this._addMessageAndCodeActions(messageEl, rawText);
             
             let pressTimer = null;
@@ -703,20 +704,6 @@ Rules:
             if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
             return botResponseText;
         },
-
-        async fetchImageResponse(prompt) {
-            const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt })
-            });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
-                throw new Error(errorData.error || `Server error: ${response.status}`);
-            }
-            const imageBlob = await response.blob();
-            const imageUrl = URL.createObjectURL(imageBlob);
-            if (!imageUrl) throw new Error("Could not create image URL from the API response.");
-            return imageUrl;
-        }
     },
     
     // --- Controller Module (Application Logic) ---
@@ -807,7 +794,6 @@ Rules:
             // Case 1: We are waiting for an image prompt from the user
             if (ChatApp.State.isAwaitingImagePrompt) {
                 ChatApp.State.isAwaitingImagePrompt = false; // Reset flag immediately
-                ChatApp.State.setGenerating(true);
         
                 // Render user's prompt message
                 const userMessageId = ChatApp.Utils.generateUUID();
@@ -818,7 +804,7 @@ Rules:
                 ChatApp.State.addMessage(userMessage);
                 ChatApp.UI.renderMessage(userMessage);
                 
-                await this._generateImage(userInput);
+                this._generateImage(userInput);
                 return;
             }
         
@@ -920,26 +906,33 @@ Rules:
             ChatApp.State.setGenerating(false);
         },
         
-        async _generateImage(prompt) {
+        _generateImage(prompt) {
+            ChatApp.State.setGenerating(true);
             const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null, content: { role: 'model', parts: [{ text: `Generating image for: "${prompt}"...` }] }}, true);
 
-            try {
-                const imageUrl = await ChatApp.Api.fetchImageResponse(prompt);
-                const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
-                const botMessageId = ChatApp.Utils.generateUUID();
-                const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
-                
+            // UPDATE: Switched to Pollinations.ai for image generation.
+            // This method constructs the URL directly and doesn't require a separate API call function.
+            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`;
+            
+            const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
+            const botMessageId = ChatApp.Utils.generateUUID();
+            const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
+            
+            // We can add the message immediately, but we'll wait for the image to load before removing the "thinking" indicator.
+            const tempImage = new Image();
+            tempImage.onload = () => {
                 ChatApp.State.addMessage(botMessage);
                 thinkingMessageEl.remove();
                 ChatApp.UI.renderMessage(botMessage);
                 this.saveCurrentChat();
-            } catch (error) {
-                console.error("Image generation failed:", error);
-                thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Image Generation Error: ${error.message}` }] } });
-            } finally {
                 ChatApp.State.setGenerating(false);
-            }
+            };
+            tempImage.onerror = () => {
+                thinkingMessageEl.remove();
+                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Sorry, there was an error loading the image from Pollinations.ai.` }] } });
+                ChatApp.State.setGenerating(false);
+            };
+            tempImage.src = imageUrl;
         },
 
         async saveCurrentChat() {
