@@ -501,23 +501,19 @@ const ChatApp = {
         
                 // Add "Open in New Tab" button if applicable
                 if (wrapper.dataset.previewable) {
-                    const type = wrapper.dataset.previewable;
-                    const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
-                    
                     const openBtn = document.createElement('button');
                     openBtn.className = 'open-new-tab-button';
                     openBtn.title = 'Open in new tab';
                     openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        let dataUrl;
-                        if (type === 'html') {
-                            dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(rawContent);
-                        } else if (type === 'svg') {
-                            dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(rawContent);
-                        }
-                        if (dataUrl) {
-                            window.open(dataUrl, '_blank');
+                        const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
+                        const newWindow = window.open('about:blank', '_blank');
+                        if (newWindow) {
+                            newWindow.document.write(rawContent);
+                            newWindow.document.close();
+                        } else {
+                            alert('Popup blocker might be preventing the new tab from opening.');
                         }
                     });
                     actionsContainer.appendChild(openBtn);
