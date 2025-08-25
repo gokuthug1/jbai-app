@@ -26,14 +26,14 @@
 }
 
 /* --- 1.2 Theme Variables --- */
-:root { /* Default Light Theme */
+:root, [data-theme="light"] { 
     color-scheme: light;
     --bg-color: #f3f4f6;
     --sidebar-bg: #e9e9eb;
     --sidebar-border: #ddd;
     --sidebar-hover: #dcdce0;
     --sidebar-active-bg: #fff;
-    --sidebar-active-border: #ccc;
+    --sidebar-active-border: #007bff;
     --chat-container-bg: #fff;
     --text-color: #111;
     --text-secondary: #6c757d;
@@ -46,13 +46,6 @@
     --message-bot-bg: #e5e7eb;
     --code-bg: #1e1e1e;
     --code-text: #d4d4d4;
-    --scrollbar-thumb: #ccc;
-    --modal-bg: #fff;
-    --modal-shadow: rgba(0, 0, 0, 0.15);
-    --switch-bg: #ccc;
-    --switch-handle-bg: #fff;
-    --danger-color: #e53e3e;
-    --danger-bg: rgba(229, 62, 62, 0.1);
     --focus-color: #007bff;
 }
 
@@ -63,7 +56,7 @@
     --sidebar-border: #44475a;
     --sidebar-hover: #44475a;
     --sidebar-active-bg: #44475a;
-    --sidebar-active-border: #bd93f9;
+    --sidebar-active-border: #ff79c6;
     --chat-container-bg: #282a36;
     --text-color: #f8f8f2;
     --text-secondary: #6272a4;
@@ -76,24 +69,14 @@
     --message-bot-bg: #44475a;
     --code-bg: #282a36;
     --code-text: #f8f8f2;
-    --scrollbar-thumb: #6272a4;
-    --modal-bg: #21222c;
-    --modal-shadow: rgba(0, 0, 0, 0.5);
-    --switch-bg: #6272a4;
-    --switch-handle-bg: #f8f8f2;
-    --danger-color: #ff5555;
-    --danger-bg: rgba(255, 85, 85, 0.15);
     --focus-color: var(--button-bg);
 }
 
 
 /* ==========================================================================
    2. Base & Layout
-   - Global Styles
-   - Main Layout (Body, Sidebar, Chat Container)
    ========================================================================== */
 
-/* --- 2.1 Global Styles --- */
 *, *::before, *::after {
     box-sizing: border-box;
 }
@@ -107,7 +90,7 @@ body {
     display: flex;
     position: relative;
     width: 100vw;
-    height: 100vh; /* Fallback for older browsers */
+    height: 100vh;
     height: 100dvh;
     margin: 0;
     padding: 0;
@@ -122,12 +105,29 @@ body.modal-open {
     overflow: hidden;
 }
 
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    background-color: var(--chat-container-bg);
+    transition: margin-left 0.35s ease-in-out;
+}
 
-/* --- 2.2 Main Layout (Mobile First: Overlay Sidebar) --- */
+
+/* ==========================================================================
+   3. UI Components
+   ========================================================================== */
+
+/* --- 3.1 Sidebar --- */
 .sidebar {
     position: fixed;
     top: 0;
-    left: -281px; /* Hidden off-screen */
+    left: -281px; 
     z-index: 2000;
     display: flex;
     flex-direction: column;
@@ -143,7 +143,6 @@ body.sidebar-open .sidebar {
     left: 0;
     box-shadow: 4px 0 15px rgba(0,0,0,0.2);
 }
-
 .sidebar-backdrop {
     position: fixed;
     inset: 0;
@@ -158,61 +157,12 @@ body.sidebar-open .sidebar-backdrop {
     visibility: visible;
     transition: opacity 0.3s;
 }
-
-.chat-container {
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    position: relative;
-    width: 100%;
-    height: 100vh; /* Fallback for older browsers */
-    height: 100dvh;
-    overflow: hidden;
-    background-color: var(--chat-container-bg);
-    transition: margin-left 0.35s ease-in-out;
-}
-
-
-/* ==========================================================================
-   3. UI Components
-   - Sidebar Contents (Toggle, Header, List)
-   - Chat Area (Messages, Code, Images)
-   - Chat Input Form
-   ========================================================================== */
-
-/* --- 3.1 Sidebar Contents --- */
 #sidebar-toggle {
     position: fixed;
     top: 15px;
     left: 15px;
     z-index: 2100;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    cursor: pointer;
-    color: var(--text-color);
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 50%;
-    transition: background-color 0.2s, border-color 0.2s;
 }
-#sidebar-toggle:hover {
-    background-color: var(--sidebar-hover);
-}
-#sidebar-toggle:focus-visible {
-    outline: 2px solid var(--focus-color);
-    outline-offset: 2px;
-}
-#sidebar-toggle svg {
-    stroke: currentColor;
-}
-.close-icon { display: none; }
-.open-icon { display: block; }
-body.sidebar-open .close-icon { display: block; }
-body.sidebar-open .open-icon { display: none; }
-
 .sidebar-header {
     display: flex;
     align-items: center;
@@ -221,33 +171,11 @@ body.sidebar-open .open-icon { display: none; }
     padding: 50px 10px 0 10px;
     margin-bottom: 15px;
 }
-
-#new-chat-btn {
-    padding: 8px 12px;
-    cursor: pointer;
-    color: var(--text-color);
-    background: var(--input-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    font-size: 14px;
-    transition: background-color 0.2s;
-}
-#new-chat-btn:hover {
-    background-color: var(--sidebar-hover);
-}
-#new-chat-btn:focus-visible {
-    outline: 2px solid var(--focus-color);
-    outline-offset: 1px;
-}
-
 .conversation-list {
     flex-grow: 1;
-    padding-right: 5px; /* For scrollbar gap */
+    padding-right: 5px;
     overflow-y: auto;
 }
-.conversation-list::-webkit-scrollbar { width: 6px; }
-.conversation-list::-webkit-scrollbar-thumb { background-color: var(--scrollbar-thumb); border-radius: 3px; }
-
 .conversation-item {
     display: flex;
     align-items: center;
@@ -257,9 +185,8 @@ body.sidebar-open .open-icon { display: none; }
     margin-bottom: 5px;
     user-select: none;
     cursor: pointer;
-    border: 1px solid transparent;
+    border-left: 3px solid transparent;
     border-radius: 6px;
-    outline-offset: -2px; /* For focus style */
 }
 .conversation-item:hover {
     background-color: var(--sidebar-hover);
@@ -267,42 +194,7 @@ body.sidebar-open .open-icon { display: none; }
 .conversation-item.active {
     font-weight: bold;
     background-color: var(--sidebar-active-bg);
-    border-color: var(--sidebar-active-border);
-}
-.conversation-item:focus-visible {
-    outline: 2px solid var(--focus-color);
-}
-.conversation-title {
-    flex-grow: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.delete-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    padding: 4px;
-    opacity: 0;
-    cursor: pointer;
-    color: var(--text-secondary);
-    background: none;
-    border: none;
-    border-radius: 4px;
-    transition: opacity 0.2s, color 0.2s;
-}
-.conversation-item:hover .delete-btn {
-    opacity: 0.6;
-}
-.delete-btn:hover {
-    opacity: 1;
-    color: var(--danger-color);
-}
-.delete-btn:focus-visible {
-    opacity: 1;
-    outline: 2px solid var(--danger-color);
+    border-left-color: var(--sidebar-active-border);
 }
 
 /* --- 3.2 Chat Area --- */
@@ -314,43 +206,15 @@ body.sidebar-open .open-icon { display: none; }
     width: 100%;
     padding: 20px;
     overflow-y: auto;
-    scrollbar-width: none; /* Firefox */
 }
-.message-area::-webkit-scrollbar {
-    display: none; /* Safari & Chrome */
-}
-
 .message {
     display: flex;
     align-items: flex-start;
     max-width: 100%;
     animation: slideIn 0.3s ease-out;
 }
-.message.user {
-    justify-content: flex-end;
-}
-.message.bot {
-    justify-content: flex-start;
-}
-.message.thinking .message-content {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    background-color: var(--message-bot-bg);
-}
-.message.thinking .message-content span {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background-color: var(--text-secondary);
-    border-radius: 50%;
-    animation: thinking-dot 1.4s infinite ease-in-out both;
-}
-.message.thinking .message-content span:nth-child(1) { animation-delay: -0.32s; }
-.message.thinking .message-content span:nth-child(2) { animation-delay: -0.16s; }
-.message.thinking .message-content span:nth-child(3) { animation-delay: 0s; }
-
-
+.message.user { justify-content: flex-end; }
+.message.bot { justify-content: flex-start; }
 .message-content {
     position: relative;
     max-width: 800px;
@@ -358,88 +222,81 @@ body.sidebar-open .open-icon { display: none; }
     line-height: 1.5;
     white-space: pre-wrap;
     word-wrap: break-word;
-    cursor: default;
     background-color: var(--message-bot-bg);
     border-radius: 12px;
 }
-.message.user .message-content {
-    background-color: var(--message-user-bg);
-}
 
-.message-content p,
-.message-content h1,
-.message-content h2,
-.message-content h3,
-.message-content li {
-    cursor: text;
+/* --- 3.3 Chat Input --- */
+.chat-input-container {
+    flex-shrink: 0;
+    padding: 10px 20px 20px;
+    background-color: var(--chat-container-bg);
 }
-.message.bot .message-content p:first-child,
-.message.bot .message-content h1:first-child,
-.message.bot .message-content h2:first-child,
-.message.bot .message-content h3:first-child {
-    margin-top: 0;
+.chat-input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 4px;
+    background-color: var(--input-bg);
+    border: 2px solid var(--border-color);
+    border-radius: 24px;
 }
-.message.bot .message-content p:last-child {
-    margin-bottom: 0;
+textarea {
+    flex-grow: 1;
+    max-height: 200px;
+    padding: 10px;
+    resize: none;
+    outline: none;
+    color: var(--text-color);
+    background: transparent;
+    border: none;
+    font-size: 16px;
+    font-family: 'Courier New', Courier, monospace;
 }
+#toggle-options-button, #attach-file-button { color: var(--border-color); }
+#toggle-options-button:hover, #attach-file-button:hover { color: var(--button-hover-bg); }
 
+/* --- 3.4 Previews and Code --- */
 .html-preview-container,
 .svg-preview-container {
-    padding-top: 0;
     display: flex;
     flex-direction: column;
     gap: 12px;
 }
-
 .html-render-box {
     width: 100%;
     height: 400px;
     background-color: #fff;
-    border: 1px solid var(--sidebar-border);
     border-radius: 8px;
     overflow: hidden;
     cursor: zoom-in;
 }
 .html-render-box iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-    background-color: #fff;
-    pointer-events: none;
+    width: 100%; height: 100%; border: none; pointer-events: none;
 }
 .svg-render-box {
     padding: 1rem;
     background-color: var(--bg-color);
-    border: 1px solid var(--sidebar-border);
     border-radius: 8px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100px;
     cursor: zoom-in;
 }
-.svg-render-box svg {
+.generated-image {
     max-width: 100%;
-    max-height: 300px;
-    fill: currentColor; 
+    border-radius: 8px;
+    cursor: zoom-in;
 }
-
 .code-block-container {
     position: relative;
 }
-
 .message-content pre {
     padding: 12px;
     margin: 0;
     overflow-x: auto;
-    white-space: pre;
-    cursor: text;
-    color: var(--code-text);
     background-color: var(--code-bg);
     border-radius: 8px;
-    font-size: 0.9em;
 }
-
 .code-block-actions {
     position: absolute;
     top: 8px;
@@ -453,234 +310,59 @@ body.sidebar-open .open-icon { display: none; }
     opacity: 1;
 }
 
-.copy-button {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    padding: 4px;
-    opacity: 0;
-    color: var(--text-color);
-    background: rgba(0,0,0,0.1);
+/* --- 3.5 Buttons --- */
+button { font-family: 'Courier New', Courier, monospace; }
+.copy-button, .copy-code-button, .open-new-tab-button, #sidebar-toggle {
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     border: none;
     border-radius: 5px;
-    transition: opacity 0.2s, background-color 0.2s;
+    background-color: transparent;
 }
-.message:hover .copy-button {
-    opacity: 0.7;
-}
-.copy-button:hover { 
-    opacity: 1;
-    background: rgba(0,0,0,0.2); 
-}
-.copy-button svg { width: 16px; height: 16px; stroke: currentColor; }
-
+.copy-button { position: absolute; right: 8px; bottom: 8px; opacity: 0; }
+.message:hover .copy-button { opacity: 0.7; }
 .copy-code-button, .open-new-tab-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
     padding: 4px;
-    cursor: pointer;
     color: var(--text-secondary);
     background: var(--sidebar-bg);
     border: 1px solid var(--sidebar-border);
-    border-radius: 5px;
-    transition: color 0.2s, background-color 0.2s;
 }
-.copy-code-button:hover, .open-new-tab-button:hover {
-    color: var(--text-color);
-    background: var(--sidebar-hover);
-}
-.copy-code-button svg, .open-new-tab-button svg {
-    width: 16px;
-    height: 16px;
-    stroke: currentColor;
-}
-
-/* Image Previews */
-.generated-image {
-    display: block;
-    max-width: 100%;
-    border-radius: 8px;
-    cursor: zoom-in;
-}
-
-/* --- 3.3 Chat Input Form --- */
-.chat-input-container {
-    flex-shrink: 0;
-    padding: 10px 20px 20px;
-    background-color: var(--chat-container-bg);
-}
-
-.chat-input-wrapper {
-    display: flex;
-    align-items: flex-end;
-    gap: 8px;
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 4px;
-    background-color: var(--input-bg);
-    border: 2px solid var(--border-color);
-    border-radius: 24px;
-    transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-.chat-input-wrapper:focus-within {
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-color) 20%, transparent);
-}
-
-textarea {
-    flex-grow: 1;
-    max-height: 200px;
-    padding: 10px;
-    resize: none;
-    outline: none;
-    color: var(--text-color);
-    background: transparent;
-    border: none;
-    box-shadow: none;
-    font-size: 16px;
-    line-height: 1.5;
-    font-family: 'Courier New', Courier, monospace;
-}
-
-#toggle-options-button, #attach-file-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    cursor: pointer;
-    border: none;
-    border-radius: 50%;
-    background-color: transparent;
-    color: var(--border-color);
-    transition: background-color 0.2s, color 0.2s;
-}
-#toggle-options-button:hover, #attach-file-button:hover {
-    color: var(--button-hover-bg);
-}
-
 #send-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    cursor: pointer;
-    border: none;
-    border-radius: 50%;
-    background-color: var(--button-bg);
-    color: var(--button-text);
-    transition: background-color 0.2s;
+    width: 40px; height: 40px; border-radius: 50%; background-color: var(--button-bg); color: var(--button-text);
 }
-#send-button:disabled {
-    cursor: not-allowed;
-    background-color: var(--sidebar-hover);
-    color: var(--text-secondary);
-}
-#send-button:not(:disabled):hover {
-    background-color: var(--button-hover-bg);
-}
-#send-button svg {
-    width: 20px;
-    height: 20px;
-}
-#send-button svg path {
-    fill: currentColor;
-}
-
+#send-button:disabled { background-color: var(--sidebar-hover); color: var(--text-secondary); }
+#send-button:not(:disabled):hover { background-color: var(--button-hover-bg); }
 
 /* ==========================================================================
    4. Modals & Overlays
    ========================================================================== */
-
-.modal-overlay {
+.modal-overlay, .fullscreen-overlay {
     position: fixed;
     inset: 0;
-    z-index: 2000;
-    display: flex;
+    display: none;
     align-items: center;
     justify-content: center;
-    background-color: rgba(0, 0, 0, 0.6);
-    -webkit-backdrop-filter: blur(5px);
-    backdrop-filter: blur(5px);
-    animation: fadeIn 0.3s ease;
-}
-
-.fullscreen-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 3000;
     background-color: rgba(0, 0, 0, 0.85);
     backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    display: none; /* Hidden by default */
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
+    z-index: 2000;
     animation: fadeIn 0.3s ease;
 }
-
-.fullscreen-close-btn {
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    width: 44px;
-    height: 44px;
-    border: none;
-    background: rgba(255, 255, 255, 0.1);
-    color: white;
-    font-size: 30px;
-    line-height: 1;
-    border-radius: 50%;
-    cursor: pointer;
-    transition: transform 0.2s, background-color 0.2s;
-}
-.fullscreen-close-btn:hover {
-    transform: scale(1.1);
-    background: rgba(255, 255, 255, 0.2);
-}
-
-.fullscreen-content {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+.fullscreen-overlay { z-index: 3000; padding: 20px; }
 .fullscreen-content img, .fullscreen-content svg, .fullscreen-content iframe {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    border-radius: 8px;
+    max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;
 }
-.fullscreen-content iframe {
-    width: 100%;
-    height: 100%;
-    background-color: #fff;
+.fullscreen-content iframe { width: 100%; height: 100%; background-color: #fff; }
+.fullscreen-close-btn {
+    position: absolute; top: 20px; right: 20px; width: 44px; height: 44px;
+    background: rgba(255, 255, 255, 0.1); color: white; font-size: 30px;
+    border: none; border-radius: 50%; cursor: pointer;
 }
-
 
 /* ==========================================================================
    5. Responsive Design
    ========================================================================== */
-
-@media (max-width: 768px) {
-    .message-content {
-        max-width: 90%;
-    }
-    .chat-input-container {
-        padding: 10px;
-    }
-}
-
-/* Desktop Layout: Push Sidebar */
 @media (min-width: 769px) {
     .sidebar {
         position: relative;
@@ -689,17 +371,7 @@ textarea {
         box-shadow: none;
         transition: margin-left 0.35s ease-in-out;
     }
-    body.sidebar-open .sidebar {
-        margin-left: 0;
-        left: auto;
-    }
-    .sidebar-backdrop {
-        display: none;
-    }
-    #sidebar-toggle {
-        transition: left 0.35s ease-in-out, background-color 0.2s, border-color 0.2s;
-    }
-    body.sidebar-open #sidebar-toggle {
-        left: 276px;
-    }
+    body.sidebar-open .sidebar { margin-left: 0; left: auto; }
+    .sidebar-backdrop { display: none; }
+    body.sidebar-open #sidebar-toggle { left: 276px; }
 }
