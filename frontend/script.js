@@ -20,7 +20,7 @@ const ChatApp = {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations'
         },
-        DEFAULT_THEME: 'dracula',
+        DEFAULT_THEME: 'light',
         TYPING_SPEED_MS: 0, // Milliseconds per character
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -369,9 +369,9 @@ const ChatApp = {
         
         _formatMessageContent(text) {
             if (!text) return '';
-        
+
             const trimmedText = text.trim();
-        
+
             const htmlBlockRegex = /^```html\n([\s\S]*?)\n```$/;
             const htmlMatch = trimmedText.match(htmlBlockRegex);
             if (htmlMatch) {
@@ -380,27 +380,39 @@ const ChatApp = {
                 const escapedHtmlCode = ChatApp.Utils.escapeHTML(rawHtmlCode);
                 return `
                     <div class="html-preview-container">
+                        <h4>Live Preview</h4>
                         <div class="html-render-box">
                             <iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe>
                         </div>
-                        <div class="code-block-container" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
+                        <h4>HTML Code</h4>
+                        <div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
+                            <div class="code-block-header">
+                                <span>&lt;&gt; Code</span>
+                                <div class="code-block-actions"></div>
+                            </div>
                             <pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre>
                         </div>
                     </div>`;
             }
-        
+
             if (trimmedText.startsWith('<svg') && trimmedText.endsWith('</svg>')) {
                 const rawSvgCode = trimmedText;
                 const escapedSvgCode = ChatApp.Utils.escapeHTML(rawSvgCode);
                 return `
                     <div class="svg-preview-container">
+                        <h4>SVG Preview</h4>
                         <div class="svg-render-box">${rawSvgCode}</div>
-                        <div class="code-block-container" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
+                        <h4>SVG Code</h4>
+                        <div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
+                           <div class="code-block-header">
+                               <span>&lt;&gt; Code</span>
+                               <div class="code-block-actions"></div>
+                           </div>
                            <pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre>
                         </div>
                     </div>`;
             }
-        
+
             let processedText = text;
             const codeBlocks = [];
             processedText = processedText.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
@@ -411,16 +423,20 @@ const ChatApp = {
             });
             
             let html = ChatApp.Utils.escapeHTML(processedText);
-        
+
             html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, id) => {
                 const { lang, rawCode } = codeBlocks[id];
                 const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
                 return `
-                    <div class="code-block-container">
+                    <div class="code-block-wrapper">
+                        <div class="code-block-header">
+                            <span>&lt;&gt; Code</span>
+                            <div class="code-block-actions"></div>
+                        </div>
                         <pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>
                     </div>`;
             });
-        
+
             html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
                 return `
@@ -460,9 +476,9 @@ const ChatApp = {
             
             const { COPY, CHECK, OPEN_NEW_TAB } = ChatApp.Config.ICONS;
             
-            // 1. Handle main message copy button (only for non-code-heavy messages)
-            const hasPreviewsOrCode = contentEl.querySelector('.html-preview-container, .svg-preview-container, .code-block-container');
-            if (rawText && !hasPreviewsOrCode) {
+            // 1. Handle main message copy button
+            const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
+            if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button';
                 copyBtn.title = 'Copy message text';
@@ -478,25 +494,20 @@ const ChatApp = {
             }
             
             // 2. Handle actions for all code blocks
-            contentEl.querySelectorAll('.code-block-container').forEach(container => {
-                const pre = container.querySelector('pre');
-                if (!pre || !pre.dataset.rawCode) return;
-        
-                // Prevent adding icons if they already exist
-                if (container.querySelector('.code-block-actions')) return;
-
-                const actionsContainer = document.createElement('div');
-                actionsContainer.className = 'code-block-actions';
+            contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
+                const pre = wrapper.querySelector('pre');
+                const actionsContainer = wrapper.querySelector('.code-block-actions');
+                if (!pre || !actionsContainer || !pre.dataset.rawCode) return;
         
                 // Add "Open in New Tab" button if applicable
-                if (container.dataset.previewable) {
+                if (wrapper.dataset.previewable) {
                     const openBtn = document.createElement('button');
                     openBtn.className = 'open-new-tab-button';
                     openBtn.title = 'Open in new tab';
                     openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        const rawContent = decodeURIComponent(container.dataset.rawContent);
+                        const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
                         const newWindow = window.open('about:blank', '_blank');
                         if (newWindow) {
                             newWindow.document.write(rawContent);
@@ -521,7 +532,6 @@ const ChatApp = {
                     });
                 });
                 actionsContainer.appendChild(copyCodeBtn);
-                container.appendChild(actionsContainer);
             });
         },
         
@@ -534,9 +544,6 @@ const ChatApp = {
                 <div class="settings-row">
                     <label for="themeSelect">Theme</label>
                     <select id="themeSelect">
-                        <optgroup label="Retro Themes">
-                            <option value="dracula">Dracula</option>
-                        </optgroup>
                         <optgroup label="Light Themes">
                             <option value="light">Light</option>
                             <option value="github-light">GitHub Light</option>
@@ -547,6 +554,7 @@ const ChatApp = {
                             <option value="ayu-mirage">Ayu Mirage</option>
                             <option value="cobalt2">Cobalt2</option>
                             <option value="dark">Dark</option>
+                            <option value="dracula">Dracula</option>
                             <option value="gruvbox-dark">Gruvbox Dark</option>
                             <option value="midnight">Midnight</option>
                             <option value="monokai">Monokai</option>
@@ -695,6 +703,20 @@ Rules:
             if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
             return botResponseText;
         },
+
+        async fetchImageResponse(prompt) {
+            const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
+                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt })
+            });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+            const imageBlob = await response.blob();
+            const imageUrl = URL.createObjectURL(imageBlob);
+            if (!imageUrl) throw new Error("Could not create image URL from the API response.");
+            return imageUrl;
+        }
     },
     
     // --- Controller Module (Application Logic) ---
@@ -785,6 +807,7 @@ Rules:
             // Case 1: We are waiting for an image prompt from the user
             if (ChatApp.State.isAwaitingImagePrompt) {
                 ChatApp.State.isAwaitingImagePrompt = false; // Reset flag immediately
+                ChatApp.State.setGenerating(true);
         
                 // Render user's prompt message
                 const userMessageId = ChatApp.Utils.generateUUID();
@@ -795,7 +818,7 @@ Rules:
                 ChatApp.State.addMessage(userMessage);
                 ChatApp.UI.renderMessage(userMessage);
                 
-                this._generateImage(userInput);
+                await this._generateImage(userInput);
                 return;
             }
         
@@ -897,30 +920,26 @@ Rules:
             ChatApp.State.setGenerating(false);
         },
         
-        _generateImage(prompt) {
-            ChatApp.State.setGenerating(true);
+        async _generateImage(prompt) {
             const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null, content: { role: 'model', parts: [{ text: `Generating image for: "${prompt}"...` }] }}, true);
 
-            const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`;
-            
-            const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
-            const botMessageId = ChatApp.Utils.generateUUID();
-            const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
-            
-            const tempImage = new Image();
-            tempImage.onload = () => {
+            try {
+                const imageUrl = await ChatApp.Api.fetchImageResponse(prompt);
+                const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
+                const botMessageId = ChatApp.Utils.generateUUID();
+                const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
+                
                 ChatApp.State.addMessage(botMessage);
                 thinkingMessageEl.remove();
                 ChatApp.UI.renderMessage(botMessage);
                 this.saveCurrentChat();
-                ChatApp.State.setGenerating(false);
-            };
-            tempImage.onerror = () => {
+            } catch (error) {
+                console.error("Image generation failed:", error);
                 thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Sorry, there was an error loading the image from Pollinations.ai.` }] } });
+                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Image Generation Error: ${error.message}` }] } });
+            } finally {
                 ChatApp.State.setGenerating(false);
-            };
-            tempImage.src = imageUrl;
+            }
         },
 
         async saveCurrentChat() {
