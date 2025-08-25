@@ -20,7 +20,7 @@ const ChatApp = {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations'
         },
-        DEFAULT_THEME: 'light',
+        DEFAULT_THEME: 'dracula',
         TYPING_SPEED_MS: 0, // Milliseconds per character
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -345,7 +345,6 @@ const ChatApp = {
         },
 
         _addMessageInteractions(messageEl, rawText, messageId) {
-            // FIX: Renamed this function call to correctly add all icons on chat reload.
             this._addMessageAndCodeActions(messageEl, rawText);
             
             let pressTimer = null;
@@ -370,9 +369,9 @@ const ChatApp = {
         
         _formatMessageContent(text) {
             if (!text) return '';
-
+        
             const trimmedText = text.trim();
-
+        
             const htmlBlockRegex = /^```html\n([\s\S]*?)\n```$/;
             const htmlMatch = trimmedText.match(htmlBlockRegex);
             if (htmlMatch) {
@@ -381,39 +380,27 @@ const ChatApp = {
                 const escapedHtmlCode = ChatApp.Utils.escapeHTML(rawHtmlCode);
                 return `
                     <div class="html-preview-container">
-                        <h4>Live Preview</h4>
                         <div class="html-render-box">
                             <iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe>
                         </div>
-                        <h4>HTML Code</h4>
-                        <div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
-                            <div class="code-block-header">
-                                <span>&lt;&gt; Code</span>
-                                <div class="code-block-actions"></div>
-                            </div>
+                        <div class="code-block-container" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
                             <pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre>
                         </div>
                     </div>`;
             }
-
+        
             if (trimmedText.startsWith('<svg') && trimmedText.endsWith('</svg>')) {
                 const rawSvgCode = trimmedText;
                 const escapedSvgCode = ChatApp.Utils.escapeHTML(rawSvgCode);
                 return `
                     <div class="svg-preview-container">
-                        <h4>SVG Preview</h4>
                         <div class="svg-render-box">${rawSvgCode}</div>
-                        <h4>SVG Code</h4>
-                        <div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
-                           <div class="code-block-header">
-                               <span>&lt;&gt; Code</span>
-                               <div class="code-block-actions"></div>
-                           </div>
+                        <div class="code-block-container" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
                            <pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre>
                         </div>
                     </div>`;
             }
-
+        
             let processedText = text;
             const codeBlocks = [];
             processedText = processedText.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
@@ -424,20 +411,16 @@ const ChatApp = {
             });
             
             let html = ChatApp.Utils.escapeHTML(processedText);
-
+        
             html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, id) => {
                 const { lang, rawCode } = codeBlocks[id];
                 const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
                 return `
-                    <div class="code-block-wrapper">
-                        <div class="code-block-header">
-                            <span>&lt;&gt; Code</span>
-                            <div class="code-block-actions"></div>
-                        </div>
+                    <div class="code-block-container">
                         <pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>
                     </div>`;
             });
-
+        
             html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
                 return `
@@ -495,20 +478,22 @@ const ChatApp = {
             }
             
             // 2. Handle actions for all code blocks
-            contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
-                const pre = wrapper.querySelector('pre');
-                const actionsContainer = wrapper.querySelector('.code-block-actions');
-                if (!pre || !actionsContainer || !pre.dataset.rawCode) return;
+            contentEl.querySelectorAll('.code-block-container').forEach(container => {
+                const pre = container.querySelector('pre');
+                if (!pre || !pre.dataset.rawCode) return;
+        
+                const actionsContainer = document.createElement('div');
+                actionsContainer.className = 'code-block-actions';
         
                 // Add "Open in New Tab" button if applicable
-                if (wrapper.dataset.previewable) {
+                if (container.dataset.previewable) {
                     const openBtn = document.createElement('button');
                     openBtn.className = 'open-new-tab-button';
                     openBtn.title = 'Open in new tab';
                     openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
+                        const rawContent = decodeURIComponent(container.dataset.rawContent);
                         const newWindow = window.open('about:blank', '_blank');
                         if (newWindow) {
                             newWindow.document.write(rawContent);
@@ -533,6 +518,7 @@ const ChatApp = {
                     });
                 });
                 actionsContainer.appendChild(copyCodeBtn);
+                container.appendChild(actionsContainer);
             });
         },
         
@@ -910,15 +896,12 @@ Rules:
             ChatApp.State.setGenerating(true);
             const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null, content: { role: 'model', parts: [{ text: `Generating image for: "${prompt}"...` }] }}, true);
 
-            // UPDATE: Switched to Pollinations.ai for image generation.
-            // This method constructs the URL directly and doesn't require a separate API call function.
             const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`;
             
             const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
             const botMessageId = ChatApp.Utils.generateUUID();
             const botMessage = { id: botMessageId, content: { role: "model", parts: [{ text: imageMarkdown }] } };
             
-            // We can add the message immediately, but we'll wait for the image to load before removing the "thinking" indicator.
             const tempImage = new Image();
             tempImage.onload = () => {
                 ChatApp.State.addMessage(botMessage);
