@@ -460,9 +460,9 @@ const ChatApp = {
             
             const { COPY, CHECK, OPEN_NEW_TAB } = ChatApp.Config.ICONS;
             
-            // 1. Handle main message copy button
-            const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
-            if (rawText && !isPreview) {
+            // 1. Handle main message copy button (only for non-code-heavy messages)
+            const hasPreviewsOrCode = contentEl.querySelector('.html-preview-container, .svg-preview-container, .code-block-container');
+            if (rawText && !hasPreviewsOrCode) {
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button';
                 copyBtn.title = 'Copy message text';
@@ -482,6 +482,9 @@ const ChatApp = {
                 const pre = container.querySelector('pre');
                 if (!pre || !pre.dataset.rawCode) return;
         
+                // Prevent adding icons if they already exist
+                if (container.querySelector('.code-block-actions')) return;
+
                 const actionsContainer = document.createElement('div');
                 actionsContainer.className = 'code-block-actions';
         
@@ -531,6 +534,9 @@ const ChatApp = {
                 <div class="settings-row">
                     <label for="themeSelect">Theme</label>
                     <select id="themeSelect">
+                        <optgroup label="Retro Themes">
+                            <option value="dracula">Dracula</option>
+                        </optgroup>
                         <optgroup label="Light Themes">
                             <option value="light">Light</option>
                             <option value="github-light">GitHub Light</option>
@@ -541,7 +547,6 @@ const ChatApp = {
                             <option value="ayu-mirage">Ayu Mirage</option>
                             <option value="cobalt2">Cobalt2</option>
                             <option value="dark">Dark</option>
-                            <option value="dracula">Dracula</option>
                             <option value="gruvbox-dark">Gruvbox Dark</option>
                             <option value="midnight">Midnight</option>
                             <option value="monokai">Monokai</option>
