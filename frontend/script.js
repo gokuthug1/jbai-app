@@ -380,6 +380,7 @@ const ChatApp = {
                 <hr>
                 <div class="data-actions">
                     <button id="upload-data-btn" type="button">Import Data</button>
+                    <button id="merge-data-btn" type="button">Merge Data</button>
                     <button id="download-data-btn" type="button">Export Data</button>
                     <button id="delete-data-btn" type="button" class="btn-danger">Delete All Data</button>
                 </div>
@@ -394,6 +395,7 @@ const ChatApp = {
             userKeyInput.value = ChatApp.State.userKey || '';
             userKeyInput.addEventListener('input', (e) => { ChatApp.Controller.updateUserKey(e.target.value); });
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
+            overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
             overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
             overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
@@ -742,6 +744,44 @@ Abilities:
                             location.reload();
                         }
                     } catch (error) { alert(`Error importing data: ${error.message}`); }
+                };
+                reader.readAsText(file);
+            };
+            fileInput.click();
+        },
+        handleDataMerge() {
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = '.json,application/json';
+            fileInput.onchange = (event) => {
+                const file = event.target.files[0];
+                if (!file) return;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) {
+                            throw new Error("Invalid data format.");
+                        }
+                        if (confirm('This will merge conversations from the selected file. If any chats have the same ID as existing chats, the existing ones will be kept. Continue?')) {
+                            const currentConversations = ChatApp.State.allConversations;
+                            const conversationMap = new Map();
+        
+                            // Add imported conversations first
+                            importedData.forEach(chat => conversationMap.set(chat.id, chat));
+                            // Then add current conversations, which will overwrite any duplicates from the import
+                            currentConversations.forEach(chat => conversationMap.set(chat.id, chat));
+                            
+                            const mergedConversations = Array.from(conversationMap.values());
+        
+                            ChatApp.State.allConversations = mergedConversations;
+                            ChatApp.Store.saveAllConversations();
+                            alert('Data successfully merged. The application will now reload.');
+                            location.reload();
+                        }
+                    } catch (error) {
+                        alert(`Error merging data: ${error.message}`);
+                    }
                 };
                 reader.readAsText(file);
             };
