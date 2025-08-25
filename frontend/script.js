@@ -14,7 +14,8 @@ const ChatApp = {
      */
     Config: {
         API_URLS: {
-            TEXT: 'https://jbai-app.onrender.com/api/generate'
+            TEXT: 'https://jbai-app.onrender.com/api/generate',
+            IMAGE: 'https://image.pollinations.ai/prompt/'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
@@ -242,6 +243,8 @@ const ChatApp = {
 
             const contentEl = document.createElement('div');
             contentEl.className = 'message-content';
+            
+            let rawText = ''; // Defined here to be available after the element is appended
 
             if (isTyping) {
                 messageEl.className = 'message bot thinking';
@@ -252,7 +255,7 @@ const ChatApp = {
 
                 const textPart = content.parts.find(p => p.text);
                 const textContent = textPart ? textPart.text : '';
-                const rawText = textContent;
+                rawText = textContent; // Set rawText for later use
 
                 messageEl.className = `message ${sender}`;
                 contentEl.innerHTML = this._formatMessageContent(textContent);
@@ -261,12 +264,16 @@ const ChatApp = {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
                     contentEl.prepend(attachmentsContainer);
                 }
-                
-                this._addMessageInteractions(messageEl, rawText, message.id);
             }
             
             messageEl.appendChild(contentEl);
             this.elements.messageArea.appendChild(messageEl);
+
+            // Add interactions *after* the element is in the live DOM to ensure reliability
+            if (!isTyping) {
+                this._addMessageInteractions(messageEl, rawText, message.id);
+            }
+
             this.scrollToBottom();
             return messageEl;
         },
@@ -705,14 +712,20 @@ Rules:
         },
 
         async fetchImageResponse(prompt) {
-            const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
-                method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ prompt })
-            });
+            const encodedPrompt = encodeURIComponent(prompt);
+            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}`;
+        
+            const response = await fetch(fullUrl);
+        
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: `Server error: ${response.status}` }));
-                throw new Error(errorData.error || `Server error: ${response.status}`);
+                throw new Error(`Server error: ${response.status} ${response.statusText}`);
             }
             const imageBlob = await response.blob();
+        
+            if (imageBlob.type.startsWith('text/')) { // Handle cases where the API returns an error page
+                throw new Error("Image generation failed. The API may be down or the prompt was invalid.");
+            }
+        
             const imageUrl = URL.createObjectURL(imageBlob);
             if (!imageUrl) throw new Error("Could not create image URL from the API response.");
             return imageUrl;
