@@ -464,7 +464,7 @@ You have custom commands that users can use, and you must follow them.
         },
         async fetchImageResponse(prompt) {
             const encodedPrompt = encodeURIComponent(prompt);
-            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}`;
+            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}?height=768&seed=341963935&enhance=true&nologo=true&model=flux`;
             const response = await fetch(fullUrl);
             if (!response.ok) { throw new Error(`Server error: ${response.status} ${response.statusText}`); }
             const imageBlob = await response.blob();
