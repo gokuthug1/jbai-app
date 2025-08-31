@@ -289,9 +289,13 @@ const ChatApp = {
                 codeBlocks.push({ lang: lang || 'plaintext', rawCode });
                 return `__CODE_BLOCK_${id}__`;
             });
-            let html = ChatApp.Utils.escapeHTML(processedText);
+            
+            // FIX: Removed the initial `escapeHTML` call. Process the raw text directly.
+            let html = processedText; 
+            
             html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, id) => {
                 const { lang, rawCode } = codeBlocks[id];
+                // Escape code content here, right before displaying it.
                 const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
                 return `
                     <div class="code-block-wrapper">
@@ -315,7 +319,7 @@ const ChatApp = {
             return html.split('\n').map(line => {
                 const trimmed = line.trim();
                 if (trimmed === '') return '';
-                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div)|\[IMAGE:)/.test(trimmed);
+                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div|strong|em|s)|\[IMAGE:)/.test(trimmed);
                 return isBlockElement ? line : `<p>${line}</p>`;
             }).join('');
         },
