@@ -250,7 +250,7 @@ const ChatApp = {
         _formatMessageContent(text) {
             if (!text) return '';
             const trimmedText = text.trim();
-            const htmlBlockRegex = /^```html\n([\s\S]*?)\n```$/;
+            const htmlBlockRegex = new RegExp(/^```html\n([\s\S]*?)\n```$/);
             const htmlMatch = trimmedText.match(htmlBlockRegex);
             if (htmlMatch) {
                 const rawHtmlCode = htmlMatch[1].trim();
@@ -283,19 +283,17 @@ const ChatApp = {
             }
             let processedText = text;
             const codeBlocks = [];
-            processedText = processedText.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+            processedText = processedText.replace(new RegExp('```(\\w+)?\\n([\\s\\S]*?)```', 'g'), (match, lang, code) => {
                 const rawCode = code.trim();
                 const id = codeBlocks.length;
                 codeBlocks.push({ lang: lang || 'plaintext', rawCode });
                 return `__CODE_BLOCK_${id}__`;
             });
+
+            let html = ChatApp.Utils.escapeHTML(processedText);
             
-            // FIX: Removed the initial `escapeHTML` call. Process the raw text directly.
-            let html = processedText; 
-            
-            html = html.replace(/__CODE_BLOCK_(\d+)__/g, (match, id) => {
+            html = html.replace(new RegExp('__CODE_BLOCK_(\\d+)__', 'g'), (match, id) => {
                 const { lang, rawCode } = codeBlocks[id];
-                // Escape code content here, right before displaying it.
                 const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
                 return `
                     <div class="code-block-wrapper">
@@ -303,23 +301,23 @@ const ChatApp = {
                         <pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>
                     </div>`;
             });
-            html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
+            html = html.replace(new RegExp('\\[IMAGE: (.*?)\\]\\((.*?)\\)', 'g'), (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
                 return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
             });
-            html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^# (.*$)/gim, '<h1>$1</h1>');
-            html = html.replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
-            html = html.replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
-            html = html.replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
-            html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-            html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>');
-            html = html.replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>');
-            html = html.replace(/~~(.*?)~~/g, '<s>$1</s>');
+            html = html.replace(new RegExp('^### (.*$)', 'gim'), '<h3>$1</h3>').replace(new RegExp('^## (.*$)', 'gim'), '<h2>$1</h2>').replace(new RegExp('^# (.*$)', 'gim'), '<h1>$1</h1>');
+            html = html.replace(new RegExp('^(> (.*)\n?)+', 'gm'), (match) => `<blockquote><p>${match.replace(new RegExp('^> ', 'gm'), '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
+            html = html.replace(new RegExp('^((\\s*[-*] .*\\n?)+)', 'gm'), m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
+            html = html.replace(new RegExp('^((\\s*\\d+\\. .*\\n?)+)', 'gm'), m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
+            html = html.replace(new RegExp('\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)', 'g'), '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+            html = html.replace(new RegExp('`([^`]+)`', 'g'), '<code>$1</code>');
+            html = html.replace(new RegExp('\\*\\*(.*?)\\*\\*', 'g'), '<strong>$1</strong>').replace(new RegExp('__(.*?)__', 'g'), '<strong>$1</strong>');
+            html = html.replace(new RegExp('\\*(.*?)\\*', 'g'), '<em>$1</em>').replace(new RegExp('_(.*?)_', 'g'), '<em>$1</em>');
+            html = html.replace(new RegExp('~~(.*?)~~', 'g'), '<s>$1</s>');
             return html.split('\n').map(line => {
                 const trimmed = line.trim();
                 if (trimmed === '') return '';
-                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div|strong|em|s)|\[IMAGE:)/.test(trimmed);
+                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div)|\[IMAGE:)/.test(trimmed);
                 return isBlockElement ? line : `<p>${line}</p>`;
             }).join('');
         },
