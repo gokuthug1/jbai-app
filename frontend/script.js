@@ -342,20 +342,12 @@ const ChatApp = {
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
-                        const type = wrapper.dataset.previewable; // 'html' or 'svg'
-                        let dataUri = '';
-
-                        if (type === 'html') {
-                            dataUri = `data:text/html;charset=utf-8,${encodeURIComponent(rawContent)}`;
-                        } else if (type === 'svg') {
-                            dataUri = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(rawContent)}`;
-                        }
-
-                        if (dataUri) {
-                           const newWindow = window.open(dataUri, '_blank');
-                           if (!newWindow) {
-                               alert('Popup blocker might be preventing the new tab from opening.');
-                           }
+                        const newWindow = window.open('about:blank', '_blank');
+                        if (newWindow) {
+                            newWindow.document.write(rawContent);
+                            newWindow.document.close();
+                        } else {
+                            alert('Popup blocker might be preventing the new tab from opening.');
                         }
                     });
                     actionsContainer.appendChild(openBtn);
@@ -415,7 +407,7 @@ const ChatApp = {
     // --- API Module ---
     Api: {
         async getSystemContext() {
-            const systemPrompt = `You are J.B.A.I., a helpful and context-aware assistant.
+            const systemPrompt = `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 
 --- Custom Commands ---
 You have custom commands that users can use, and you must follow them.
