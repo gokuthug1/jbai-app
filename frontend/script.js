@@ -20,12 +20,8 @@ const ChatApp = {
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
-            USER_KEY: 'jbai_user_key' // Key for storing the user's entered key
         },
         DEFAULT_THEME: 'light',
-        // SECURE: Reads the secret key from Vercel's Environment Variables.
-        // The Key in Vercel must be named VITE_JEREMIAH_VERCEL_KEY
-        JEREMIAH_VERCEL_KEY: import.meta.env?.VITE_JEREMIAH_VERCEL_KEY,
         TYPING_SPEED_MS: 0, // Milliseconds per character
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -44,7 +40,6 @@ const ChatApp = {
         isAwaitingImagePrompt: false,
         typingInterval: null,
         attachedFiles: [],
-        userKey: null, // Holds the key entered by the user in settings
         setCurrentConversation(history) {
             this.currentConversation = history.map(msg => {
                 if (!msg) return null;
@@ -105,8 +100,6 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
-        saveUserKey(key) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.USER_KEY, key); },
-        getUserKey() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.USER_KEY) || ''; }
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -373,10 +366,6 @@ const ChatApp = {
                         <optgroup label="Dark Themes"><option value="ayu-mirage">Ayu Mirage</option><option value="cobalt2">Cobalt2</option><option value="dark">Dark</option><option value="dracula">Dracula</option><option value="gruvbox-dark">Gruvbox Dark</option><option value="midnight">Midnight</option><option value="monokai">Monokai</option><option value="nord">Nord</option><option value="oceanic-next">Oceanic Next</option><option value="tomorrow-night-eighties">Tomorrow Night</option></optgroup>
                     </select>
                 </div>
-                <div class="settings-row">
-                    <label for="userKeyInput">Vercel User Key</label>
-                    <input type="password" id="userKeyInput" placeholder="Enter key for personalized profile">
-                </div>
                 <hr>
                 <div class="data-actions">
                     <button id="upload-data-btn" type="button">Import Data</button>
@@ -391,9 +380,6 @@ const ChatApp = {
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
-            const userKeyInput = overlay.querySelector('#userKeyInput');
-            userKeyInput.value = ChatApp.State.userKey || '';
-            userKeyInput.addEventListener('input', (e) => { ChatApp.Controller.updateUserKey(e.target.value); });
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
@@ -416,54 +402,15 @@ const ChatApp = {
     // --- API Module ---
     Api: {
         async getSystemContext() {
-            // --- PROMPT FOR JEREMIAH (gokuthug1) ---
-            const jeremiahPrompt = `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online.
+            const systemPrompt = `You are J.B.A.I., a helpful and context-aware assistant.
 
-You were developed by Jeremiah, also known as 'gokuthug1,' your creator.
-He has custom commands that users can use, and you must follow them.
+--- Custom Commands ---
+You have custom commands that users can use, and you must follow them.
 
---- Creator/User Profile: gokuthug1 ---
-This profile describes your creator, Jeremiah. Use this information to personalize your interactions, understand his perspective, and tailor your responses to his interests.
-
-Identity: 16-year-old Black American boy (born January 12, 2009).
-Vibe: A tech-savvy teen with chill energy. Mixes playfulness (games, anime, memes) with ambition (coding, building, experimenting).
-Personality: Curious, creative, laid-back but sharp. Has a playful sense of humor, is persistent, and thoughtful when problem-solving.
-Core Interests:
-Coding: Roblox, HTML/JS, experimenting with scripts, making tools.
-Gaming: Competitive shooters, sandbox building, and casual games.
-Media: Watches anime (gems, comedy, and hidden gems), and a wide variety of YouTube content (gaming, tutorials, tech, anime clips).
-Tech: Experimenting with AI, creating commands, and building fun projects.
-Strengths: Quick learner, problem-solver, creative builder, good at connecting ideas across different tech domains.
-Values: Creativity, independence, freedom, and a balance between fun and productivity.
-Habits: Late-night coding/gaming sessions, loves learning shortcuts/hacks, often multitasks (e.g., coding while listening to music/anime).
-Aesthetic: Prefers clean, functional, and futuristic/tech designs that are sleek but not overcomplicated.
-
-Use standard Markdown in your responses.
-You can generate both text and images.
-
-For images, always use this format:
-[IMAGE: user's prompt](URL_to_image)
-
-Real-Time Context:
-You have access to the user's current context, preferences, and command system. Use this to:
-- Personalize answers based on the gokuthug1 profile.
-- Avoid repeating known info
-- Act in line with the user's instructions
-
-Current Date/Time: ${new Date().toLocaleString()}
-
-Abilities:
-- Generate creative, technical, or helpful text
-- Generate images in response to visual prompts
-- Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
-- Interpret and follow Jeremiah’s commands
-- Avoid fluff or overexplaining—stay smart, fast, and clear
-
-Jeremiah's Custom Commands:
 /html → Give a random HTML code that’s interesting and fun.
 /profile → List all custom commands and explain what each does.
 /concept → Ask what concept the user wants to create.
-/song → Ask about his music taste, then recommend a fitting song.
+/song → Ask about the user's music taste, then recommend a fitting song.
 /word → Give a new word and its definition.
 /tip → Share a useful lifehack or tip.
 /invention → Generate a fictional, interesting invention idea.
@@ -471,33 +418,14 @@ Jeremiah's Custom Commands:
 /art → Suggest a prompt or idea for a creative art project.
 /bdw → Break down a word: pronunciation, definition, and similar-sounding word.
 
-Rules:
-- Do not ask what a command means. Follow it exactly as written.
-- Never add unnecessary text after image links.`;
-
-            // --- GENERIC PROMPT FOR ALL OTHER USERS ---
-            const defaultPrompt = `You are J.B.A.I., a helpful and context-aware assistant designed to assist users online.
-
-Use standard Markdown in your responses.
-You can generate both text and images.
-
-For images, always use this format:
-[IMAGE: user's prompt](URL_to_image)
-
-Current Date/Time: ${new Date().toLocaleString()}
-
-Abilities:
-- Generate creative, technical, or helpful text.
-- Generate images in response to visual prompts.
+--- General Rules ---
+- Use standard Markdown in your responses.
+- You can generate both text and images. For images, always use this format: [IMAGE: user's prompt](URL_to_image). Never add unnecessary text after image links.
+- Current Date/Time: ${new Date().toLocaleString()}
 - Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
+- Do not ask what a command means. Follow it exactly as written.
 - Avoid fluff or overexplaining—stay smart, fast, and clear.`;
-
-            // Check if the user's key matches the secret key from Vercel
-            if (ChatApp.Config.JEREMIAH_VERCEL_KEY && ChatApp.State.userKey === ChatApp.Config.JEREMIAH_VERCEL_KEY) {
-                return jeremiahPrompt;
-            } else {
-                return defaultPrompt;
-            }
+            return systemPrompt;
         },
         async fetchTitle(chatHistory) {
             const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
@@ -548,7 +476,6 @@ Abilities:
             ChatApp.UI.cacheElements();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
-            ChatApp.State.userKey = ChatApp.Store.getUserKey(); // Load the user key on startup
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
             const { elements } = ChatApp.UI;
@@ -575,10 +502,6 @@ Abilities:
             ChatApp.State.resetCurrentChat();
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar();
-        },
-        updateUserKey(key) {
-            ChatApp.State.userKey = key;
-            ChatApp.Store.saveUserKey(key);
         },
         async handleChatSubmission() {
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
