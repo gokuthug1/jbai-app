@@ -470,9 +470,11 @@ You have custom commands that users can use, and you must follow them.
             const baseUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}`;
 
             const queryParams = new URLSearchParams({
-                enhance: 'true', // Good default to keep
                 model: model || 'flux', // Default model
             });
+
+            // Always enhance images as requested.
+            queryParams.set('enhance', 'true');
 
             if (height) queryParams.set('height', height);
             if (seed) queryParams.set('seed', seed);
@@ -582,7 +584,9 @@ You have custom commands that users can use, and you must follow them.
             }
         },
         async processResponseForImages(rawText) {
-            const imageRegex = /\[IMAGE: (\{[\s\S]*?\})\]/g;
+            // FIX: Use new RegExp() to create a stateless regex instance on each call.
+            // This prevents issues with the global flag's lastIndex property across multiple calls.
+            const imageRegex = new RegExp('\\[IMAGE: (\\{[\\s\\S]*?\\})\\]', 'g');
             const matches = Array.from(rawText.matchAll(imageRegex));
         
             if (matches.length === 0) {
