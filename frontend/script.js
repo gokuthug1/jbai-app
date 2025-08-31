@@ -37,7 +37,6 @@ const ChatApp = {
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
-        isAwaitingImagePrompt: false,
         typingInterval: null,
         attachedFiles: [],
         setCurrentConversation(history) {
@@ -69,7 +68,6 @@ const ChatApp = {
         resetCurrentChat() {
             this.setCurrentConversation([]);
             this.currentChatId = null;
-            this.isAwaitingImagePrompt = false;
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
             if (this.isGenerating) { this.setGenerating(false); }
@@ -425,7 +423,9 @@ You have custom commands that users can use, and you must follow them.
 
 --- General Rules ---
 - Use standard Markdown in your responses.
-- You can generate both text and images. For images, always use this format: [IMAGE: user's prompt](URL_to_image). Never add unnecessary text after image links.
+- To generate an image, you MUST use this exact format in your response: \`[IMAGE: { "prompt": "your detailed prompt", "nologo": boolean, "height": number, "seed": number }]\`.
+  - You have control over the parameters: \`nologo\` (true/false), \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
+  - Do NOT invent new parameters. Do NOT include a URL. The system will handle the actual image generation.
 - Current Date/Time: ${new Date().toLocaleString()}
 - Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
 - Do not ask what a command means. Follow it exactly as written.
@@ -462,9 +462,24 @@ You have custom commands that users can use, and you must follow them.
             if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
             return botResponseText;
         },
-        async fetchImageResponse(prompt) {
+        async fetchImageResponse(params) {
+            const { prompt, height, seed, nologo, model } = params;
+            if (!prompt) throw new Error("A prompt is required for image generation.");
+
             const encodedPrompt = encodeURIComponent(prompt);
-            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}?height=768&seed=341963935&enhance=true&nologo=true&model=flux`;
+            const baseUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}`;
+
+            const queryParams = new URLSearchParams({
+                enhance: 'true', // Good default to keep
+                model: model || 'flux', // Default model
+            });
+
+            if (height) queryParams.set('height', height);
+            if (seed) queryParams.set('seed', seed);
+            if (typeof nologo === 'boolean') queryParams.set('nologo', nologo);
+            
+            const fullUrl = `${baseUrl}?${queryParams.toString()}`;
+
             const response = await fetch(fullUrl);
             if (!response.ok) { throw new Error(`Server error: ${response.status} ${response.statusText}`); }
             const imageBlob = await response.blob();
@@ -512,43 +527,28 @@ You have custom commands that users can use, and you must follow them.
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = ChatApp.State.attachedFiles;
             if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
+
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
-            if (ChatApp.State.isAwaitingImagePrompt) {
-                ChatApp.State.isAwaitingImagePrompt = false;
-                ChatApp.State.setGenerating(true);
-                const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: [{ text: userInput }] } };
-                ChatApp.State.addMessage(userMessage);
-                ChatApp.UI.renderMessage(userMessage);
-                await this._generateImage(userInput);
-                return;
-            }
-            if (userInput.toLowerCase() === '.pollinations.ai/prompt') {
-                const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'user', parts: [{ text: userInput }] } };
-                ChatApp.State.addMessage(userMessage);
-                ChatApp.UI.renderMessage(userMessage);
-                const botResponseText = "Sure, what is the prompt for the image?";
-                const botMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: botResponseText }] } };
-                ChatApp.State.addMessage(botMessage);
-                ChatApp.UI.renderMessage(botMessage);
-                ChatApp.State.isAwaitingImagePrompt = true;
-                this.saveCurrentChat();
-                return;
-            }
             ChatApp.State.setGenerating(true);
+
             const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = e => resolve({ mimeType: file.type || 'text/plain', data: e.target.result.split(',')[1] });
                 reader.onerror = reject;
                 reader.readAsDataURL(file);
             }));
+
             const fileApiData = await Promise.all(fileDataPromises);
             this.clearAttachedFiles();
+
             const messageParts = fileApiData.map(p => ({ inlineData: p }));
             if (userInput) { messageParts.push({ text: userInput }); }
+
             const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: files.map(f => ({ name: f.name, type: f.type })) };
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
+
             await this._generateText();
         },
         handleFileSelection(event) {
@@ -569,7 +569,10 @@ You have custom commands that users can use, and you must follow them.
             try {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
-                const botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
+                let botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
+
+                botResponseText = await this.processResponseForImages(botResponseText);
+
                 ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
             } catch (error) {
                 console.error("Text generation failed:", error);
@@ -578,29 +581,46 @@ You have custom commands that users can use, and you must follow them.
                 ChatApp.State.setGenerating(false);
             }
         },
+        async processResponseForImages(rawText) {
+            const imageRegex = /\[IMAGE: (\{[\s\S]*?\})\]/g;
+            const matches = Array.from(rawText.matchAll(imageRegex));
+        
+            if (matches.length === 0) {
+                return rawText;
+            }
+        
+            const replacementPromises = matches.map(async (match) => {
+                const originalTag = match[0];
+                const jsonString = match[1];
+                try {
+                    const params = JSON.parse(jsonString);
+                    if (!params.prompt) throw new Error("Prompt is missing");
+        
+                    const imageUrl = await ChatApp.Api.fetchImageResponse(params);
+                    const finalMarkdown = `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})`;
+                    
+                    return { original: originalTag, replacement: finalMarkdown };
+                } catch (error) {
+                    console.error("Failed to process image tag:", originalTag, error);
+                    const errorMessage = `[Error generating image. Reason: ${error.message}]`;
+                    return { original: originalTag, replacement: errorMessage };
+                }
+            });
+        
+            const replacements = await Promise.all(replacementPromises);
+        
+            let processedText = rawText;
+            replacements.forEach(({ original, replacement }) => {
+                processedText = processedText.replace(original, replacement);
+            });
+        
+            return processedText;
+        },
         completeGeneration(botResponseText, messageId) {
             const botMessage = { id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } };
             ChatApp.State.addMessage(botMessage);
             this.saveCurrentChat();
             ChatApp.State.setGenerating(false);
-        },
-        async _generateImage(prompt) {
-            const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null, content: { role: 'model', parts: [{ text: `Generating image for: "${prompt}"...` }] }}, true);
-            try {
-                const imageUrl = await ChatApp.Api.fetchImageResponse(prompt);
-                const imageMarkdown = `[IMAGE: ${prompt}](${imageUrl})`;
-                const botMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "model", parts: [{ text: imageMarkdown }] } };
-                ChatApp.State.addMessage(botMessage);
-                thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage(botMessage);
-                this.saveCurrentChat();
-            } catch (error) {
-                console.error("Image generation failed:", error);
-                thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Image Generation Error: ${error.message}` }] } });
-            } finally {
-                ChatApp.State.setGenerating(false);
-            }
         },
         async saveCurrentChat() {
             if (ChatApp.State.currentConversation.length === 0) return;
