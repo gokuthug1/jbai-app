@@ -423,8 +423,8 @@ You have custom commands that users can use, and you must follow them.
 
 --- General Rules ---
 - Use standard Markdown in your responses.
-- To generate an image, you MUST use this exact format in your response: \`[IMAGE: { "prompt": "your detailed prompt", "nologo": boolean, "height": number, "seed": number }]\`.
-  - You have control over the parameters: \`nologo\` (true/false), \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
+- To generate an image, you MUST use this exact format in your response: \`[IMAGE: { "prompt": "your detailed prompt", "height": number, "seed": number }]\`.
+  - You have control over the parameters: \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
   - Do NOT invent new parameters. Do NOT include a URL. The system will handle the actual image generation.
 - Current Date/Time: ${new Date().toLocaleString()}
 - Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
@@ -463,22 +463,22 @@ You have custom commands that users can use, and you must follow them.
             return botResponseText;
         },
         async fetchImageResponse(params) {
-            const { prompt, height, seed, nologo, model } = params;
+            const { prompt, height, seed, model } = params;
             if (!prompt) throw new Error("A prompt is required for image generation.");
 
             const encodedPrompt = encodeURIComponent(prompt);
             const baseUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}`;
 
             const queryParams = new URLSearchParams({
-                model: model || 'flux', // Default model
+                model: model || 'flux',
             });
-
-            // Always enhance images as requested.
+            
+            // Always enhance images and remove the logo.
             queryParams.set('enhance', 'true');
+            queryParams.set('nologo', 'true');
 
             if (height) queryParams.set('height', height);
             if (seed) queryParams.set('seed', seed);
-            if (typeof nologo === 'boolean') queryParams.set('nologo', nologo);
             
             const fullUrl = `${baseUrl}?${queryParams.toString()}`;
 
@@ -584,7 +584,7 @@ You have custom commands that users can use, and you must follow them.
             }
         },
         async processResponseForImages(rawText) {
-            // FIX: Use new RegExp() to create a stateless regex instance on each call.
+            // Use new RegExp() to create a stateless regex instance on each call.
             // This prevents issues with the global flag's lastIndex property across multiple calls.
             const imageRegex = new RegExp('\\[IMAGE: (\\{[\\s\\S]*?\\})\\]', 'g');
             const matches = Array.from(rawText.matchAll(imageRegex));
