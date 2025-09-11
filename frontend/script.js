@@ -27,7 +27,8 @@ const ChatApp = {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
             DELETE: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`,
-            OPEN_NEW_TAB: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`
+            OPEN_NEW_TAB: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`,
+            DOWNLOAD: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`
         }
     },
 
@@ -324,7 +325,7 @@ const ChatApp = {
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
-            const { COPY, CHECK, OPEN_NEW_TAB } = ChatApp.Config.ICONS;
+            const { COPY, CHECK, OPEN_NEW_TAB, DOWNLOAD } = ChatApp.Config.ICONS;
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
@@ -336,6 +337,8 @@ const ChatApp = {
                 const pre = wrapper.querySelector('pre');
                 const actionsContainer = wrapper.querySelector('.code-block-actions');
                 if (!pre || !actionsContainer || !pre.dataset.rawCode) return;
+                const codeEl = pre.querySelector('code');
+
                 if (wrapper.dataset.previewable) {
                     const openBtn = document.createElement('button');
                     openBtn.className = 'open-new-tab-button'; openBtn.title = 'Open in new tab'; openBtn.innerHTML = OPEN_NEW_TAB;
@@ -352,8 +355,40 @@ const ChatApp = {
                     });
                     actionsContainer.appendChild(openBtn);
                 }
+
+                const downloadBtn = document.createElement('button');
+                downloadBtn.className = 'download-code-button';
+                downloadBtn.title = 'Download snippet';
+                downloadBtn.innerHTML = DOWNLOAD;
+                downloadBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const rawCode = pre.textContent;
+                    let lang = 'txt';
+                    if (codeEl && codeEl.className.startsWith('language-')) {
+                        const potentialLang = codeEl.className.replace('language-', '').toLowerCase();
+                        const extensionMap = {
+                            html: 'html', xml: 'xml', svg: 'svg', css: 'css',
+                            javascript: 'js', js: 'js', json: 'json', python: 'py',
+                            typescript: 'ts', shell: 'sh', bash: 'sh'
+                        };
+                        lang = extensionMap[potentialLang] || potentialLang.split(' ')[0];
+                    }
+                    const blob = new Blob([rawCode], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `jbai-snippet.${lang}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+                actionsContainer.appendChild(downloadBtn);
+
                 const copyCodeBtn = document.createElement('button');
-                copyCodeBtn.className = 'copy-code-button'; copyCodeBtn.title = 'Copy code'; copyCodeBtn.innerHTML = COPY;
+                copyCodeBtn.className = 'copy-code-button';
+                copyCodeBtn.title = 'Copy code';
+                copyCodeBtn.innerHTML = COPY;
                 copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
                 actionsContainer.appendChild(copyCodeBtn);
             });
