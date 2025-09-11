@@ -917,7 +917,7 @@ body.sidebar-open .open-icon { display: none; }
 .copy-button svg { width: 16px; height: 16px; stroke: currentColor; }
 
 
-.copy-code-button, .open-new-tab-button {
+.copy-code-button, .open-new-tab-button, .download-code-button {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -929,11 +929,11 @@ body.sidebar-open .open-icon { display: none; }
     border-radius: 5px;
     transition: color 0.2s, background-color 0.2s;
 }
-.copy-code-button:hover, .open-new-tab-button:hover {
+.copy-code-button:hover, .open-new-tab-button:hover, .download-code-button:hover {
     color: var(--text-color);
     background: var(--sidebar-hover);
 }
-.copy-code-button svg, .open-new-tab-button svg {
+.copy-code-button svg, .open-new-tab-button svg, .download-code-button svg {
     width: 16px;
     height: 16px;
     stroke: currentColor;
