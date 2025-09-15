@@ -23,6 +23,7 @@ const ChatApp = {
         },
         DEFAULT_THEME: 'light',
         TYPING_SPEED_MS: 0, // Milliseconds per character (was 0)
+        MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024, // 4MB limit to prevent 413 Payload Too Large errors
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
@@ -207,10 +208,12 @@ const ChatApp = {
                 const item = document.createElement('div');
                 item.className = 'attachment-item';
                 let contentHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
-                if(file.type.startsWith('image/')) {
-                    const objectURL = URL.createObjectURL(new Blob([file.data], {type: file.type}));
-                    contentHTML = `<img src="${objectURL}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
+                
+                // FIX: If the file is an image and its data is a data URL string, use it directly for the preview.
+                if (file.type.startsWith('image/') && typeof file.data === 'string' && file.data.startsWith('data:image')) {
+                    contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
                 }
+
                 item.innerHTML = contentHTML;
                 container.appendChild(item);
             });
@@ -533,7 +536,11 @@ You have custom commands that users can use, and you must follow them.
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ contents: apiContents, systemInstruction })
             });
-            if (!response.ok) throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            if (!response.ok) {
+                // Construct a more informative error for specific statuses like 413
+                const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
+                throw new Error(`API Error: ${response.status} ${errorText}`);
+            }
             const data = await response.json();
             const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
             if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
@@ -649,12 +656,27 @@ You have custom commands that users can use, and you must follow them.
         },
         handleFileSelection(event) {
             const newFiles = Array.from(event.target.files);
-            if(ChatApp.State.attachedFiles.length + newFiles.length > 5) {
+            if (ChatApp.State.attachedFiles.length + newFiles.length > 5) {
                 ChatApp.UI.showToast('You can attach a maximum of 5 files.', 'error');
+                event.target.value = null; // Reset file input
                 return;
             }
-            ChatApp.State.attachedFiles.push(...newFiles);
-            ChatApp.UI.renderFilePreviews();
+        
+            // FIX: Filter out files that are too large to prevent 413 errors.
+            const validFiles = newFiles.filter(file => {
+                if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) {
+                    ChatApp.UI.showToast(`File "${file.name}" exceeds the 4MB limit.`, 'error');
+                    return false;
+                }
+                return true;
+            });
+        
+            if (validFiles.length > 0) {
+                ChatApp.State.attachedFiles.push(...validFiles);
+                ChatApp.UI.renderFilePreviews();
+            }
+        
+            // Always reset the file input to allow selecting the same file again if it was removed.
             event.target.value = null;
         },
         removeAttachedFile(index) {
@@ -851,7 +873,7 @@ You have custom commands that users can use, and you must follow them.
             }
         },
         handlePreviewClick(event) {
-            const image = event.target.closest('.generated-image');
+            const image = event.target.closest('.generated-image, .attachment-media');
             const svgBox = event.target.closest('.svg-render-box');
             const htmlBox = event.target.closest('.html-render-box');
             if (image) { event.preventDefault(); ChatApp.UI.showFullscreenPreview(image.src, 'image'); } 
