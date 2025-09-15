@@ -22,7 +22,7 @@ const ChatApp = {
             CONVERSATIONS: 'jbai_conversations',
         },
         DEFAULT_THEME: 'light',
-        TYPING_SPEED_MS: 0, // Milliseconds per character
+        TYPING_SPEED_MS: 10, // Milliseconds per character (was 0)
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
@@ -107,6 +107,7 @@ const ChatApp = {
         cacheElements() {
             this.elements = {
                 body: document.body,
+                toastContainer: document.getElementById('toast-container'), // New
                 sidebarBackdrop: document.querySelector('.sidebar-backdrop'),
                 sidebarToggle: document.getElementById('sidebar-toggle'),
                 newChatBtn: document.getElementById('new-chat-btn'),
@@ -126,6 +127,17 @@ const ChatApp = {
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
+        },
+        showToast(message, type = 'info') { // New Method
+            const toast = document.createElement('div');
+            toast.className = `toast-message ${type}`;
+            toast.textContent = message;
+            this.elements.toastContainer.appendChild(toast);
+            setTimeout(() => toast.classList.add('show'), 10); // Fade in
+            setTimeout(() => {
+                toast.classList.remove('show');
+                toast.addEventListener('transitionend', () => toast.remove());
+            }, 3000); // Fade out after 3s
         },
         scrollToBottom() { this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight; },
         clearChatArea() {
@@ -194,13 +206,17 @@ const ChatApp = {
             attachments.forEach(file => {
                 const item = document.createElement('div');
                 item.className = 'attachment-item';
-                const fileIconHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
-                item.innerHTML = fileIconHTML;
+                let contentHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
+                if(file.type.startsWith('image/')) {
+                    const objectURL = URL.createObjectURL(new Blob([file.data], {type: file.type}));
+                    contentHTML = `<img src="${objectURL}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
+                }
+                item.innerHTML = contentHTML;
                 container.appendChild(item);
             });
             return container;
         },
-        renderFilePreviews() {
+        renderFilePreviews() { // Updated for image thumbnails
             this.elements.filePreviewsContainer.innerHTML = '';
             if (ChatApp.State.attachedFiles.length === 0) {
                 this.elements.filePreviewsContainer.style.display = 'none';
@@ -210,14 +226,34 @@ const ChatApp = {
             ChatApp.State.attachedFiles.forEach((file, index) => {
                 const previewItem = document.createElement('div');
                 previewItem.className = 'file-preview-item';
-                const fileIconHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
-                previewItem.innerHTML = `${fileIconHTML}<button class="remove-preview-btn" title="Remove file" type="button">&times;</button>`;
+                let previewContent = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
+                
+                if (file.type.startsWith('image/')) {
+                    const objectURL = URL.createObjectURL(file);
+                    previewContent = `<img src="${objectURL}" alt="Preview of ${ChatApp.Utils.escapeHTML(file.name)}">`;
+                }
+
+                previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" title="Remove file" type="button">&times;</button>`;
                 previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => { ChatApp.Controller.removeAttachedFile(index); });
                 this.elements.filePreviewsContainer.appendChild(previewItem);
             });
             this.toggleSendButtonState();
         },
         finalizeBotMessage(messageEl, fullText, messageId) {
+            if (ChatApp.State.typingInterval) {
+                clearInterval(ChatApp.State.typingInterval);
+                ChatApp.State.typingInterval = null;
+            }
+            if (ChatApp.Config.TYPING_SPEED_MS === 0) {
+                 messageEl.classList.remove('thinking');
+                 messageEl.dataset.messageId = messageId;
+                 const contentEl = messageEl.querySelector('.message-content');
+                 contentEl.innerHTML = this._formatMessageContent(fullText);
+                 this._addMessageInteractions(messageEl, fullText, messageId);
+                 this.scrollToBottom();
+                 ChatApp.Controller.completeGeneration(fullText, messageId);
+                 return;
+            }
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
@@ -249,6 +285,7 @@ const ChatApp = {
             messageEl.addEventListener('touchmove', clearDeleteTimer);
         },
         _formatMessageContent(text) {
+            // This function remains the same as the original.
             if (!text) return '';
             const trimmedText = text.trim();
             const htmlBlockRegex = new RegExp(/^```html\n([\s\S]*?)\n```$/);
@@ -322,7 +359,7 @@ const ChatApp = {
                 return isBlockElement ? line : `<p>${line}</p>`;
             }).join('');
         },
-        _addMessageAndCodeActions(messageEl, rawText) {
+        _addMessageAndCodeActions(messageEl, rawText) { // Updated to use toasts
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
             const { COPY, CHECK, OPEN_NEW_TAB, DOWNLOAD } = ChatApp.Config.ICONS;
@@ -330,7 +367,7 @@ const ChatApp = {
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button'; copyBtn.title = 'Copy message text'; copyBtn.innerHTML = COPY;
-                copyBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(rawText).then(() => { copyBtn.innerHTML = CHECK; setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000); }); });
+                copyBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(rawText).then(() => { copyBtn.innerHTML = CHECK; this.showToast('Message copied!'); setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000); }); });
                 messageEl.appendChild(copyBtn);
             }
             contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
@@ -350,7 +387,7 @@ const ChatApp = {
                             newWindow.document.write(rawContent);
                             newWindow.document.close();
                         } else {
-                            alert('Popup blocker might be preventing the new tab from opening.');
+                           this.showToast('Enable popups to open in a new tab.', 'error');
                         }
                     });
                     actionsContainer.appendChild(openBtn);
@@ -382,6 +419,7 @@ const ChatApp = {
                     a.click();
                     document.body.removeChild(a);
                     URL.revokeObjectURL(url);
+                    this.showToast('Snippet downloaded!');
                 });
                 actionsContainer.appendChild(downloadBtn);
 
@@ -389,11 +427,12 @@ const ChatApp = {
                 copyCodeBtn.className = 'copy-code-button';
                 copyCodeBtn.title = 'Copy code';
                 copyCodeBtn.innerHTML = COPY;
-                copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
+                copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; this.showToast('Code copied!'); setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
                 actionsContainer.appendChild(copyCodeBtn);
             });
         },
         renderSettingsModal() {
+            // This function remains the same as the original.
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
             overlay.innerHTML = `
@@ -441,6 +480,7 @@ const ChatApp = {
 
     // --- API Module ---
     Api: {
+        // This module remains the same as the original.
         async getSystemContext() {
             const systemPrompt = `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 
@@ -562,36 +602,58 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar();
         },
-        async handleChatSubmission() {
+        async handleChatSubmission() { // Updated to handle image MIME types
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
-            const files = ChatApp.State.attachedFiles;
+            const files = [...ChatApp.State.attachedFiles]; // Create a copy
             if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
 
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
             ChatApp.State.setGenerating(true);
+            this.clearAttachedFiles(); // Clear previews immediately
 
             const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                reader.onload = e => resolve({ mimeType: file.type || 'text/plain', data: e.target.result.split(',')[1] });
+                reader.onload = e => {
+                    const base64Data = e.target.result.split(',')[1];
+                    // Gemini API requires specific MIME types for images
+                    const mimeType = file.type.startsWith('image/') ? file.type : 'text/plain';
+                     resolve({ mimeType, data: base64Data });
+                };
                 reader.onerror = reject;
                 reader.readAsDataURL(file);
             }));
 
             const fileApiData = await Promise.all(fileDataPromises);
-            this.clearAttachedFiles();
 
             const messageParts = fileApiData.map(p => ({ inlineData: p }));
             if (userInput) { messageParts.push({ text: userInput }); }
 
-            const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: files.map(f => ({ name: f.name, type: f.type })) };
+            const userMessageAttachments = await Promise.all(files.map(async (file) => {
+                return new Promise((resolve) => {
+                    if (file.type.startsWith('image/')) {
+                        const reader = new FileReader();
+                        reader.onload = (e) => resolve({ name: file.name, type: file.type, data: e.target.result });
+                        reader.readAsDataURL(file);
+                    } else {
+                         resolve({ name: file.name, type: file.type, data: null }); // No data needed for non-images in UI
+                    }
+                });
+            }));
+
+            const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: userMessageAttachments };
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
 
             await this._generateText();
         },
         handleFileSelection(event) {
-            ChatApp.State.attachedFiles.push(...Array.from(event.target.files));
+            const newFiles = Array.from(event.target.files);
+            if(ChatApp.State.attachedFiles.length + newFiles.length > 5) {
+                ChatApp.UI.showToast('You can attach a maximum of 5 files.', 'error');
+                return;
+            }
+            ChatApp.State.attachedFiles.push(...newFiles);
             ChatApp.UI.renderFilePreviews();
             event.target.value = null;
         },
@@ -616,13 +678,14 @@ You have custom commands that users can use, and you must follow them.
             } catch (error) {
                 console.error("Text generation failed:", error);
                 thinkingMessageEl.remove();
-                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: `Sorry, an error occurred: ${error.message}` }] } });
+                const errorMessage = `Sorry, an error occurred: ${error.message}`;
+                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: errorMessage }] } });
+                ChatApp.UI.showToast(error.message, 'error');
                 ChatApp.State.setGenerating(false);
             }
         },
         async processResponseForImages(rawText) {
-            // Use new RegExp() to create a stateless regex instance on each call.
-            // This prevents issues with the global flag's lastIndex property across multiple calls.
+            // This function remains the same as the original.
             const imageRegex = new RegExp('\\[IMAGE: (\\{[\\s\\S]*?\\})\\]', 'g');
             const matches = Array.from(rawText.matchAll(imageRegex));
         
@@ -683,7 +746,7 @@ You have custom commands that users can use, and you must follow them.
         loadChat(chatId) {
             if (ChatApp.State.currentChatId === chatId) return;
             const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
-            if (!chat || !Array.isArray(chat.history)) { console.error("Chat not found or is corrupted:", chatId); alert("Could not load the selected chat."); return; }
+            if (!chat || !Array.isArray(chat.history)) { console.error("Chat not found or is corrupted:", chatId); ChatApp.UI.showToast("Could not load the selected chat.", "error"); return; }
             this.startNewChat();
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
@@ -704,16 +767,18 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.State.allConversations = ChatApp.State.allConversations.filter(c => c.id !== chatId);
             ChatApp.Store.saveAllConversations();
             if (ChatApp.State.currentChatId === chatId) { this.startNewChat(); } else { ChatApp.UI.renderSidebar(); }
+            ChatApp.UI.showToast('Chat deleted.');
         },
         downloadAllData() {
             const dataStr = JSON.stringify(ChatApp.State.allConversations, null, 2);
-            if (!dataStr || dataStr === '[]') { alert('No conversation data to download.'); return; }
+            if (!dataStr || dataStr === '[]') { ChatApp.UI.showToast('No conversation data to download.', 'error'); return; }
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url; a.download = 'jbai_conversations_backup.json';
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
             URL.revokeObjectURL(url);
+            ChatApp.UI.showToast('Data export started.');
         },
         handleDataUpload() {
             const fileInput = document.createElement('input');
@@ -729,10 +794,10 @@ You have custom commands that users can use, and you must follow them.
                         if (confirm('This will replace all current conversations. Are you sure?')) {
                             ChatApp.State.allConversations = importedData;
                             ChatApp.Store.saveAllConversations();
-                            alert('Data successfully imported. The application will now reload.');
-                            location.reload();
+                            ChatApp.UI.showToast('Data imported. Reloading...');
+                            setTimeout(() => location.reload(), 1500);
                         }
-                    } catch (error) { alert(`Error importing data: ${error.message}`); }
+                    } catch (error) { ChatApp.UI.showToast(`Import error: ${error.message}`, 'error'); }
                 };
                 reader.readAsText(file);
             };
@@ -765,11 +830,11 @@ You have custom commands that users can use, and you must follow them.
         
                             ChatApp.State.allConversations = mergedConversations;
                             ChatApp.Store.saveAllConversations();
-                            alert('Data successfully merged. The application will now reload.');
-                            location.reload();
+                            ChatApp.UI.showToast('Data merged. Reloading...');
+                            setTimeout(() => location.reload(), 1500);
                         }
                     } catch (error) {
-                        alert(`Error merging data: ${error.message}`);
+                        ChatApp.UI.showToast(`Merge error: ${error.message}`, 'error');
                     }
                 };
                 reader.readAsText(file);
@@ -781,8 +846,8 @@ You have custom commands that users can use, and you must follow them.
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
                 ChatApp.State.allConversations = [];
-                alert('All data has been deleted. The application will now reload.');
-                location.reload();
+                ChatApp.UI.showToast('All data deleted. Reloading...', 'error');
+                setTimeout(() => location.reload(), 1500);
             }
         },
         handlePreviewClick(event) {
