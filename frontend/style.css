@@ -1403,3 +1403,41 @@ input:focus-visible + .slider {
     border-radius: 8px;
     background-color: #fff;
 }
+
+/* ==========================================================================
+   7. Toast Notifications (NEW)
+   ========================================================================== */
+#toast-container {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4000;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 10px;
+    align-items: center;
+}
+
+.toast-message {
+    padding: 12px 20px;
+    color: var(--button-text);
+    background-color: var(--button-bg);
+    border-radius: 25px;
+    box-shadow: 0 4px 12px var(--modal-shadow);
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.toast-message.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.toast-message.error {
+    background-color: var(--danger-color);
+    color: #fff;
+}
