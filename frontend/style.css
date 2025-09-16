@@ -986,8 +986,8 @@ body.sidebar-open .open-icon { display: none; }
 .chat-input-container {
     flex-shrink: 0;
     padding: 10px 20px 20px;
-    background-color: var(--chat-container-bg);
-    border-top: 1px solid var(--border-color);
+    background-color: transparent;
+    border-top: none;
 }
 
 /* NEW: File Previews Container */
