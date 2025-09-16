@@ -296,8 +296,10 @@ const ChatApp = {
         _formatMessageContent(text) {
             if (!text) return '';
             const trimmedText = text.trim();
-            const htmlBlockRegex = new RegExp(/^```html\n([\s\S]*?)\n```$/);
+            // FIX: Made the regex more flexible to handle variations in AI output (e.g., missing final newline).
+            const htmlBlockRegex = /^```html\s*\r?\n([\s\S]*?)\s*```\s*$/;
             const htmlMatch = trimmedText.match(htmlBlockRegex);
+
             if (htmlMatch) {
                 const rawHtmlCode = htmlMatch[1].trim();
                 const safeHtmlForSrcdoc = rawHtmlCode.replace(/"/g, '&quot;');
