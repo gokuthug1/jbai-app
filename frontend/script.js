@@ -451,7 +451,7 @@ const ChatApp = {
                         <option value="light">Light</option>
                         <option value="dark">Dark</option>
                         <option value="dracula">Dracula</option>
-                        <option value="monokai  ">Monokai</option>
+                        <option value="monokai">MonoKai</option>
                     </select>
                 </div>
                 <hr>
