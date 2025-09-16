@@ -22,7 +22,7 @@ const ChatApp = {
             CONVERSATIONS: 'jbai_conversations',
         },
         DEFAULT_THEME: 'light',
-        TYPING_SPEED_MS: 0, // Milliseconds per character (was 0)
+        TYPING_SPEED_MS: 0, // Milliseconds per character
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024, // 4MB limit to prevent 413 Payload Too Large errors
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -209,7 +209,6 @@ const ChatApp = {
                 item.className = 'attachment-item';
                 let contentHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
                 
-                // FIX: If the file is an image and its data is a data URL string, use it directly for the preview.
                 if (file.type.startsWith('image/') && typeof file.data === 'string' && file.data.startsWith('data:image')) {
                     contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
                 }
@@ -242,7 +241,7 @@ const ChatApp = {
             });
             this.toggleSendButtonState();
         },
-        finalizeBotMessage(messageEl, fullText, messageId) {
+        finalizeBotMessage(messageEl, fullText, messageId, botMessageForState) {
             if (ChatApp.State.typingInterval) {
                 clearInterval(ChatApp.State.typingInterval);
                 ChatApp.State.typingInterval = null;
@@ -254,7 +253,7 @@ const ChatApp = {
                  contentEl.innerHTML = this._formatMessageContent(fullText);
                  this._addMessageInteractions(messageEl, fullText, messageId);
                  this.scrollToBottom();
-                 ChatApp.Controller.completeGeneration(fullText, messageId);
+                 ChatApp.Controller.completeGeneration(botMessageForState);
                  return;
             }
             messageEl.classList.remove('thinking');
@@ -273,7 +272,7 @@ const ChatApp = {
                     contentEl.innerHTML = this._formatMessageContent(fullText);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     this.scrollToBottom();
-                    ChatApp.Controller.completeGeneration(fullText, messageId);
+                    ChatApp.Controller.completeGeneration(botMessageForState);
                 }
             }, ChatApp.Config.TYPING_SPEED_MS);
         },
@@ -288,7 +287,6 @@ const ChatApp = {
             messageEl.addEventListener('touchmove', clearDeleteTimer);
         },
         _formatMessageContent(text) {
-            // This function remains the same as the original.
             if (!text) return '';
             const trimmedText = text.trim();
             const htmlBlockRegex = new RegExp(/^```html\n([\s\S]*?)\n```$/);
@@ -300,7 +298,7 @@ const ChatApp = {
                 return `
                     <div class="html-preview-container">
                         <h4>Live Preview</h4>
-                        <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe></div>
+                        <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div>
                         <h4>HTML Code</h4>
                         <div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
                             <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
@@ -435,7 +433,6 @@ const ChatApp = {
             });
         },
         renderSettingsModal() {
-            // This function remains the same as the original.
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
             overlay.innerHTML = `
@@ -474,7 +471,7 @@ const ChatApp = {
             switch(type) {
                 case 'image': const img = document.createElement('img'); img.src = content; fullscreenContent.appendChild(img); break;
                 case 'svg': fullscreenContent.innerHTML = content; break;
-                case 'html': const iframe = document.createElement('iframe'); iframe.srcdoc = content; iframe.sandbox = "allow-scripts allow-same-origin"; fullscreenContent.appendChild(iframe); break;
+                case 'html': const iframe = document.createElement('iframe'); iframe.srcdoc = content; iframe.sandbox = "allow-scripts"; fullscreenContent.appendChild(iframe); break;
             }
             fullscreenOverlay.style.display = 'flex';
             body.classList.add('modal-open');
@@ -549,7 +546,6 @@ You have custom commands that users can use, and you must follow them.
                         return botResponseText;
                     }
         
-                    // Don't retry client errors (4xx)
                     if (response.status >= 400 && response.status < 500) {
                         const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
                         throw new Error(`API Error: ${response.status} ${errorText}`);
@@ -576,7 +572,6 @@ You have custom commands that users can use, and you must follow them.
                 model: model || 'flux',
             });
             
-            // Always enhance images and remove the logo.
             queryParams.set('enhance', 'true');
             queryParams.set('nologo', 'true');
 
@@ -628,21 +623,20 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar();
         },
-        async handleChatSubmission() { // Updated to handle image MIME types
+        async handleChatSubmission() {
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
-            const files = [...ChatApp.State.attachedFiles]; // Create a copy
+            const files = [...ChatApp.State.attachedFiles];
             if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
 
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
             ChatApp.State.setGenerating(true);
-            this.clearAttachedFiles(); // Clear previews immediately
+            this.clearAttachedFiles();
 
             const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = e => {
                     const base64Data = e.target.result.split(',')[1];
-                    // Gemini API requires specific MIME types for images
                     const mimeType = file.type.startsWith('image/') ? file.type : 'text/plain';
                      resolve({ mimeType, data: base64Data });
                 };
@@ -662,7 +656,7 @@ You have custom commands that users can use, and you must follow them.
                         reader.onload = (e) => resolve({ name: file.name, type: file.type, data: e.target.result });
                         reader.readAsDataURL(file);
                     } else {
-                         resolve({ name: file.name, type: file.type, data: null }); // No data needed for non-images in UI
+                         resolve({ name: file.name, type: file.type, data: null });
                     }
                 });
             }));
@@ -677,11 +671,10 @@ You have custom commands that users can use, and you must follow them.
             const newFiles = Array.from(event.target.files);
             if (ChatApp.State.attachedFiles.length + newFiles.length > 5) {
                 ChatApp.UI.showToast('You can attach a maximum of 5 files.', 'error');
-                event.target.value = null; // Reset file input
+                event.target.value = null;
                 return;
             }
         
-            // FIX: Filter out files that are too large to prevent 413 errors.
             const validFiles = newFiles.filter(file => {
                 if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) {
                     ChatApp.UI.showToast(`File "${file.name}" exceeds the 4MB limit.`, 'error');
@@ -695,7 +688,6 @@ You have custom commands that users can use, and you must follow them.
                 ChatApp.UI.renderFilePreviews();
             }
         
-            // Always reset the file input to allow selecting the same file again if it was removed.
             event.target.value = null;
         },
         removeAttachedFile(index) {
@@ -711,22 +703,25 @@ You have custom commands that users can use, and you must follow them.
             try {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
-                let botResponseText = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
+                
+                const rawBotResponse = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
+                const processedForUI = await this.processResponseForImages(rawBotResponse);
+                const messageId = ChatApp.Utils.generateUUID();
+                const botMessageForState = { id: messageId, content: { role: "model", parts: [{ text: rawBotResponse }] } };
 
-                botResponseText = await this.processResponseForImages(botResponseText);
-
-                ChatApp.UI.finalizeBotMessage(thinkingMessageEl, botResponseText, ChatApp.Utils.generateUUID());
+                ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedForUI, messageId, botMessageForState);
             } catch (error) {
                 console.error("Text generation failed:", error);
                 thinkingMessageEl.remove();
                 const errorMessage = `Sorry, an error occurred: ${error.message}`;
-                ChatApp.UI.renderMessage({ id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: errorMessage }] } });
+                const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: errorMessage }] } };
+                ChatApp.UI.renderMessage(errorBotMessage);
+                this.completeGeneration(errorBotMessage);
                 ChatApp.UI.showToast(error.message, 'error');
                 ChatApp.State.setGenerating(false);
             }
         },
         async processResponseForImages(rawText) {
-            // This function remains the same as the original.
             const imageRegex = new RegExp('\\[IMAGE: (\\{[\\s\\S]*?\\})\\]', 'g');
             const matches = Array.from(rawText.matchAll(imageRegex));
         
@@ -761,8 +756,7 @@ You have custom commands that users can use, and you must follow them.
         
             return processedText;
         },
-        completeGeneration(botResponseText, messageId) {
-            const botMessage = { id: messageId, content: { role: "model", parts: [{ text: botResponseText }] } };
+        completeGeneration(botMessage) {
             ChatApp.State.addMessage(botMessage);
             this.saveCurrentChat();
             ChatApp.State.setGenerating(false);
@@ -792,7 +786,17 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
             ChatApp.UI.clearChatArea();
-            ChatApp.State.currentConversation.forEach(msg => { ChatApp.UI.renderMessage(msg); });
+            
+            ChatApp.State.currentConversation.forEach(async msg => {
+                if (msg.content.role === 'model') {
+                    const rawText = msg.content.parts[0].text;
+                    const processedText = await this.processResponseForImages(rawText);
+                    const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
+                    ChatApp.UI.renderMessage(processedMsg);
+                } else {
+                    ChatApp.UI.renderMessage(msg);
+                }
+            });
             setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             ChatApp.UI.renderSidebar();
         },
@@ -862,9 +866,7 @@ You have custom commands that users can use, and you must follow them.
                             const currentConversations = ChatApp.State.allConversations;
                             const conversationMap = new Map();
         
-                            // Add imported conversations first
                             importedData.forEach(chat => conversationMap.set(chat.id, chat));
-                            // Then add current conversations, which will overwrite any duplicates from the import
                             currentConversations.forEach(chat => conversationMap.set(chat.id, chat));
                             
                             const mergedConversations = Array.from(conversationMap.values());
