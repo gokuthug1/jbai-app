@@ -911,4 +911,4 @@ You have custom commands that users can use, and you must follow them.
 // Start the application once the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     ChatApp.Controller.init();
-});```
+});
