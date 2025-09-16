@@ -116,6 +116,36 @@
     --focus-color: var(--button-bg);
 }
 
+[data-theme="monokai"] {
+    color-scheme: dark;
+    --bg-color: #272822;
+    --sidebar-bg: #20211c;
+    --sidebar-border: #49483e;
+    --sidebar-hover: #3e3d32;
+    --sidebar-active-bg: #3e3d32;
+    --sidebar-active-border: #f92672;
+    --chat-container-bg: #272822;
+    --text-color: #f8f8f2;
+    --text-secondary: #75715e;
+    --border-color: #49483e;
+    --input-bg: #3e3d32;
+    --button-bg: #f92672;
+    --button-hover-bg: #e22469;
+    --button-text: #f8f8f2;
+    --message-user-bg: #49483e;
+    --message-bot-bg: #3e3d32;
+    --code-bg: #20211c;
+    --code-text: #f8f8f2;
+    --scrollbar-thumb: #75715e;
+    --modal-bg: #3e3d32;
+    --modal-shadow: rgba(0, 0, 0, 0.5);
+    --switch-bg: #75715e;
+    --switch-handle-bg: #f8f8f2;
+    --danger-color: #f92672;
+    --danger-bg: rgba(249, 38, 114, 0.15);
+    --focus-color: var(--button-bg);
+}
+
 
 /* ==========================================================================
    2. Base & Layout
