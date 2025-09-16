@@ -209,8 +209,12 @@ const ChatApp = {
                 item.className = 'attachment-item';
                 let contentHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
                 
-                if (file.type.startsWith('image/') && typeof file.data === 'string' && file.data.startsWith('data:image')) {
-                    contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
+                if (file.data) { // Check if dataURL is present
+                    if (file.type.startsWith('image/')) {
+                        contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
+                    } else if (file.type.startsWith('video/')) {
+                        contentHTML = `<video src="${file.data}" class="attachment-media" controls title="${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
+                    }
                 }
 
                 item.innerHTML = contentHTML;
@@ -218,7 +222,7 @@ const ChatApp = {
             });
             return container;
         },
-        renderFilePreviews() { // Updated for image thumbnails
+        renderFilePreviews() {
             this.elements.filePreviewsContainer.innerHTML = '';
             if (ChatApp.State.attachedFiles.length === 0) {
                 this.elements.filePreviewsContainer.style.display = 'none';
@@ -228,11 +232,14 @@ const ChatApp = {
             ChatApp.State.attachedFiles.forEach((file, index) => {
                 const previewItem = document.createElement('div');
                 previewItem.className = 'file-preview-item';
+                
+                const objectURL = URL.createObjectURL(file);
                 let previewContent = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
                 
                 if (file.type.startsWith('image/')) {
-                    const objectURL = URL.createObjectURL(file);
                     previewContent = `<img src="${objectURL}" alt="Preview of ${ChatApp.Utils.escapeHTML(file.name)}">`;
+                } else if (file.type.startsWith('video/')) {
+                    previewContent = `<video src="${objectURL}" autoplay muted loop playsinline title="Preview of ${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
                 }
 
                 previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" title="Remove file" type="button">&times;</button>`;
@@ -441,8 +448,10 @@ const ChatApp = {
                 <div class="settings-row">
                     <label for="themeSelect">Theme</label>
                     <select id="themeSelect">
-                        <optgroup label="Light Themes"><option value="light">Light</option><option value="github-light">GitHub Light</option><option value="paper">Paper</option><option value="solarized-light">Solarized Light</option></optgroup>
-                        <optgroup label="Dark Themes"><option value="ayu-mirage">Ayu Mirage</option><option value="cobalt2">Cobalt2</option><option value="dark">Dark</option><option value="dracula">Dracula</option><option value="gruvbox-dark">Gruvbox Dark</option><option value="midnight">Midnight</option><option value="monokai">Monokai</option><option value="nord">Nord</option><option value="oceanic-next">Oceanic Next</option><option value="tomorrow-night-eighties">Tomorrow Night</option></optgroup>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                        <option value="dracula">Dracula</option>
+                        <option value="monokai  ">MonoKai</option>
                     </select>
                 </div>
                 <hr>
@@ -470,6 +479,7 @@ const ChatApp = {
             fullscreenContent.innerHTML = '';
             switch(type) {
                 case 'image': const img = document.createElement('img'); img.src = content; fullscreenContent.appendChild(img); break;
+                case 'video': const vid = document.createElement('video'); vid.src = content; vid.controls = true; vid.autoplay = true; fullscreenContent.appendChild(vid); break;
                 case 'svg': fullscreenContent.innerHTML = content; break;
                 case 'html': const iframe = document.createElement('iframe'); iframe.srcdoc = content; iframe.sandbox = "allow-scripts"; fullscreenContent.appendChild(iframe); break;
             }
@@ -607,6 +617,7 @@ You have custom commands that users can use, and you must follow them.
                 elements.chatInput.style.height = `${elements.chatInput.scrollHeight}px`;
                 ChatApp.UI.toggleSendButtonState();
             });
+            elements.chatInput.addEventListener('paste', Controller.handlePaste.bind(Controller));
             elements.newChatBtn.addEventListener('click', Controller.startNewChat.bind(Controller));
             elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
@@ -637,7 +648,7 @@ You have custom commands that users can use, and you must follow them.
                 const reader = new FileReader();
                 reader.onload = e => {
                     const base64Data = e.target.result.split(',')[1];
-                    const mimeType = file.type.startsWith('image/') ? file.type : 'text/plain';
+                    const mimeType = file.type;
                      resolve({ mimeType, data: base64Data });
                 };
                 reader.onerror = reject;
@@ -651,7 +662,7 @@ You have custom commands that users can use, and you must follow them.
 
             const userMessageAttachments = await Promise.all(files.map(async (file) => {
                 return new Promise((resolve) => {
-                    if (file.type.startsWith('image/')) {
+                    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
                         const reader = new FileReader();
                         reader.onload = (e) => resolve({ name: file.name, type: file.type, data: e.target.result });
                         reader.readAsDataURL(file);
@@ -667,11 +678,10 @@ You have custom commands that users can use, and you must follow them.
 
             await this._generateText();
         },
-        handleFileSelection(event) {
-            const newFiles = Array.from(event.target.files);
+        addFilesToState(files) {
+            const newFiles = Array.from(files);
             if (ChatApp.State.attachedFiles.length + newFiles.length > 5) {
                 ChatApp.UI.showToast('You can attach a maximum of 5 files.', 'error');
-                event.target.value = null;
                 return;
             }
         
@@ -687,8 +697,25 @@ You have custom commands that users can use, and you must follow them.
                 ChatApp.State.attachedFiles.push(...validFiles);
                 ChatApp.UI.renderFilePreviews();
             }
+        },
+        handleFileSelection(event) {
+            this.addFilesToState(event.target.files);
+            event.target.value = null; // Reset input to allow selecting the same file again
+        },
+        handlePaste(event) {
+            const files = event.clipboardData?.files;
+            if (!files || files.length === 0) return;
         
-            event.target.value = null;
+            // Filter for only files we can handle (images/videos)
+            const filesToProcess = Array.from(files).filter(file => 
+                file.type.startsWith('image/') || file.type.startsWith('video/')
+            );
+        
+            if (filesToProcess.length > 0) {
+                event.preventDefault(); // Prevent default paste action (e.g., pasting file path as text)
+                this.addFilesToState(filesToProcess);
+                ChatApp.UI.showToast(`${filesToProcess.length} file(s) pasted.`);
+            }
         },
         removeAttachedFile(index) {
             ChatApp.State.attachedFiles.splice(index, 1);
@@ -897,7 +924,15 @@ You have custom commands that users can use, and you must follow them.
             const image = event.target.closest('.generated-image, .attachment-media');
             const svgBox = event.target.closest('.svg-render-box');
             const htmlBox = event.target.closest('.html-render-box');
-            if (image) { event.preventDefault(); ChatApp.UI.showFullscreenPreview(image.src, 'image'); } 
+            if (image) { 
+                event.preventDefault(); 
+                const mediaElement = event.target;
+                if (mediaElement.tagName === 'IMG') {
+                    ChatApp.UI.showFullscreenPreview(mediaElement.src, 'image'); 
+                } else if (mediaElement.tagName === 'VIDEO') {
+                    ChatApp.UI.showFullscreenPreview(mediaElement.src, 'video'); 
+                }
+            } 
             else if (svgBox) { const svgElement = svgBox.querySelector('svg'); if (svgElement) { ChatApp.UI.showFullscreenPreview(svgElement.outerHTML, 'svg'); } } 
             else if (htmlBox) { const iframe = htmlBox.querySelector('iframe'); if (iframe) { ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); } }
         },
