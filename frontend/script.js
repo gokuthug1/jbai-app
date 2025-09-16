@@ -531,20 +531,39 @@ You have custom commands that users can use, and you must follow them.
             }
         },
         async fetchTextResponse(apiContents, systemInstruction) {
-             const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ contents: apiContents, systemInstruction })
-            });
-            if (!response.ok) {
-                // Construct a more informative error for specific statuses like 413
-                const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
-                throw new Error(`API Error: ${response.status} ${errorText}`);
+            const maxRetries = 3;
+            let lastError = null;
+        
+            for (let attempt = 0; attempt < maxRetries; attempt++) {
+                try {
+                    const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ contents: apiContents, systemInstruction })
+                    });
+        
+                    if (response.ok) {
+                        const data = await response.json();
+                        const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                        if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
+                        return botResponseText;
+                    }
+        
+                    // Don't retry client errors (4xx)
+                    if (response.status >= 400 && response.status < 500) {
+                        const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
+                        throw new Error(`API Error: ${response.status} ${errorText}`);
+                    }
+                    
+                    lastError = new Error(`API Error: ${response.status} ${response.statusText}`);
+                    console.warn(`Attempt ${attempt + 1} failed: ${lastError.message}. Retrying...`);
+                } catch (error) {
+                    lastError = error;
+                    console.warn(`Attempt ${attempt + 1} failed with a network error: ${error.message}. Retrying...`);
+                }
+                if (attempt < maxRetries - 1) await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
             }
-            const data = await response.json();
-            const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
-            return botResponseText;
+            throw new Error(`Failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
         },
         async fetchImageResponse(params) {
             const { prompt, height, seed, model } = params;
