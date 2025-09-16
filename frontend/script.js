@@ -22,7 +22,7 @@ const ChatApp = {
             CONVERSATIONS: 'jbai_conversations',
         },
         DEFAULT_THEME: 'light',
-        TYPING_SPEED_MS: 0, // Milliseconds per character (was 0)
+        TYPING_SPEED_MS: 20, // Milliseconds per character (was 0)
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024, // 4MB limit to prevent 413 Payload Too Large errors
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -483,7 +483,6 @@ const ChatApp = {
 
     // --- API Module ---
     Api: {
-        // This module remains the same as the original.
         async getSystemContext() {
             const systemPrompt = `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 
@@ -504,6 +503,7 @@ You have custom commands that users can use, and you must follow them.
 --- General Rules ---
 - Use standard Markdown in your responses.
 - To generate an image, you MUST use this exact format in your response: \`[IMAGE: { "prompt": "your detailed prompt", "height": number, "seed": number }]\`.
+  - When writing the "prompt" value, be very descriptive and literal. Place the most important subjects, features, and actions (e.g., "a bear shooting lasers from its eyes") at the beginning of the prompt to ensure they are accurately represented.
   - You have control over the parameters: \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
   - Do NOT invent new parameters. Do NOT include a URL. The system will handle the actual image generation.
 - Current Date/Time: ${new Date().toLocaleString()}
@@ -911,4 +911,4 @@ You have custom commands that users can use, and you must follow them.
 // Start the application once the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     ChatApp.Controller.init();
-});
+});```
