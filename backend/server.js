@@ -35,7 +35,8 @@ app.use(express.json());   // Then, enable the server to parse JSON
 // --- Environment Variables & API Configuration ---
 const API_KEY = process.env.GOOGLE_API_KEY;
 const PORT = process.env.PORT || 3000;
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
+// Updated model to a generally available and performant one.
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
 
 // --- NEW DEBUGGING ROUTE (Health Check) ---
 // This will help us see if the server is alive and if the API key is loaded.
@@ -58,6 +59,11 @@ app.post('/api/generate', async (req, res) => {
   try {
     const { contents, systemInstruction } = req.body;
 
+    // Validate that contents is an array before sending
+    if (!Array.isArray(contents)) {
+        return res.status(400).json({ message: "Invalid request format: 'contents' must be an array." });
+    }
+
     const response = await axios.post(
       `${GOOGLE_API_URL}?key=${API_KEY}`,
       { contents, systemInstruction },
@@ -67,6 +73,7 @@ app.post('/api/generate', async (req, res) => {
     res.json(response.data);
 
   } catch (error) {
+    // Enhanced error logging
     console.error("Error proxying to Google API:", error.response ? error.response.data : error.message);
     res.status(error.response?.status || 500).json({
       message: "Failed to fetch response from the AI model.",
@@ -78,5 +85,7 @@ app.post('/api/generate', async (req, res) => {
 // --- Start the Server ---
 app.listen(PORT, () => {
   console.log(`✅ Backend server is running on port ${PORT}`);
+  if (!API_KEY) {
+    console.warn("⚠️  Warning: GOOGLE_API_KEY is not set in the environment variables.");
+  }
 });
-
