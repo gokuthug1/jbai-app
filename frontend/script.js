@@ -367,7 +367,7 @@ const ChatApp = {
                 if (trimmed === '') return '';
                 const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div)|\[IMAGE:)/.test(trimmed);
                 return isBlockElement ? line : `<p>${line}</p>`;
-            }).join('');
+            }).join('\n');
         },
         _addMessageAndCodeActions(messageEl, rawText) { // Updated to use toasts
             const contentEl = messageEl.querySelector('.message-content');
