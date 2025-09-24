@@ -355,8 +355,8 @@ const ChatApp = {
             });
             html = html.replace(new RegExp('^### (.*$)', 'gim'), '<h3>$1</h3>').replace(new RegExp('^## (.*$)', 'gim'), '<h2>$1</h2>').replace(new RegExp('^# (.*$)', 'gim'), '<h1>$1</h1>');
             html = html.replace(new RegExp('^(> (.*)\n?)+', 'gm'), (match) => `<blockquote><p>${match.replace(new RegExp('^> ', 'gm'), '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
-            html = html.replace(new RegExp('^((\\s*[-*] .*\\n?)+)', 'gm'), m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*] /, '')}</li>`).join('')}</ul>`);
-            html = html.replace(new RegExp('^((\\s*\\d+\\. .*\\n?)+)', 'gm'), m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\. /, '')}</li>`).join('')}</ol>`);
+            html = html.replace(new RegExp('^((\\s*[-*] .*\\n?)+)', 'gm'), m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*]\s*/, '')}</li>`).join('')}</ul>`);
+            html = html.replace(new RegExp('^((\\s*\\d+\\. .*\\n?)+)', 'gm'), m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
             html = html.replace(new RegExp('\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)', 'g'), '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
             html = html.replace(new RegExp('`([^`]+)`', 'g'), '<code>$1</code>');
             html = html.replace(new RegExp('\\*\\*(.*?)\\*\\*', 'g'), '<strong>$1</strong>').replace(new RegExp('__(.*?)__', 'g'), '<strong>$1</strong>');
