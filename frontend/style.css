@@ -151,6 +151,7 @@
    2. Base & Layout
    - Global Styles
    - Main Layout (Body, Sidebar, Chat Container)
+   - Drag & Drop Overlay
    ========================================================================== */
 
 /* --- 2.1 Global Styles --- */
@@ -230,6 +231,28 @@ body.sidebar-open .sidebar-backdrop {
     overflow: hidden;
     background-color: var(--chat-container-bg);
     transition: margin-left 0.35s ease-in-out;
+}
+
+/* --- 2.3 Drag & Drop Overlay (NEW) --- */
+body.drag-over::before {
+    content: 'Drop Files Here';
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    color: white;
+    font-size: 2rem;
+    font-weight: bold;
+    border: 4px dashed var(--focus-color);
+    border-radius: 12px;
+    margin: 10px;
+    animation: fadeIn 0.2s ease;
+    pointer-events: none; /* Allow underlying elements to receive drag events */
 }
 
 
@@ -705,6 +728,7 @@ body.sidebar-open .open-icon { display: none; }
     border: 1px solid var(--border-color);
     border-radius: 8px;
     overflow: hidden;
+    background-color: var(--sidebar-hover); /* BG for generic files */
 }
 .file-preview-item img, .file-preview-item video {
     width: 100%;
@@ -733,6 +757,32 @@ body.sidebar-open .open-icon { display: none; }
 .remove-preview-btn:hover {
     opacity: 1;
     background: rgba(0,0,0,0.7);
+}
+
+/* NEW: Generic File Preview Styles */
+.file-preview-item.generic {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+}
+.file-preview-item.generic svg {
+    width: 100%;
+    height: 100%;
+    max-width: 40px;
+    stroke: var(--text-secondary);
+}
+.file-preview-extension {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 1px 4px;
+    background-color: var(--button-bg);
+    color: var(--button-text);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: bold;
+    text-transform: uppercase;
 }
 
 
@@ -843,6 +893,7 @@ textarea:focus-visible {
    4. Modal & Forms
    - Modal Overlay & Card
    - Form Elements (Buttons, Select, Switch)
+   - Custom Tooltips
    ========================================================================== */
 
 /* --- 4.1 Modal Overlay & Card --- */
@@ -987,6 +1038,32 @@ input:checked + .slider:before {
 input:focus-visible + .slider {
     outline: 2px solid var(--focus-color);
     outline-offset: 2px;
+}
+
+/* --- 4.3 Custom Tooltips (NEW) --- */
+.custom-tooltip {
+    position: fixed; /* Use fixed to avoid issues with scroll containers */
+    z-index: 5000;
+    padding: 6px 12px;
+    background-color: var(--modal-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px var(--modal-shadow);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.4;
+    max-width: 200px;
+    text-align: center;
+    pointer-events: none; /* Important! */
+    opacity: 0;
+    transform: scale(0.95) translateY(5px);
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.custom-tooltip.visible {
+    opacity: 1;
+    transform: scale(1) translateY(0);
 }
 
 
