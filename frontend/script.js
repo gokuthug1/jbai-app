@@ -29,7 +29,8 @@ const ChatApp = {
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
             DELETE: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`,
             OPEN_NEW_TAB: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`,
-            DOWNLOAD: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`
+            DOWNLOAD: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
+            DOCUMENT: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`
         }
     },
 
@@ -108,7 +109,7 @@ const ChatApp = {
         cacheElements() {
             this.elements = {
                 body: document.body,
-                toastContainer: document.getElementById('toast-container'), // New
+                toastContainer: document.getElementById('toast-container'),
                 sidebarBackdrop: document.querySelector('.sidebar-backdrop'),
                 sidebarToggle: document.getElementById('sidebar-toggle'),
                 newChatBtn: document.getElementById('new-chat-btn'),
@@ -123,13 +124,67 @@ const ChatApp = {
                 fullscreenOverlay: document.getElementById('fullscreen-preview-overlay'),
                 fullscreenContent: document.getElementById('fullscreen-content'),
                 fullscreenCloseBtn: document.getElementById('fullscreen-close-btn'),
+                customTooltip: document.getElementById('custom-tooltip'),
             };
+        },
+        initTooltips() {
+            let tooltipTimeout;
+            const tooltip = this.elements.customTooltip;
+
+            const showTooltip = (e) => {
+                const target = e.target.closest('[data-tooltip]');
+                if (!target) return;
+
+                const tooltipText = target.getAttribute('data-tooltip');
+                if (!tooltipText) return;
+
+                tooltip.textContent = tooltipText;
+                tooltip.classList.add('visible');
+
+                const targetRect = target.getBoundingClientRect();
+                const tooltipRect = tooltip.getBoundingClientRect();
+
+                let top = targetRect.top - tooltipRect.height - 8; // 8px offset
+                let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+
+                // Adjust if tooltip goes off-screen
+                if (top < 10) { // If too close to the top, show below
+                    top = targetRect.bottom + 8;
+                }
+                if (left < 10) { // If too close to the left edge
+                    left = 10;
+                }
+                if (left + tooltipRect.width > window.innerWidth - 10) { // If too close to the right edge
+                    left = window.innerWidth - tooltipRect.width - 10;
+                }
+
+                tooltip.style.top = `${top}px`;
+                tooltip.style.left = `${left}px`;
+            };
+
+            const hideTooltip = () => {
+                tooltip.classList.remove('visible');
+            };
+
+            document.body.addEventListener('mouseover', (e) => {
+                if (e.target.closest('[data-tooltip]')) {
+                    clearTimeout(tooltipTimeout);
+                    tooltipTimeout = setTimeout(() => showTooltip(e), 300); // Small delay before showing
+                }
+            });
+
+            document.body.addEventListener('mouseout', (e) => {
+                 if (e.target.closest('[data-tooltip]')) {
+                    clearTimeout(tooltipTimeout);
+                    hideTooltip();
+                }
+            });
         },
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
         },
-        showToast(message, type = 'info') { // New Method
+        showToast(message, type = 'info') {
             const toast = document.createElement('div');
             toast.className = `toast-message ${type}`;
             toast.textContent = message;
@@ -163,8 +218,8 @@ const ChatApp = {
                 if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); }
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
                 item.innerHTML = `
-                    <span class="conversation-title" title="${title}">${title}</span>
-                    <button type="button" class="delete-btn" title="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                    <span class="conversation-title" data-tooltip="${title}">${title}</span>
+                    <button type="button" class="delete-btn" data-tooltip="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
                 item.addEventListener('click', () => ChatApp.Controller.loadChat(chat.id));
                 item.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -213,7 +268,7 @@ const ChatApp = {
                     if (file.type.startsWith('image/')) {
                         contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
                     } else if (file.type.startsWith('video/')) {
-                        contentHTML = `<video src="${file.data}" class="attachment-media" controls title="${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
+                        contentHTML = `<video src="${file.data}" class="attachment-media" controls data-tooltip="${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
                     }
                 }
 
@@ -234,15 +289,22 @@ const ChatApp = {
                 previewItem.className = 'file-preview-item';
                 
                 const objectURL = URL.createObjectURL(file);
-                let previewContent = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
+                let previewContent = '';
                 
                 if (file.type.startsWith('image/')) {
                     previewContent = `<img src="${objectURL}" alt="Preview of ${ChatApp.Utils.escapeHTML(file.name)}">`;
                 } else if (file.type.startsWith('video/')) {
-                    previewContent = `<video src="${objectURL}" autoplay muted loop playsinline title="Preview of ${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
+                    previewContent = `<video src="${objectURL}" autoplay muted loop playsinline data-tooltip="Preview of ${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
+                } else {
+                    previewItem.classList.add('generic');
+                    const extension = file.name.split('.').pop() || 'file';
+                    previewContent = `
+                        ${ChatApp.Config.ICONS.DOCUMENT}
+                        <span class="file-preview-extension">${ChatApp.Utils.escapeHTML(extension.substring(0, 4))}</span>
+                    `;
                 }
 
-                previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" title="Remove file" type="button">&times;</button>`;
+                previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" data-tooltip="Remove file" type="button">&times;</button>`;
                 previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => { ChatApp.Controller.removeAttachedFile(index); });
                 this.elements.filePreviewsContainer.appendChild(previewItem);
             });
@@ -351,7 +413,7 @@ const ChatApp = {
             });
             html = html.replace(new RegExp('\\[IMAGE: (.*?)\\]\\((.*?)\\)', 'g'), (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
-                return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" title="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
+                return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
             });
             html = html.replace(new RegExp('^### (.*$)', 'gim'), '<h3>$1</h3>').replace(new RegExp('^## (.*$)', 'gim'), '<h2>$1</h2>').replace(new RegExp('^# (.*$)', 'gim'), '<h1>$1</h1>');
             html = html.replace(new RegExp('^(> (.*)\n?)+', 'gm'), (match) => `<blockquote><p>${match.replace(new RegExp('^> ', 'gm'), '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
@@ -376,7 +438,7 @@ const ChatApp = {
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
-                copyBtn.className = 'copy-button'; copyBtn.title = 'Copy message text'; copyBtn.innerHTML = COPY;
+                copyBtn.className = 'copy-button'; copyBtn.setAttribute('data-tooltip', 'Copy message text'); copyBtn.innerHTML = COPY;
                 copyBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(rawText).then(() => { copyBtn.innerHTML = CHECK; this.showToast('Message copied!'); setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000); }); });
                 messageEl.appendChild(copyBtn);
             }
@@ -388,7 +450,7 @@ const ChatApp = {
 
                 if (wrapper.dataset.previewable) {
                     const openBtn = document.createElement('button');
-                    openBtn.className = 'open-new-tab-button'; openBtn.title = 'Open in new tab'; openBtn.innerHTML = OPEN_NEW_TAB;
+                    openBtn.className = 'open-new-tab-button'; openBtn.setAttribute('data-tooltip', 'Open in new tab'); openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
@@ -405,7 +467,7 @@ const ChatApp = {
 
                 const downloadBtn = document.createElement('button');
                 downloadBtn.className = 'download-code-button';
-                downloadBtn.title = 'Download snippet';
+                downloadBtn.setAttribute('data-tooltip', 'Download snippet');
                 downloadBtn.innerHTML = DOWNLOAD;
                 downloadBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
@@ -435,7 +497,7 @@ const ChatApp = {
 
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button';
-                copyCodeBtn.title = 'Copy code';
+                copyCodeBtn.setAttribute('data-tooltip', 'Copy code');
                 copyCodeBtn.innerHTML = COPY;
                 copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; this.showToast('Code copied!'); setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
                 actionsContainer.appendChild(copyCodeBtn);
@@ -606,6 +668,7 @@ You have custom commands that users can use, and you must follow them.
     Controller: {
         init() {
             ChatApp.UI.cacheElements();
+            ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
             ChatApp.UI.renderSidebar();
@@ -630,6 +693,29 @@ You have custom commands that users can use, and you must follow them.
             elements.fullscreenCloseBtn.addEventListener('click', Controller.closeFullscreenPreview.bind(Controller));
             elements.fullscreenOverlay.addEventListener('click', (e) => { if (e.target === elements.fullscreenOverlay) { Controller.closeFullscreenPreview(); } });
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) { Controller.closeFullscreenPreview(); } });
+
+            // Drag and Drop Listeners
+            elements.body.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                elements.body.classList.add('drag-over');
+            });
+            elements.body.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) {
+                    elements.body.classList.remove('drag-over');
+                }
+            });
+            elements.body.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                elements.body.classList.remove('drag-over');
+                const files = e.dataTransfer?.files;
+                if (files && files.length > 0) {
+                    Controller.addFilesToState(files);
+                }
+            });
         },
         startNewChat() {
             ChatApp.State.resetCurrentChat();
