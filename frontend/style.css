@@ -744,7 +744,8 @@ body.sidebar-open .open-icon { display: none; }
     display: flex;
     align-items: center;
     justify-content: center;
-    opacity: 0.7;
+    opacity: 0; /* Hidden by default */
+    visibility: hidden;
     cursor: pointer;
     color: white;
     background: rgba(0,0,0,0.5);
@@ -752,7 +753,14 @@ body.sidebar-open .open-icon { display: none; }
     border-radius: 50%;
     font-size: 14px;
     line-height: 1;
-    transition: opacity 0.2s, background-color 0.2s;
+    transform: scale(0.8);
+    transition: opacity 0.2s, background-color 0.2s, transform 0.2s, visibility 0s 0.2s;
+}
+.file-preview-item:hover .remove-preview-btn {
+    opacity: 0.7; /* Show on parent hover */
+    visibility: visible;
+    transform: scale(1);
+    transition-delay: 0s;
 }
 .remove-preview-btn:hover {
     opacity: 1;
