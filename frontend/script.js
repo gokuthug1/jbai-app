@@ -31,7 +31,6 @@ const ChatApp = {
             OPEN_NEW_TAB: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`,
             DOWNLOAD: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
             DOCUMENT: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`,
-            // NEW ICONS for specific file types
             HTML: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`,
             CSS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline><line x1="12" y1="2" x2="12" y2="22"></line></svg>`,
             JS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18h2a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2v12z"></path><path d="M8 12h2a2 2 0 1 0 0-4H8v4z"></path><path d="M6 18V6"></path></svg>`,
@@ -301,7 +300,6 @@ const ChatApp = {
                 } else if (file.type.startsWith('video/')) {
                     previewContent = `<video src="${objectURL}" autoplay muted loop playsinline data-tooltip="Preview of ${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
                 } else {
-                    // UPDATED LOGIC for generic/code files
                     previewItem.classList.add('generic');
                     const extension = file.name.split('.').pop()?.toLowerCase() || 'file';
                     
@@ -374,7 +372,6 @@ const ChatApp = {
         _formatMessageContent(text) {
             if (!text) return '';
             const trimmedText = text.trim();
-            // FIX: Made the regex more flexible to handle variations in AI output (e.g., missing final newline).
             const htmlBlockRegex = /^```html\s*\r?\n([\s\S]*?)\s*```\s*$/;
             const htmlMatch = trimmedText.match(htmlBlockRegex);
 
@@ -447,7 +444,7 @@ const ChatApp = {
                 return isBlockElement ? line : `<p>${line}</p>`;
             }).join('\n');
         },
-        _addMessageAndCodeActions(messageEl, rawText) { // Updated to use toasts
+        _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
             const { COPY, CHECK, OPEN_NEW_TAB, DOWNLOAD } = ChatApp.Config.ICONS;
@@ -617,6 +614,7 @@ You have custom commands that users can use, and you must follow them.
                 return "Titled Chat";
             }
         },
+        // CHANGED: Updated retry logic
         async fetchTextResponse(apiContents, systemInstruction) {
             const maxRetries = 3;
             let lastError = null;
@@ -636,6 +634,11 @@ You have custom commands that users can use, and you must follow them.
                         return botResponseText;
                     }
         
+                    // NEW: Immediately fail on 500 errors without retrying
+                    if (response.status === 500) {
+                        throw new Error("API Error: 500");
+                    }
+        
                     if (response.status >= 400 && response.status < 500) {
                         const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
                         throw new Error(`API Error: ${response.status} ${errorText}`);
@@ -645,6 +648,10 @@ You have custom commands that users can use, and you must follow them.
                     console.warn(`Attempt ${attempt + 1} failed: ${lastError.message}. Retrying...`);
                 } catch (error) {
                     lastError = error;
+                    // NEW: If it's a 500 error, we don't want to retry, so we re-throw it to exit the loop.
+                    if (error.message.includes("API Error: 500")) {
+                        throw lastError;
+                    }
                     console.warn(`Attempt ${attempt + 1} failed with a network error: ${error.message}. Retrying...`);
                 }
                 if (attempt < maxRetries - 1) await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
@@ -810,13 +817,12 @@ You have custom commands that users can use, and you must follow them.
             const files = event.clipboardData?.files;
             if (!files || files.length === 0) return;
         
-            // Filter for only files we can handle (images/videos)
             const filesToProcess = Array.from(files).filter(file => 
                 file.type.startsWith('image/') || file.type.startsWith('video/')
             );
         
             if (filesToProcess.length > 0) {
-                event.preventDefault(); // Prevent default paste action (e.g., pasting file path as text)
+                event.preventDefault();
                 this.addFilesToState(filesToProcess);
                 ChatApp.UI.showToast(`${filesToProcess.length} file(s) pasted.`);
             }
@@ -829,6 +835,7 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.State.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
         },
+        // CHANGED: Updated error handling
         async _generateText() {
             const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null }, true);
             try {
@@ -844,12 +851,18 @@ You have custom commands that users can use, and you must follow them.
             } catch (error) {
                 console.error("Text generation failed:", error);
                 thinkingMessageEl.remove();
-                const errorMessage = `Sorry, an error occurred: ${error.message}`;
-                const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: errorMessage }] } };
+
+                // NEW: Create a user-friendly error message
+                const userFriendlyMessage = error.message.includes("API Error: 500")
+                    ? "Sorry, the server encountered an internal error. Please try again later."
+                    : `Sorry, an error occurred: ${error.message}`;
+
+                // Display the error message in the UI temporarily, but don't save it to history
+                const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: userFriendlyMessage }] } };
                 ChatApp.UI.renderMessage(errorBotMessage);
-                this.completeGeneration(errorBotMessage);
-                ChatApp.UI.showToast(error.message, 'error');
-                ChatApp.State.setGenerating(false);
+                
+                ChatApp.UI.showToast(userFriendlyMessage, 'error');
+                ChatApp.State.setGenerating(false); // Allow the user to try again
             }
         },
         async processResponseForImages(rawText) {
