@@ -20,6 +20,7 @@ const ChatApp = {
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
+            CUSTOM_BACKGROUND: 'jbai_custom_background', // NEW
         },
         DEFAULT_THEME: 'light',
         TYPING_SPEED_MS: 0, // Milliseconds per character
@@ -34,7 +35,8 @@ const ChatApp = {
             HTML: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`,
             CSS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline><line x1="12" y1="2" x2="12" y2="22"></line></svg>`,
             JS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18h2a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2v12z"></path><path d="M8 12h2a2 2 0 1 0 0-4H8v4z"></path><path d="M6 18V6"></path></svg>`,
-            SVG: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m14.31 8 5.74 9.94M9.69 8h11.48M12 2.25 2.25 18H21.75L12 2.25z"></path></svg>`
+            SVG: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m14.31 8 5.74 9.94M9.69 8h11.48M12 2.25 2.25 18H21.75L12 2.25z"></path></svg>`,
+            CHEVRON_DOWN: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`
         }
     },
 
@@ -105,6 +107,9 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
+        saveCustomBackground(url) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND, url); },
+        getCustomBackground() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND); },
+        removeCustomBackground() { localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND); }
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -187,6 +192,15 @@ const ChatApp = {
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
+        },
+        applyCustomBackground(url) {
+            if (url) {
+                document.documentElement.style.setProperty('--custom-bg-image', `url('${url}')`);
+                ChatApp.Store.saveCustomBackground(url);
+            } else {
+                document.documentElement.style.removeProperty('--custom-bg-image');
+                ChatApp.Store.removeCustomBackground();
+            }
         },
         showToast(message, type = 'info') {
             const toast = document.createElement('div');
@@ -384,9 +398,9 @@ const ChatApp = {
                         <h4>Live Preview</h4>
                         <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div>
                         <h4>HTML Code</h4>
-                        <div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
+                        <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
                             <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                            <pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre>
+                            <div class="collapsible-content"><pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre></div>
                         </div>
                     </div>`;
             }
@@ -398,9 +412,9 @@ const ChatApp = {
                         <h4>SVG Preview</h4>
                         <div class="svg-render-box">${rawSvgCode}</div>
                         <h4>SVG Code</h4>
-                        <div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
+                        <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
                            <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                           <pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre>
+                           <div class="collapsible-content"><pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre></div>
                         </div>
                     </div>`;
             }
@@ -419,9 +433,9 @@ const ChatApp = {
                 const { lang, rawCode } = codeBlocks[id];
                 const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
                 return `
-                    <div class="code-block-wrapper">
+                    <div class="code-block-wrapper is-collapsible is-collapsed">
                         <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                        <pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre>
+                        <div class="collapsible-content"><pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre></div>
                     </div>`;
             });
             html = html.replace(new RegExp('\\[IMAGE: (.*?)\\]\\((.*?)\\)', 'g'), (match, alt, url) => {
@@ -447,7 +461,7 @@ const ChatApp = {
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
-            const { COPY, CHECK, OPEN_NEW_TAB, DOWNLOAD } = ChatApp.Config.ICONS;
+            const { COPY, CHECK, OPEN_NEW_TAB, DOWNLOAD, CHEVRON_DOWN } = ChatApp.Config.ICONS;
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
@@ -514,6 +528,14 @@ const ChatApp = {
                 copyCodeBtn.innerHTML = COPY;
                 copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; this.showToast('Code copied!'); setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
                 actionsContainer.appendChild(copyCodeBtn);
+
+                if (wrapper.classList.contains('is-collapsible')) {
+                    const collapseBtn = document.createElement('button');
+                    collapseBtn.className = 'collapse-toggle-button';
+                    collapseBtn.setAttribute('data-tooltip', 'Show/Hide Code');
+                    collapseBtn.innerHTML = CHEVRON_DOWN;
+                    actionsContainer.appendChild(collapseBtn);
+                }
             });
         },
         renderSettingsModal() {
@@ -532,7 +554,17 @@ const ChatApp = {
                     </select>
                 </div>
                 <hr>
-                <div class="data-actions">
+                <h3>Custom Background</h3>
+                <div class="settings-group">
+                    <input type="url" id="bg-url-input" placeholder="Paste image URL...">
+                    <button id="apply-bg-url-btn" type="button">Apply from URL</button>
+                    <button id="upload-bg-btn" type="button">Upload Image</button>
+                    <button id="remove-bg-btn" type="button" class="btn-danger">Remove Background</button>
+                    <input type="file" id="bg-file-input" hidden accept="image/*">
+                </div>
+                <hr>
+                <h3>Data Management</h3>
+                <div class="settings-group">
                     <button id="upload-data-btn" type="button">Import Data</button>
                     <button id="merge-data-btn" type="button">Merge Data</button>
                     <button id="download-data-btn" type="button">Export Data</button>
@@ -545,6 +577,14 @@ const ChatApp = {
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
+            
+            // Background handlers
+            overlay.querySelector('#apply-bg-url-btn').addEventListener('click', ChatApp.Controller.handleBackgroundUrl);
+            overlay.querySelector('#upload-bg-btn').addEventListener('click', () => overlay.querySelector('#bg-file-input').click());
+            overlay.querySelector('#bg-file-input').addEventListener('change', ChatApp.Controller.handleBackgroundUpload);
+            overlay.querySelector('#remove-bg-btn').addEventListener('click', () => this.applyCustomBackground(null));
+
+            // Data handlers
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
@@ -614,7 +654,6 @@ You have custom commands that users can use, and you must follow them.
                 return "Titled Chat";
             }
         },
-        // CHANGED: Updated retry logic
         async fetchTextResponse(apiContents, systemInstruction) {
             const maxRetries = 3;
             let lastError = null;
@@ -634,7 +673,6 @@ You have custom commands that users can use, and you must follow them.
                         return botResponseText;
                     }
         
-                    // NEW: Immediately fail on 500 errors without retrying
                     if (response.status === 500) {
                         throw new Error("API Error: 500");
                     }
@@ -648,7 +686,6 @@ You have custom commands that users can use, and you must follow them.
                     console.warn(`Attempt ${attempt + 1} failed: ${lastError.message}. Retrying...`);
                 } catch (error) {
                     lastError = error;
-                    // NEW: If it's a 500 error, we don't want to retry, so we re-throw it to exit the loop.
                     if (error.message.includes("API Error: 500")) {
                         throw lastError;
                     }
@@ -693,6 +730,7 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
+            ChatApp.UI.applyCustomBackground(ChatApp.Store.getCustomBackground()); // NEW
             ChatApp.Store.loadAllConversations();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
@@ -712,7 +750,7 @@ You have custom commands that users can use, and you must follow them.
             elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
             elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
-            elements.messageArea.addEventListener('click', Controller.handlePreviewClick.bind(Controller));
+            elements.messageArea.addEventListener('click', Controller.handleMessageAreaClick.bind(Controller));
             elements.fullscreenCloseBtn.addEventListener('click', Controller.closeFullscreenPreview.bind(Controller));
             elements.fullscreenOverlay.addEventListener('click', (e) => { if (e.target === elements.fullscreenOverlay) { Controller.closeFullscreenPreview(); } });
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) { Controller.closeFullscreenPreview(); } });
@@ -835,7 +873,6 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.State.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
         },
-        // CHANGED: Updated error handling
         async _generateText() {
             const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null }, true);
             try {
@@ -852,12 +889,10 @@ You have custom commands that users can use, and you must follow them.
                 console.error("Text generation failed:", error);
                 thinkingMessageEl.remove();
 
-                // NEW: Create a user-friendly error message
                 const userFriendlyMessage = error.message.includes("API Error: 500")
                     ? "Sorry, the server encountered an internal error. Please try again later."
                     : `Sorry, an error occurred: ${error.message}`;
 
-                // Display the error message in the UI temporarily, but don't save it to history
                 const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: userFriendlyMessage }] } };
                 ChatApp.UI.renderMessage(errorBotMessage);
                 
@@ -1032,12 +1067,24 @@ You have custom commands that users can use, and you must follow them.
             if (confirm('DANGER: This will delete ALL conversations and settings permanently. Are you sure?')) {
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
+                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND); // NEW
                 ChatApp.State.allConversations = [];
                 ChatApp.UI.showToast('All data deleted. Reloading...', 'error');
                 setTimeout(() => location.reload(), 1500);
             }
         },
-        handlePreviewClick(event) {
+        handleMessageAreaClick(event) {
+            // Handle code block collapse toggle
+            const toggleBtn = event.target.closest('.collapse-toggle-button');
+            if (toggleBtn) {
+                const wrapper = toggleBtn.closest('.code-block-wrapper');
+                if (wrapper) {
+                    wrapper.classList.toggle('is-collapsed');
+                }
+                return; // Prevent other click actions
+            }
+
+            // Handle preview clicks
             const image = event.target.closest('.generated-image, .attachment-media');
             const svgBox = event.target.closest('.svg-render-box');
             const htmlBox = event.target.closest('.html-render-box');
@@ -1058,6 +1105,29 @@ You have custom commands that users can use, and you must follow them.
             fullscreenOverlay.style.display = 'none';
             fullscreenContent.innerHTML = '';
             body.classList.remove('modal-open');
+        },
+        handleBackgroundUrl() {
+            const urlInput = document.getElementById('bg-url-input');
+            const url = urlInput.value.trim();
+            if (url) {
+                ChatApp.UI.applyCustomBackground(url);
+                ChatApp.UI.showToast('Background updated.');
+            } else {
+                ChatApp.UI.showToast('Please enter a valid URL.', 'error');
+            }
+        },
+        handleBackgroundUpload(event) {
+            const file = event.target.files[0];
+            if (!file || !file.type.startsWith('image/')) {
+                ChatApp.UI.showToast('Please select a valid image file.', 'error');
+                return;
+            }
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                ChatApp.UI.applyCustomBackground(e.target.result);
+                ChatApp.UI.showToast('Background updated.');
+            };
+            reader.readAsDataURL(file);
         }
     }
 };
