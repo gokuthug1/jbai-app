@@ -179,6 +179,20 @@ body {
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* NEW: Custom Background Pseudo-element */
+body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background-image: var(--custom-bg-image);
+    background-size: cover;
+    background-position: center;
+    opacity: 0.1;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+}
+
 body.modal-open {
     overflow: hidden;
 }
@@ -443,6 +457,7 @@ body.sidebar-open .open-icon { display: none; }
     cursor: default;
     background-color: var(--message-bot-bg);
     border-radius: 16px;
+    min-width: 0; /* FIX: Prevents flex items from overflowing */
 }
 .message.user .message-content {
     background-color: var(--message-user-bg);
@@ -464,7 +479,7 @@ body.sidebar-open .open-icon { display: none; }
     margin-bottom: 0;
 }
 
-/* NEW: Message Formatting Styles */
+/* Message Formatting Styles */
 .message-content blockquote {
     padding: 10px 15px;
     margin: 8px 0;
@@ -491,7 +506,7 @@ body.sidebar-open .open-icon { display: none; }
     color: var(--text-secondary);
 }
 
-/* NEW: HTML & SVG Preview Styles */
+/* HTML & SVG Preview Styles */
 .html-preview-container,
 .svg-preview-container {
     padding-top: 8px; /* Give some space from the top of the bubble */
@@ -518,6 +533,7 @@ body.sidebar-open .open-icon { display: none; }
     border-radius: 8px;
     overflow: hidden; /* To contain the iframe's border-radius */
     cursor: zoom-in;
+    max-width: 100%; /* FIX: Ensure it doesn't overflow */
 }
 .html-render-box iframe {
     width: 100%;
@@ -536,6 +552,7 @@ body.sidebar-open .open-icon { display: none; }
     align-items: center;
     min-height: 100px;
     cursor: zoom-in;
+    max-width: 100%; /* FIX: Ensure it doesn't overflow */
 }
 .svg-render-box svg {
     max-width: 100%;
@@ -640,7 +657,7 @@ body.sidebar-open .open-icon { display: none; }
 .copy-button svg { width: 16px; height: 16px; stroke: currentColor; }
 
 
-.copy-code-button, .open-new-tab-button, .download-code-button {
+.copy-code-button, .open-new-tab-button, .download-code-button, .collapse-toggle-button {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -652,14 +669,34 @@ body.sidebar-open .open-icon { display: none; }
     border-radius: 5px;
     transition: color 0.2s, background-color 0.2s;
 }
-.copy-code-button:hover, .open-new-tab-button:hover, .download-code-button:hover {
+.copy-code-button:hover, .open-new-tab-button:hover, .download-code-button:hover, .collapse-toggle-button:hover {
     color: var(--text-color);
     background: var(--sidebar-hover);
 }
-.copy-code-button svg, .open-new-tab-button svg, .download-code-button svg {
+.copy-code-button svg, .open-new-tab-button svg, .download-code-button svg, .collapse-toggle-button svg {
     width: 16px;
     height: 16px;
     stroke: currentColor;
+}
+
+/* NEW: Collapsible Code Block Styles */
+.collapsible-content {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.3s ease-in-out;
+}
+.code-block-wrapper:not(.is-collapsed) .collapsible-content {
+    grid-template-rows: 1fr;
+}
+.collapsible-content > pre {
+    overflow: hidden;
+    min-height: 0; /* Fix for grid animation */
+}
+.collapse-toggle-button svg {
+    transition: transform 0.3s ease;
+}
+.code-block-wrapper.is-collapsed .collapse-toggle-button svg {
+    transform: rotate(-90deg);
 }
 
 
@@ -920,7 +957,7 @@ textarea:focus-visible {
 
 .settings-card {
     width: 90%;
-    max-width: 350px;
+    max-width: 400px; /* Increased width for new options */
     padding: 25px;
     text-align: left;
     color: var(--text-color);
@@ -929,9 +966,15 @@ textarea:focus-visible {
     box-shadow: 0 4px 20px var(--modal-shadow);
     animation: slideIn 0.3s ease-out;
 }
-.settings-card h2 {
+.settings-card h2, .settings-card h3 {
     margin-top: 0;
     font-size: 20px;
+}
+.settings-card h3 {
+    font-size: 16px;
+    margin-top: 25px;
+    margin-bottom: 10px;
+    color: var(--text-secondary);
 }
 .settings-card hr {
     margin: 25px 0;
@@ -943,6 +986,21 @@ textarea:focus-visible {
     align-items: center;
     justify-content: space-between;
     margin: 20px 0;
+}
+/* NEW: Vertical settings group */
+.settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.settings-group input {
+    width: 100%;
+    padding: 8px;
+    color: var(--text-color);
+    background: var(--input-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
 }
 
 /* --- 4.2 Form Elements --- */
