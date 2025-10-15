@@ -20,8 +20,6 @@ const ChatApp = {
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
-            CUSTOM_BACKGROUND: 'jbai_custom_background', // For URLs
-            CUSTOM_BACKGROUND_BLOB: 'jbai_custom_background_blob', // For IndexedDB key
         },
         DEFAULT_THEME: 'light',
         TYPING_SPEED_MS: 0, // Milliseconds per character
@@ -94,63 +92,6 @@ const ChatApp = {
         generateUUID() { return crypto.randomUUID(); }
     },
 
-    // --- IndexedDB Module ---
-    DB: {
-        db: null,
-        DB_NAME: 'JBAI_DB',
-        STORE_NAME: 'user_files',
-        init() {
-            return new Promise((resolve, reject) => {
-                if (this.db) return resolve(this.db);
-                const request = indexedDB.open(this.DB_NAME, 1);
-                request.onupgradeneeded = (event) => {
-                    const db = event.target.result;
-                    if (!db.objectStoreNames.contains(this.STORE_NAME)) {
-                        db.createObjectStore(this.STORE_NAME);
-                    }
-                };
-                request.onsuccess = (event) => {
-                    this.db = event.target.result;
-                    resolve(this.db);
-                };
-                request.onerror = (event) => {
-                    console.error("IndexedDB error:", event.target.error);
-                    reject(event.target.error);
-                };
-            });
-        },
-        async set(key, value) {
-            const db = await this.init();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(this.STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(this.STORE_NAME);
-                const request = store.put(value, key);
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject(request.error);
-            });
-        },
-        async get(key) {
-            const db = await this.init();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(this.STORE_NAME, 'readonly');
-                const store = transaction.objectStore(this.STORE_NAME);
-                const request = store.get(key);
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
-            });
-        },
-        async delete(key) {
-            const db = await this.init();
-            return new Promise((resolve, reject) => {
-                const transaction = db.transaction(this.STORE_NAME, 'readwrite');
-                const store = transaction.objectStore(this.STORE_NAME);
-                const request = store.delete(key);
-                request.onsuccess = () => resolve();
-                request.onerror = () => reject(request.error);
-            });
-        }
-    },
-
     // --- Local Storage Module ---
     Store: {
         saveAllConversations() { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations)); },
@@ -165,32 +106,6 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
-        async saveCustomBackground(value) {
-            if (typeof value === 'string') { // It's a URL
-                localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND, value);
-                await ChatApp.DB.delete(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB).catch(e => console.error("DB delete failed", e));
-            } else if (value instanceof Blob) { // It's an uploaded file
-                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND);
-                await ChatApp.DB.set(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB, value).catch(e => console.error("DB set failed", e));
-            }
-        },
-        async getCustomBackground() {
-            const url = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND);
-            if (url) return url;
-            try {
-                const blob = await ChatApp.DB.get(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB);
-                if (blob instanceof Blob) {
-                    return URL.createObjectURL(blob);
-                }
-            } catch (e) {
-                console.error("Failed to get background from DB", e);
-            }
-            return null;
-        },
-        async removeCustomBackground() {
-            localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND);
-            await ChatApp.DB.delete(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB).catch(e => console.error("DB delete failed", e));
-        }
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -273,16 +188,6 @@ const ChatApp = {
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
-        },
-        async applyCustomBackground(value) {
-            if (value) {
-                const displayUrl = (value instanceof Blob) ? URL.createObjectURL(value) : value;
-                document.documentElement.style.setProperty('--custom-bg-image', `url('${displayUrl}')`);
-                await ChatApp.Store.saveCustomBackground(value);
-            } else {
-                document.documentElement.style.removeProperty('--custom-bg-image');
-                await ChatApp.Store.removeCustomBackground();
-            }
         },
         showToast(message, type = 'info') {
             const toast = document.createElement('div');
@@ -467,59 +372,72 @@ const ChatApp = {
         },
         _formatMessageContent(text) {
             if (!text) return '';
-            const trimmedText = text.trim();
-            const htmlBlockRegex = /^```html\s*\r?\n([\s\S]*?)\s*```\s*$/;
-            const htmlMatch = trimmedText.match(htmlBlockRegex);
-
-            if (htmlMatch) {
-                const rawHtmlCode = htmlMatch[1].trim();
-                const safeHtmlForSrcdoc = rawHtmlCode.replace(/"/g, '&quot;');
-                const escapedHtmlCode = ChatApp.Utils.escapeHTML(rawHtmlCode);
-                return `
-                    <div class="html-preview-container">
-                        <h4>Live Preview</h4>
-                        <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div>
-                        <h4>HTML Code</h4>
-                        <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(rawHtmlCode)}">
-                            <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                            <div class="collapsible-content"><pre data-raw-code="${escapedHtmlCode}"><code class="language-html">${escapedHtmlCode}</code></pre></div>
-                        </div>
-                    </div>`;
-            }
-            if (trimmedText.startsWith('<svg') && trimmedText.endsWith('</svg>')) {
-                const rawSvgCode = trimmedText;
-                const escapedSvgCode = ChatApp.Utils.escapeHTML(rawSvgCode);
-                return `
-                    <div class="svg-preview-container">
-                        <h4>SVG Preview</h4>
-                        <div class="svg-render-box">${rawSvgCode}</div>
-                        <h4>SVG Code</h4>
-                        <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(rawSvgCode)}">
-                           <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                           <div class="collapsible-content"><pre data-raw-code="${escapedSvgCode}"><code class="language-xml">${escapedSvgCode}</code></pre></div>
-                        </div>
-                    </div>`;
-            }
+        
             let processedText = text;
-            const codeBlocks = [];
-            processedText = processedText.replace(new RegExp('```(\\w+)?\\n([\\s\\S]*?)```', 'g'), (match, lang, code) => {
-                const rawCode = code.trim();
-                const id = codeBlocks.length;
-                codeBlocks.push({ lang: lang || 'plaintext', rawCode });
-                return `__CODE_BLOCK_${id}__`;
+            const blocks = [];
+        
+            // Step 1: Extract all code blocks and replace with placeholders.
+            processedText = processedText.replace(/```(\w+)?\s*\r?\n([\s\S]*?)\s*```/g, (match, lang, code) => {
+                const id = blocks.length;
+                blocks.push({
+                    type: lang === 'html' ? 'html' : 'code',
+                    lang: lang || 'plaintext',
+                    content: code.trim()
+                });
+                return `__BLOCK_PLACEHOLDER_${id}__`;
             });
-
-            let html = ChatApp.Utils.escapeHTML(processedText);
             
-            html = html.replace(new RegExp('__CODE_BLOCK_(\\d+)__', 'g'), (match, id) => {
-                const { lang, rawCode } = codeBlocks[id];
-                const escapedRawCode = ChatApp.Utils.escapeHTML(rawCode);
-                return `
-                    <div class="code-block-wrapper is-collapsible is-collapsed">
-                        <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                        <div class="collapsible-content"><pre data-raw-code="${escapedRawCode}"><code class="language-${lang}">${escapedRawCode}</code></pre></div>
-                    </div>`;
+            // Step 2: Extract standalone SVG and replace with a placeholder.
+            processedText = processedText.replace(/^(<svg[\s\S]*?<\/svg>)$/gm, (match, svgContent) => {
+                const id = blocks.length;
+                blocks.push({
+                    type: 'svg',
+                    content: svgContent.trim()
+                });
+                return `__BLOCK_PLACEHOLDER_${id}__`;
             });
+        
+            // Step 3: Process the remaining text for standard markdown.
+            let html = ChatApp.Utils.escapeHTML(processedText);
+        
+            // Step 4: Re-insert the rendered blocks into the HTML.
+            html = html.replace(/__BLOCK_PLACEHOLDER_(\d+)__/g, (match, id) => {
+                const block = blocks[id];
+                const escapedContent = ChatApp.Utils.escapeHTML(block.content);
+        
+                if (block.type === 'html') {
+                    const safeHtmlForSrcdoc = block.content.replace(/"/g, '&quot;');
+                    return `
+                        <div class="html-preview-container">
+                            <h4>Live Preview</h4>
+                            <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div>
+                            <h4>HTML Code</h4>
+                            <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}">
+                                <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
+                                <div class="collapsible-content"><pre data-raw-code="${escapedContent}"><code class="language-html">${escapedContent}</code></pre></div>
+                            </div>
+                        </div>`;
+                } else if (block.type === 'svg') {
+                     return `
+                        <div class="svg-preview-container">
+                            <h4>SVG Preview</h4>
+                            <div class="svg-render-box">${block.content}</div>
+                            <h4>SVG Code</h4>
+                            <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}">
+                               <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
+                               <div class="collapsible-content"><pre data-raw-code="${escapedContent}"><code class="language-xml">${escapedContent}</code></pre></div>
+                            </div>
+                        </div>`;
+                } else { // Generic code block
+                    return `
+                        <div class="code-block-wrapper is-collapsible is-collapsed">
+                            <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
+                            <div class="collapsible-content"><pre data-raw-code="${escapedContent}"><code class="language-${block.lang}">${escapedContent}</code></pre></div>
+                        </div>`;
+                }
+            });
+        
+            // Step 5: Process standard markdown on the entire block.
             html = html.replace(new RegExp('\\[IMAGE: (.*?)\\]\\((.*?)\\)', 'g'), (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
                 return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
@@ -533,12 +451,14 @@ const ChatApp = {
             html = html.replace(new RegExp('\\*\\*(.*?)\\*\\*', 'g'), '<strong>$1</strong>').replace(new RegExp('__(.*?)__', 'g'), '<strong>$1</strong>');
             html = html.replace(new RegExp('\\*(.*?)\\*', 'g'), '<em>$1</em>').replace(new RegExp('_(.*?)_', 'g'), '<em>$1</em>');
             html = html.replace(new RegExp('~~(.*?)~~', 'g'), '<s>$1</s>');
+        
+            // Step 6: Wrap remaining lines in <p> tags.
             return html.split('\n').map(line => {
                 const trimmed = line.trim();
                 if (trimmed === '') return '';
-                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div)|\[IMAGE:)/.test(trimmed);
+                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div))/.test(trimmed);
                 return isBlockElement ? line : `<p>${line}</p>`;
-            }).join('\n');
+            }).join('\n').replace(/<p><\/p>/g, '');
         },
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
@@ -636,15 +556,6 @@ const ChatApp = {
                     </select>
                 </div>
                 <hr>
-                <h3>Custom Background</h3>
-                <div class="settings-group">
-                    <input type="url" id="bg-url-input" placeholder="Paste image URL...">
-                    <button id="apply-bg-url-btn" type="button">Apply from URL</button>
-                    <button id="upload-bg-btn" type="button">Upload Image</button>
-                    <button id="remove-bg-btn" type="button" class="btn-danger">Remove Background</button>
-                    <input type="file" id="bg-file-input" hidden accept="image/*">
-                </div>
-                <hr>
                 <h3>Data Management</h3>
                 <div class="settings-group">
                     <button id="upload-data-btn" type="button">Import Data</button>
@@ -660,12 +571,6 @@ const ChatApp = {
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
             
-            // Background handlers
-            overlay.querySelector('#apply-bg-url-btn').addEventListener('click', ChatApp.Controller.handleBackgroundUrl);
-            overlay.querySelector('#upload-bg-btn').addEventListener('click', () => overlay.querySelector('#bg-file-input').click());
-            overlay.querySelector('#bg-file-input').addEventListener('change', ChatApp.Controller.handleBackgroundUpload);
-            overlay.querySelector('#remove-bg-btn').addEventListener('click', () => this.applyCustomBackground(null));
-
             // Data handlers
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
@@ -808,16 +713,10 @@ You have custom commands that users can use, and you must follow them.
     
     // --- Controller Module (Application Logic) ---
     Controller: {
-        async init() {
+        init() {
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
-            
-            const bgValue = await ChatApp.Store.getCustomBackground();
-            if (bgValue) {
-                document.documentElement.style.setProperty('--custom-bg-image', `url('${bgValue}')`);
-            }
-
             ChatApp.Store.loadAllConversations();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
@@ -1150,11 +1049,10 @@ You have custom commands that users can use, and you must follow them.
             };
             fileInput.click();
         },
-        async deleteAllData() {
+        deleteAllData() {
             if (confirm('DANGER: This will delete ALL conversations and settings permanently. Are you sure?')) {
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
-                await ChatApp.Store.removeCustomBackground();
                 ChatApp.State.allConversations = [];
                 ChatApp.UI.showToast('All data deleted. Reloading...', 'error');
                 setTimeout(() => location.reload(), 1500);
@@ -1193,25 +1091,6 @@ You have custom commands that users can use, and you must follow them.
             fullscreenContent.innerHTML = '';
             body.classList.remove('modal-open');
         },
-        handleBackgroundUrl() {
-            const urlInput = document.getElementById('bg-url-input');
-            const url = urlInput.value.trim();
-            if (url) {
-                ChatApp.UI.applyCustomBackground(url);
-                ChatApp.UI.showToast('Background updated.');
-            } else {
-                ChatApp.UI.showToast('Please enter a valid URL.', 'error');
-            }
-        },
-        handleBackgroundUpload(event) {
-            const file = event.target.files[0];
-            if (!file || !file.type.startsWith('image/')) {
-                ChatApp.UI.showToast('Please select a valid image file.', 'error');
-                return;
-            }
-            ChatApp.UI.applyCustomBackground(file);
-            ChatApp.UI.showToast('Background updated.');
-        }
     }
 };
 
