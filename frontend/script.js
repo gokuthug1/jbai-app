@@ -20,7 +20,8 @@ const ChatApp = {
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
-            CUSTOM_BACKGROUND: 'jbai_custom_background', // NEW
+            CUSTOM_BACKGROUND: 'jbai_custom_background', // For URLs
+            CUSTOM_BACKGROUND_BLOB: 'jbai_custom_background_blob', // For IndexedDB key
         },
         DEFAULT_THEME: 'light',
         TYPING_SPEED_MS: 0, // Milliseconds per character
@@ -93,6 +94,63 @@ const ChatApp = {
         generateUUID() { return crypto.randomUUID(); }
     },
 
+    // --- IndexedDB Module ---
+    DB: {
+        db: null,
+        DB_NAME: 'JBAI_DB',
+        STORE_NAME: 'user_files',
+        init() {
+            return new Promise((resolve, reject) => {
+                if (this.db) return resolve(this.db);
+                const request = indexedDB.open(this.DB_NAME, 1);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(this.STORE_NAME)) {
+                        db.createObjectStore(this.STORE_NAME);
+                    }
+                };
+                request.onsuccess = (event) => {
+                    this.db = event.target.result;
+                    resolve(this.db);
+                };
+                request.onerror = (event) => {
+                    console.error("IndexedDB error:", event.target.error);
+                    reject(event.target.error);
+                };
+            });
+        },
+        async set(key, value) {
+            const db = await this.init();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(this.STORE_NAME, 'readwrite');
+                const store = transaction.objectStore(this.STORE_NAME);
+                const request = store.put(value, key);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        },
+        async get(key) {
+            const db = await this.init();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(this.STORE_NAME, 'readonly');
+                const store = transaction.objectStore(this.STORE_NAME);
+                const request = store.get(key);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        },
+        async delete(key) {
+            const db = await this.init();
+            return new Promise((resolve, reject) => {
+                const transaction = db.transaction(this.STORE_NAME, 'readwrite');
+                const store = transaction.objectStore(this.STORE_NAME);
+                const request = store.delete(key);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            });
+        }
+    },
+
     // --- Local Storage Module ---
     Store: {
         saveAllConversations() { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations)); },
@@ -107,9 +165,32 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
-        saveCustomBackground(url) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND, url); },
-        getCustomBackground() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND); },
-        removeCustomBackground() { localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND); }
+        async saveCustomBackground(value) {
+            if (typeof value === 'string') { // It's a URL
+                localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND, value);
+                await ChatApp.DB.delete(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB).catch(e => console.error("DB delete failed", e));
+            } else if (value instanceof Blob) { // It's an uploaded file
+                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND);
+                await ChatApp.DB.set(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB, value).catch(e => console.error("DB set failed", e));
+            }
+        },
+        async getCustomBackground() {
+            const url = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND);
+            if (url) return url;
+            try {
+                const blob = await ChatApp.DB.get(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB);
+                if (blob instanceof Blob) {
+                    return URL.createObjectURL(blob);
+                }
+            } catch (e) {
+                console.error("Failed to get background from DB", e);
+            }
+            return null;
+        },
+        async removeCustomBackground() {
+            localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND);
+            await ChatApp.DB.delete(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND_BLOB).catch(e => console.error("DB delete failed", e));
+        }
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -193,13 +274,14 @@ const ChatApp = {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
         },
-        applyCustomBackground(url) {
-            if (url) {
-                document.documentElement.style.setProperty('--custom-bg-image', `url('${url}')`);
-                ChatApp.Store.saveCustomBackground(url);
+        async applyCustomBackground(value) {
+            if (value) {
+                const displayUrl = (value instanceof Blob) ? URL.createObjectURL(value) : value;
+                document.documentElement.style.setProperty('--custom-bg-image', `url('${displayUrl}')`);
+                await ChatApp.Store.saveCustomBackground(value);
             } else {
                 document.documentElement.style.removeProperty('--custom-bg-image');
-                ChatApp.Store.removeCustomBackground();
+                await ChatApp.Store.removeCustomBackground();
             }
         },
         showToast(message, type = 'info') {
@@ -726,11 +808,16 @@ You have custom commands that users can use, and you must follow them.
     
     // --- Controller Module (Application Logic) ---
     Controller: {
-        init() {
+        async init() {
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
-            ChatApp.UI.applyCustomBackground(ChatApp.Store.getCustomBackground()); // NEW
+            
+            const bgValue = await ChatApp.Store.getCustomBackground();
+            if (bgValue) {
+                document.documentElement.style.setProperty('--custom-bg-image', `url('${bgValue}')`);
+            }
+
             ChatApp.Store.loadAllConversations();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
@@ -1063,11 +1150,11 @@ You have custom commands that users can use, and you must follow them.
             };
             fileInput.click();
         },
-        deleteAllData() {
+        async deleteAllData() {
             if (confirm('DANGER: This will delete ALL conversations and settings permanently. Are you sure?')) {
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
-                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_BACKGROUND); // NEW
+                await ChatApp.Store.removeCustomBackground();
                 ChatApp.State.allConversations = [];
                 ChatApp.UI.showToast('All data deleted. Reloading...', 'error');
                 setTimeout(() => location.reload(), 1500);
@@ -1122,12 +1209,8 @@ You have custom commands that users can use, and you must follow them.
                 ChatApp.UI.showToast('Please select a valid image file.', 'error');
                 return;
             }
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                ChatApp.UI.applyCustomBackground(e.target.result);
-                ChatApp.UI.showToast('Background updated.');
-            };
-            reader.readAsDataURL(file);
+            ChatApp.UI.applyCustomBackground(file);
+            ChatApp.UI.showToast('Background updated.');
         }
     }
 };
