@@ -83,7 +83,7 @@
     --switch-handle-bg: #e0e0e0;
     --danger-color: #f56565;
     --danger-bg: rgba(245, 101, 101, 0.15);
-    --focus-color: #4f4f4f;
+    --focus-color: #5897fb; /* Brighter blue for better visibility */
 }
 
 [data-theme="dracula"] {
@@ -233,7 +233,7 @@ body.sidebar-open .sidebar-backdrop {
     transition: margin-left 0.35s ease-in-out;
 }
 
-/* --- 2.3 Drag & Drop Overlay (NEW) --- */
+/* --- 2.3 Drag & Drop Overlay --- */
 body.drag-over::before {
     content: 'Drop Files Here';
     position: fixed;
@@ -342,6 +342,7 @@ body.sidebar-open .open-icon { display: none; }
     cursor: pointer;
     border: 1px solid transparent;
     border-radius: 6px;
+    outline: none; /* Remove default outline for custom focus */
     outline-offset: -2px; /* For focus style */
 }
 .conversation-item:hover {
@@ -369,15 +370,17 @@ body.sidebar-open .open-icon { display: none; }
     flex-shrink: 0;
     padding: 4px;
     opacity: 0;
+    visibility: hidden;
     cursor: pointer;
     color: var(--text-secondary);
     background: none;
     border: none;
     border-radius: 4px;
-    transition: opacity 0.2s, color 0.2s;
+    transition: opacity 0.2s, color 0.2s, visibility 0.2s;
 }
 .conversation-item:hover .delete-btn {
     opacity: 0.6;
+    visibility: visible;
 }
 .delete-btn:hover {
     opacity: 1;
@@ -385,6 +388,7 @@ body.sidebar-open .open-icon { display: none; }
 }
 .delete-btn:focus-visible {
     opacity: 1;
+    visibility: visible;
     outline: 2px solid var(--danger-color);
 }
 
@@ -455,13 +459,10 @@ body.sidebar-open .open-icon { display: none; }
 .message-content li {
     cursor: text;
 }
-.message.bot .message-content p:first-child,
-.message.bot .message-content h1:first-child,
-.message.bot .message-content h2:first-child,
-.message.bot .message-content h3:first-child {
+.message-content *:first-child {
     margin-top: 0;
 }
-.message.bot .message-content p:last-child {
+.message-content *:last-child {
     margin-bottom: 0;
 }
 
@@ -540,10 +541,10 @@ body.sidebar-open .open-icon { display: none; }
     cursor: zoom-in;
     max-width: 100%; /* FIX: Ensure it doesn't overflow */
 }
+.svg-render-box img, /* Using an img tag for SVG for security */
 .svg-render-box svg {
     max-width: 100%;
     max-height: 300px;
-    fill: currentColor; 
 }
 .html-preview-container pre,
 .svg-preview-container pre {
@@ -665,7 +666,7 @@ body.sidebar-open .open-icon { display: none; }
     stroke: currentColor;
 }
 
-/* NEW: Collapsible Code Block Styles */
+/* Collapsible Code Block Styles */
 .collapsible-content {
     display: grid;
     grid-template-rows: 0fr;
@@ -728,7 +729,7 @@ body.sidebar-open .open-icon { display: none; }
 .download-image-button:hover { background: rgba(0, 0, 0, 0.6); }
 .download-image-button svg { width: 18px; height: 18px; }
 
-/* --- 3.3 Chat Input Form (REFINED) --- */
+/* --- 3.3 Chat Input Form --- */
 .chat-input-container {
     flex-shrink: 0;
     padding: 10px 20px 20px;
@@ -736,7 +737,7 @@ body.sidebar-open .open-icon { display: none; }
     border-top: none;
 }
 
-/* NEW: File Previews Container */
+/* File Previews Container */
 #file-previews-container {
     display: none; /* Hidden by default */
     flex-wrap: wrap;
@@ -790,7 +791,7 @@ body.sidebar-open .open-icon { display: none; }
     background: rgba(0,0,0,0.7);
 }
 
-/* NEW: Generic File Preview Styles */
+/* Generic File Preview Styles */
 .file-preview-item.generic {
     display: flex;
     align-items: center;
@@ -943,7 +944,7 @@ textarea:focus-visible {
 
 .settings-card {
     width: 90%;
-    max-width: 400px; /* Increased width for new options */
+    max-width: 400px;
     padding: 25px;
     text-align: left;
     color: var(--text-color);
@@ -973,7 +974,6 @@ textarea:focus-visible {
     justify-content: space-between;
     margin: 20px 0;
 }
-/* NEW: Vertical settings group */
 .settings-group {
     display: flex;
     flex-direction: column;
@@ -1092,9 +1092,9 @@ input:focus-visible + .slider {
     outline-offset: 2px;
 }
 
-/* --- 4.3 Custom Tooltips (NEW) --- */
+/* --- 4.3 Custom Tooltips --- */
 .custom-tooltip {
-    position: fixed; /* Use fixed to avoid issues with scroll containers */
+    position: fixed;
     z-index: 5000;
     padding: 6px 12px;
     background-color: var(--modal-bg);
@@ -1235,7 +1235,7 @@ input:focus-visible + .slider {
 }
 
 /* ==========================================================================
-   7. Toast Notifications (NEW)
+   7. Toast Notifications
    ========================================================================== */
 #toast-container {
     position: fixed;
