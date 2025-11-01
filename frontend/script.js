@@ -366,12 +366,12 @@ const ChatApp = {
             processedText = processedText.replace(/```(\w+)?\s*\r?\n([\s\S]*?)\s*```/g, (match, lang, code) => {
                 const id = blocks.length;
                 blocks.push({ type: 'code', lang: lang || 'plaintext', content: code.trim() });
-                return `__BLOCK_PLACEHOLDER_${id}__`;
+                return `%%BLOCK_PLACEHOLDER_${id}%%`;
             });
             processedText = processedText.replace(/^(<svg[\s\S]*?<\/svg>)$/gm, (match, svgContent) => {
                 const id = blocks.length;
                 blocks.push({ type: 'svg', content: svgContent.trim() });
-                return `__BLOCK_PLACEHOLDER_${id}__`;
+                return `%%BLOCK_PLACEHOLDER_${id}%%`;
             });
         
             // Step 2: Process standard markdown on the remaining text.
@@ -387,7 +387,7 @@ const ChatApp = {
                 .replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
 
             // Step 3: Re-insert the rendered blocks.
-            html = html.replace(/__BLOCK_PLACEHOLDER_(\d+)__/g, (match, id) => {
+            html = html.replace(/%%BLOCK_PLACEHOLDER_(\d+)%%/g, (match, id) => {
                 const block = blocks[id];
                 const escapedContent = ChatApp.Utils.escapeHTML(block.content);
                 const lang = block.lang?.toLowerCase() || '';
