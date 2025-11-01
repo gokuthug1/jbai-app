@@ -48,9 +48,12 @@ const ChatApp = {
         typingInterval: null,
         attachedFiles: [],
         setCurrentConversation(history) {
+            // This function normalizes conversation history, supporting older data formats for backward compatibility.
             this.currentConversation = history.map(msg => {
                 if (!msg) return null;
+                // Already in the new format
                 if (msg.id && msg.content && Array.isArray(msg.content.parts)) return msg;
+                // Old format: { role: 'user', text: '...' } -> migrate to new format
                 if (msg.role && typeof msg.text !== 'undefined') {
                     return {
                         id: ChatApp.Utils.generateUUID(),
@@ -61,7 +64,7 @@ const ChatApp = {
                     };
                 }
                 return null;
-            }).filter(Boolean);
+            }).filter(Boolean); // Filter out any null entries from failed migrations
         },
         addMessage(message) { this.currentConversation.push(message); },
         removeMessage(messageId) { this.currentConversation = this.currentConversation.filter(msg => msg.id !== messageId); },
@@ -152,29 +155,20 @@ const ChatApp = {
                 let top = targetRect.top - tooltipRect.height - 8; // 8px offset
                 let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
 
-                // Adjust if tooltip goes off-screen
-                if (top < 10) { // If too close to the top, show below
-                    top = targetRect.bottom + 8;
-                }
-                if (left < 10) { // If too close to the left edge
-                    left = 10;
-                }
-                if (left + tooltipRect.width > window.innerWidth - 10) { // If too close to the right edge
-                    left = window.innerWidth - tooltipRect.width - 10;
-                }
+                if (top < 10) { top = targetRect.bottom + 8; }
+                if (left < 10) { left = 10; }
+                if (left + tooltipRect.width > window.innerWidth - 10) { left = window.innerWidth - tooltipRect.width - 10; }
 
                 tooltip.style.top = `${top}px`;
                 tooltip.style.left = `${left}px`;
             };
 
-            const hideTooltip = () => {
-                tooltip.classList.remove('visible');
-            };
+            const hideTooltip = () => tooltip.classList.remove('visible');
 
             document.body.addEventListener('mouseover', (e) => {
                 if (e.target.closest('[data-tooltip]')) {
                     clearTimeout(tooltipTimeout);
-                    tooltipTimeout = setTimeout(() => showTooltip(e), 300); // Small delay before showing
+                    tooltipTimeout = setTimeout(() => showTooltip(e), 300);
                 }
             });
 
@@ -194,11 +188,11 @@ const ChatApp = {
             toast.className = `toast-message ${type}`;
             toast.textContent = message;
             this.elements.toastContainer.appendChild(toast);
-            setTimeout(() => toast.classList.add('show'), 10); // Fade in
+            setTimeout(() => toast.classList.add('show'), 10);
             setTimeout(() => {
                 toast.classList.remove('show');
                 toast.addEventListener('transitionend', () => toast.remove());
-            }, 3000); // Fade out after 3s
+            }, 3000);
         },
         scrollToBottom() { this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight; },
         clearChatArea() {
@@ -222,10 +216,19 @@ const ChatApp = {
                 item.dataset.chatId = chat.id;
                 if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); }
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
+                
+                // Accessibility Improvements
+                item.setAttribute('role', 'button');
+                item.setAttribute('tabindex', '0');
+                item.setAttribute('aria-label', `Open chat: ${title}`);
+
                 item.innerHTML = `
                     <span class="conversation-title" data-tooltip="${title}">${title}</span>
-                    <button type="button" class="delete-btn" data-tooltip="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                    <button type="button" class="delete-btn" data-tooltip="Delete Chat" aria-label="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                
                 item.addEventListener('click', () => ChatApp.Controller.loadChat(chat.id));
+                item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ChatApp.Controller.loadChat(chat.id); } });
+
                 item.querySelector('.delete-btn').addEventListener('click', (e) => {
                     e.stopPropagation();
                     ChatApp.Controller.deleteConversation(chat.id);
@@ -246,10 +249,9 @@ const ChatApp = {
                 const { content, attachments } = message;
                 const sender = content.role === 'model' ? 'bot' : 'user';
                 const textPart = content.parts.find(p => p.text);
-                const textContent = textPart ? textPart.text : '';
-                rawText = textContent;
+                rawText = textPart ? textPart.text : '';
                 messageEl.className = `message ${sender}`;
-                contentEl.innerHTML = this._formatMessageContent(textContent);
+                contentEl.innerHTML = this._formatMessageContent(rawText);
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
                     contentEl.prepend(attachmentsContainer);
@@ -268,15 +270,13 @@ const ChatApp = {
                 const item = document.createElement('div');
                 item.className = 'attachment-item';
                 let contentHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
-                
-                if (file.data) { // Check if dataURL is present
+                if (file.data) {
                     if (file.type.startsWith('image/')) {
                         contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
                     } else if (file.type.startsWith('video/')) {
                         contentHTML = `<video src="${file.data}" class="attachment-media" controls data-tooltip="${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
                     }
                 }
-
                 item.innerHTML = contentHTML;
                 container.appendChild(item);
             });
@@ -292,7 +292,6 @@ const ChatApp = {
             ChatApp.State.attachedFiles.forEach((file, index) => {
                 const previewItem = document.createElement('div');
                 previewItem.className = 'file-preview-item';
-                
                 const objectURL = URL.createObjectURL(file);
                 let previewContent = '';
                 
@@ -303,23 +302,11 @@ const ChatApp = {
                 } else {
                     previewItem.classList.add('generic');
                     const extension = file.name.split('.').pop()?.toLowerCase() || 'file';
-                    
-                    const iconMap = {
-                        'html': ChatApp.Config.ICONS.HTML,
-                        'css': ChatApp.Config.ICONS.CSS,
-                        'js': ChatApp.Config.ICONS.JS,
-                        'svg': ChatApp.Config.ICONS.SVG,
-                    };
-
-                    const iconSVG = iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT;
-
-                    previewContent = `
-                        ${iconSVG}
-                        <span class="file-preview-extension">${ChatApp.Utils.escapeHTML(extension.substring(0, 4))}</span>
-                    `;
+                    const iconMap = { 'html': ChatApp.Config.ICONS.HTML, 'css': ChatApp.Config.ICONS.CSS, 'js': ChatApp.Config.ICONS.JS, 'svg': ChatApp.Config.ICONS.SVG, };
+                    previewContent = `${iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT}<span class="file-preview-extension">${ChatApp.Utils.escapeHTML(extension.substring(0, 4))}</span>`;
                 }
 
-                previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" data-tooltip="Remove file" type="button">&times;</button>`;
+                previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" data-tooltip="Remove file" type="button" aria-label="Remove file">&times;</button>`;
                 previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => { ChatApp.Controller.removeAttachedFile(index); });
                 this.elements.filePreviewsContainer.appendChild(previewItem);
             });
@@ -330,19 +317,18 @@ const ChatApp = {
                 clearInterval(ChatApp.State.typingInterval);
                 ChatApp.State.typingInterval = null;
             }
+            messageEl.classList.remove('thinking');
+            messageEl.dataset.messageId = messageId;
+            const contentEl = messageEl.querySelector('.message-content');
+
             if (ChatApp.Config.TYPING_SPEED_MS === 0) {
-                 messageEl.classList.remove('thinking');
-                 messageEl.dataset.messageId = messageId;
-                 const contentEl = messageEl.querySelector('.message-content');
                  contentEl.innerHTML = this._formatMessageContent(fullText);
                  this._addMessageInteractions(messageEl, fullText, messageId);
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
                  return;
             }
-            messageEl.classList.remove('thinking');
-            messageEl.dataset.messageId = messageId;
-            const contentEl = messageEl.querySelector('.message-content');
+            
             contentEl.innerHTML = '';
             let i = 0;
             ChatApp.State.typingInterval = setInterval(() => {
@@ -376,89 +362,68 @@ const ChatApp = {
             let processedText = text;
             const blocks = [];
         
-            // Step 1: Extract all code blocks and replace with placeholders.
+            // Step 1: Extract all code/HTML/SVG blocks and replace with placeholders.
             processedText = processedText.replace(/```(\w+)?\s*\r?\n([\s\S]*?)\s*```/g, (match, lang, code) => {
                 const id = blocks.length;
-                blocks.push({
-                    type: lang === 'html' ? 'html' : 'code',
-                    lang: lang || 'plaintext',
-                    content: code.trim()
-                });
+                blocks.push({ type: 'code', lang: lang || 'plaintext', content: code.trim() });
                 return `__BLOCK_PLACEHOLDER_${id}__`;
             });
-            
-            // Step 2: Extract standalone SVG and replace with a placeholder.
             processedText = processedText.replace(/^(<svg[\s\S]*?<\/svg>)$/gm, (match, svgContent) => {
                 const id = blocks.length;
-                blocks.push({
-                    type: 'svg',
-                    content: svgContent.trim()
-                });
+                blocks.push({ type: 'svg', content: svgContent.trim() });
                 return `__BLOCK_PLACEHOLDER_${id}__`;
             });
         
-            // Step 3: Process the remaining text for standard markdown.
-            let html = ChatApp.Utils.escapeHTML(processedText);
-        
-            // Step 4: Re-insert the rendered blocks into the HTML.
+            // Step 2: Process standard markdown on the remaining text.
+            let html = ChatApp.Utils.escapeHTML(processedText)
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>')
+                .replace(/~~(.*?)~~/g, '<s>$1</s>')
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                .replace(/\[([^\\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+                .replace(/^# (.*$)/gim, '<h1>$1</h1>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^### (.*$)/gim, '<h3>$1</h3>')
+                .replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`)
+                .replace/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*]\s*/, '')}</li>`).join('')}</ul>`)
+                .replace/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
+
+            // Step 3: Re-insert the rendered blocks.
             html = html.replace(/__BLOCK_PLACEHOLDER_(\d+)__/g, (match, id) => {
                 const block = blocks[id];
                 const escapedContent = ChatApp.Utils.escapeHTML(block.content);
-        
-                if (block.type === 'html') {
+                const lang = block.lang?.toLowerCase() || '';
+
+                if (lang === 'html') {
                     const safeHtmlForSrcdoc = block.content.replace(/"/g, '&quot;');
-                    return `
-                        <div class="html-preview-container">
-                            <h4>Live Preview</h4>
-                            <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div>
-                            <h4>HTML Code</h4>
-                            <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}">
-                                <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                                <div class="collapsible-content"><pre data-raw-code="${escapedContent}"><code class="language-html">${escapedContent}</code></pre></div>
-                            </div>
-                        </div>`;
+                    return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-html">${escapedContent}</code></pre></div></div></div>`;
                 } else if (block.type === 'svg') {
-                     return `
-                        <div class="svg-preview-container">
-                            <h4>SVG Preview</h4>
-                            <div class="svg-render-box">${block.content}</div>
-                            <h4>SVG Code</h4>
-                            <div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}">
-                               <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                               <div class="collapsible-content"><pre data-raw-code="${escapedContent}"><code class="language-xml">${escapedContent}</code></pre></div>
-                            </div>
-                        </div>`;
-                } else { // Generic code block
-                    return `
-                        <div class="code-block-wrapper is-collapsible is-collapsed">
-                            <div class="code-block-header"><span>&lt;&gt; Code</span><div class="code-block-actions"></div></div>
-                            <div class="collapsible-content"><pre data-raw-code="${escapedContent}"><code class="language-${block.lang}">${escapedContent}</code></pre></div>
-                        </div>`;
+                     const encodedSvg = btoa(block.content);
+                     return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-xml">${escapedContent}</code></pre></div></div></div>`;
+                } else {
+                    return `<div class="code-block-wrapper is-collapsible is-collapsed"><div class="code-block-header"><span>${ChatApp.Utils.escapeHTML(lang)}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-${lang}">${escapedContent}</code></pre></div></div>`;
                 }
             });
-        
-            // Step 5: Process standard markdown on the entire block.
-            html = html.replace(new RegExp('\\[IMAGE: (.*?)\\]\\((.*?)\\)', 'g'), (match, alt, url) => {
+            
+            // Step 4: Process image generation tags.
+            html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
-                return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
+                return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image" aria-label="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
             });
-            html = html.replace(new RegExp('^### (.*$)', 'gim'), '<h3>$1</h3>').replace(new RegExp('^## (.*$)', 'gim'), '<h2>$1</h2>').replace(new RegExp('^# (.*$)', 'gim'), '<h1>$1</h1>');
-            html = html.replace(new RegExp('^(> (.*)\n?)+', 'gm'), (match) => `<blockquote><p>${match.replace(new RegExp('^> ', 'gm'), '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`);
-            html = html.replace(new RegExp('^((\\s*[-*] .*\\n?)+)', 'gm'), m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*]\s*/, '')}</li>`).join('')}</ul>`);
-            html = html.replace(new RegExp('^((\\s*\\d+\\. .*\\n?)+)', 'gm'), m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
-            html = html.replace(new RegExp('\\[([^\\]]+)\\]\\((https?:\\/\\/[^\\s)]+)\\)', 'g'), '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
-            html = html.replace(new RegExp('`([^`]+)`', 'g'), '<code>$1</code>');
-            html = html.replace(new RegExp('\\*\\*(.*?)\\*\\*', 'g'), '<strong>$1</strong>').replace(new RegExp('__(.*?)__', 'g'), '<strong>$1</strong>');
-            html = html.replace(new RegExp('\\*(.*?)\\*', 'g'), '<em>$1</em>').replace(new RegExp('_(.*?)_', 'g'), '<em>$1</em>');
-            html = html.replace(new RegExp('~~(.*?)~~', 'g'), '<s>$1</s>');
         
-            // Step 6: Wrap remaining lines in <p> tags.
-            return html.split('\n').map(line => {
-                const trimmed = line.trim();
-                if (trimmed === '') return '';
-                const isBlockElement = /^(<\/?(p|h[1-6]|ul|ol|li|pre|blockquote|div))/.test(trimmed);
-                return isBlockElement ? line : `<p>${line}</p>`;
-            }).join('\n').replace(/<p><\/p>/g, '');
+            // Step 5: (REWRITTEN) Intelligently wrap remaining text in <p> tags.
+            let finalHtml = '';
+            // This regex splits the HTML by block-level elements, keeping the elements as delimiters.
+            const parts = html.split(/(<(?:div|blockquote|ul|ol|h[1-6]|pre)[\s\S]*?<\/(?:div|blockquote|ul|ol|h[1-6]|pre)>)/);
+            for (const part of parts) {
+                if (!part) continue;
+                if (part.match(/^(<(?:div|blockquote|ul|ol|h[1-6]|pre))/)) {
+                    finalHtml += part; // It's a block, add it as is.
+                } else {
+                    // It's text. Split by double newlines for paragraphs, then wrap.
+                    const paragraphs = part.split(/\n\s*\n/).map(p => p.trim()).filter(p => p);
+                    finalHtml += paragraphs.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
+                }
+            }
+            return finalHtml;
         },
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
@@ -467,75 +432,58 @@ const ChatApp = {
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
-                copyBtn.className = 'copy-button'; copyBtn.setAttribute('data-tooltip', 'Copy message text'); copyBtn.innerHTML = COPY;
+                copyBtn.className = 'copy-button'; copyBtn.type = 'button'; copyBtn.setAttribute('data-tooltip', 'Copy message text'); copyBtn.setAttribute('aria-label', 'Copy message text'); copyBtn.innerHTML = COPY;
                 copyBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(rawText).then(() => { copyBtn.innerHTML = CHECK; this.showToast('Message copied!'); setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000); }); });
                 messageEl.appendChild(copyBtn);
             }
             contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
                 const pre = wrapper.querySelector('pre');
                 const actionsContainer = wrapper.querySelector('.code-block-actions');
-                if (!pre || !actionsContainer || !pre.dataset.rawCode) return;
+                if (!pre || !actionsContainer) return;
                 const codeEl = pre.querySelector('code');
 
                 if (wrapper.dataset.previewable) {
                     const openBtn = document.createElement('button');
-                    openBtn.className = 'open-new-tab-button'; openBtn.setAttribute('data-tooltip', 'Open in new tab'); openBtn.innerHTML = OPEN_NEW_TAB;
+                    openBtn.className = 'open-new-tab-button'; openBtn.type = 'button'; openBtn.setAttribute('data-tooltip', 'Open in new tab'); openBtn.setAttribute('aria-label', 'Open in new tab'); openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
                         const newWindow = window.open('about:blank', '_blank');
-                        if (newWindow) {
-                            newWindow.document.write(rawContent);
-                            newWindow.document.close();
-                        } else {
-                           this.showToast('Enable popups to open in a new tab.', 'error');
-                        }
+                        if (newWindow) { newWindow.document.write(rawContent); newWindow.document.close(); } 
+                        else { this.showToast('Enable popups to open in a new tab.', 'error'); }
                     });
                     actionsContainer.appendChild(openBtn);
                 }
 
                 const downloadBtn = document.createElement('button');
-                downloadBtn.className = 'download-code-button';
-                downloadBtn.setAttribute('data-tooltip', 'Download snippet');
-                downloadBtn.innerHTML = DOWNLOAD;
+                downloadBtn.className = 'download-code-button'; downloadBtn.type = 'button'; downloadBtn.setAttribute('data-tooltip', 'Download snippet'); downloadBtn.setAttribute('aria-label', 'Download code snippet'); downloadBtn.innerHTML = DOWNLOAD;
                 downloadBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const rawCode = pre.textContent;
                     let lang = 'txt';
                     if (codeEl && codeEl.className.startsWith('language-')) {
                         const potentialLang = codeEl.className.replace('language-', '').toLowerCase();
-                        const extensionMap = {
-                            html: 'html', xml: 'xml', svg: 'svg', css: 'css',
-                            javascript: 'js', js: 'js', json: 'json', python: 'py',
-                            typescript: 'ts', shell: 'sh', bash: 'sh'
-                        };
+                        const extensionMap = { html: 'html', xml: 'xml', svg: 'svg', css: 'css', javascript: 'js', js: 'js', json: 'json', python: 'py', typescript: 'ts', shell: 'sh', bash: 'sh' };
                         lang = extensionMap[potentialLang] || potentialLang.split(' ')[0];
                     }
                     const blob = new Blob([rawCode], { type: 'text/plain;charset=utf-8' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `jbai-snippet.${lang}`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
+                    a.href = url; a.download = `jbai-snippet.${lang}`;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
                     URL.revokeObjectURL(url);
                     this.showToast('Snippet downloaded!');
                 });
                 actionsContainer.appendChild(downloadBtn);
 
                 const copyCodeBtn = document.createElement('button');
-                copyCodeBtn.className = 'copy-code-button';
-                copyCodeBtn.setAttribute('data-tooltip', 'Copy code');
-                copyCodeBtn.innerHTML = COPY;
+                copyCodeBtn.className = 'copy-code-button'; copyCodeBtn.type = 'button'; copyCodeBtn.setAttribute('data-tooltip', 'Copy code'); copyCodeBtn.setAttribute('aria-label', 'Copy code'); copyCodeBtn.innerHTML = COPY;
                 copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; this.showToast('Code copied!'); setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
                 actionsContainer.appendChild(copyCodeBtn);
 
                 if (wrapper.classList.contains('is-collapsible')) {
                     const collapseBtn = document.createElement('button');
-                    collapseBtn.className = 'collapse-toggle-button';
-                    collapseBtn.setAttribute('data-tooltip', 'Show/Hide Code');
-                    collapseBtn.innerHTML = CHEVRON_DOWN;
+                    collapseBtn.className = 'collapse-toggle-button'; collapseBtn.type = 'button'; collapseBtn.setAttribute('data-tooltip', 'Show/Hide Code'); collapseBtn.setAttribute('aria-label', 'Show or hide code block'); collapseBtn.innerHTML = CHEVRON_DOWN;
                     actionsContainer.appendChild(collapseBtn);
                 }
             });
@@ -544,8 +492,8 @@ const ChatApp = {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
             overlay.innerHTML = `
-            <div class="settings-card">
-                <h2>Settings</h2>
+            <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+                <h2 id="settings-title">Settings</h2>
                 <div class="settings-row">
                     <label for="themeSelect">Theme</label>
                     <select id="themeSelect">
@@ -571,7 +519,6 @@ const ChatApp = {
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
             
-            // Data handlers
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
@@ -595,7 +542,7 @@ const ChatApp = {
     // --- API Module ---
     Api: {
         async getSystemContext() {
-            const systemPrompt = `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
+            return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 
 --- Custom Commands ---
 You have custom commands that users can use, and you must follow them.
@@ -621,7 +568,6 @@ You have custom commands that users can use, and you must follow them.
 - Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
 - Do not ask what a command means. Follow it exactly as written.
 - Avoid fluff or overexplaining—stay smart, fast, and clear.`;
-            return systemPrompt;
         },
         async fetchTitle(chatHistory) {
             const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
@@ -660,23 +606,13 @@ You have custom commands that users can use, and you must follow them.
                         return botResponseText;
                     }
         
-                    if (response.status === 500) {
-                        throw new Error("API Error: 500");
-                    }
-        
-                    if (response.status >= 400 && response.status < 500) {
-                        const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
-                        throw new Error(`API Error: ${response.status} ${errorText}`);
-                    }
+                    if (response.status === 500) throw new Error("API Error: 500");
+                    const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
+                    throw new Error(`API Error: ${response.status} ${errorText}`);
                     
-                    lastError = new Error(`API Error: ${response.status} ${response.statusText}`);
-                    console.warn(`Attempt ${attempt + 1} failed: ${lastError.message}. Retrying...`);
                 } catch (error) {
                     lastError = error;
-                    if (error.message.includes("API Error: 500")) {
-                        throw lastError;
-                    }
-                    console.warn(`Attempt ${attempt + 1} failed with a network error: ${error.message}. Retrying...`);
+                    console.warn(`Attempt ${attempt + 1} failed: ${error.message}. Retrying...`);
                 }
                 if (attempt < maxRetries - 1) await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
             }
@@ -687,19 +623,11 @@ You have custom commands that users can use, and you must follow them.
             if (!prompt) throw new Error("A prompt is required for image generation.");
 
             const encodedPrompt = encodeURIComponent(prompt);
-            const baseUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}`;
-
-            const queryParams = new URLSearchParams({
-                model: model || 'flux',
-            });
-            
-            queryParams.set('enhance', 'true');
-            queryParams.set('nologo', 'true');
-
+            const queryParams = new URLSearchParams({ model: model || 'flux', enhance: 'true', nologo: 'true' });
             if (height) queryParams.set('height', height);
             if (seed) queryParams.set('seed', seed);
             
-            const fullUrl = `${baseUrl}?${queryParams.toString()}`;
+            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}?${queryParams.toString()}`;
 
             const response = await fetch(fullUrl);
             if (!response.ok) { throw new Error(`Server error: ${response.status} ${response.statusText}`); }
@@ -720,8 +648,10 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.Store.loadAllConversations();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
+            
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
+            
             elements.sendButton.addEventListener('click', Controller.handleChatSubmission.bind(Controller));
             elements.chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); Controller.handleChatSubmission(); } });
             elements.chatInput.addEventListener('input', () => {
@@ -742,26 +672,12 @@ You have custom commands that users can use, and you must follow them.
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) { Controller.closeFullscreenPreview(); } });
 
             // Drag and Drop Listeners
-            elements.body.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                elements.body.classList.add('drag-over');
-            });
-            elements.body.addEventListener('dragleave', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) {
-                    elements.body.classList.remove('drag-over');
-                }
-            });
+            elements.body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.add('drag-over'); });
+            elements.body.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) { elements.body.classList.remove('drag-over'); } });
             elements.body.addEventListener('drop', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
                 elements.body.classList.remove('drag-over');
-                const files = e.dataTransfer?.files;
-                if (files && files.length > 0) {
-                    Controller.addFilesToState(files);
-                }
+                if (e.dataTransfer?.files?.length > 0) { Controller.addFilesToState(e.dataTransfer.files); }
             });
         },
         startNewChat() {
@@ -781,36 +697,28 @@ You have custom commands that users can use, and you must follow them.
 
             const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                reader.onload = e => {
-                    const base64Data = e.target.result.split(',')[1];
-                    const mimeType = file.type;
-                     resolve({ mimeType, data: base64Data });
-                };
+                reader.onload = e => resolve({ mimeType: file.type, data: e.target.result.split(',')[1] });
                 reader.onerror = reject;
                 reader.readAsDataURL(file);
             }));
-
             const fileApiData = await Promise.all(fileDataPromises);
 
             const messageParts = fileApiData.map(p => ({ inlineData: p }));
             if (userInput) { messageParts.push({ text: userInput }); }
 
-            const userMessageAttachments = await Promise.all(files.map(async (file) => {
-                return new Promise((resolve) => {
-                    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-                        const reader = new FileReader();
-                        reader.onload = (e) => resolve({ name: file.name, type: file.type, data: e.target.result });
-                        reader.readAsDataURL(file);
-                    } else {
-                         resolve({ name: file.name, type: file.type, data: null });
-                    }
-                });
-            }));
+            const userMessageAttachments = await Promise.all(files.map(file => new Promise((resolve) => {
+                if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve({ name: file.name, type: file.type, data: e.target.result });
+                    reader.readAsDataURL(file);
+                } else {
+                    resolve({ name: file.name, type: file.type, data: null });
+                }
+            })));
 
             const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: userMessageAttachments };
             ChatApp.State.addMessage(userMessage);
             ChatApp.UI.renderMessage(userMessage);
-
             await this._generateText();
         },
         addFilesToState(files) {
@@ -819,7 +727,6 @@ You have custom commands that users can use, and you must follow them.
                 ChatApp.UI.showToast('You can attach a maximum of 5 files.', 'error');
                 return;
             }
-        
             const validFiles = newFiles.filter(file => {
                 if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) {
                     ChatApp.UI.showToast(`File "${file.name}" exceeds the 4MB limit.`, 'error');
@@ -827,7 +734,6 @@ You have custom commands that users can use, and you must follow them.
                 }
                 return true;
             });
-        
             if (validFiles.length > 0) {
                 ChatApp.State.attachedFiles.push(...validFiles);
                 ChatApp.UI.renderFilePreviews();
@@ -840,11 +746,7 @@ You have custom commands that users can use, and you must follow them.
         handlePaste(event) {
             const files = event.clipboardData?.files;
             if (!files || files.length === 0) return;
-        
-            const filesToProcess = Array.from(files).filter(file => 
-                file.type.startsWith('image/') || file.type.startsWith('video/')
-            );
-        
+            const filesToProcess = Array.from(files).filter(file => file.type.startsWith('image/') || file.type.startsWith('video/'));
             if (filesToProcess.length > 0) {
                 event.preventDefault();
                 this.addFilesToState(filesToProcess);
@@ -864,61 +766,41 @@ You have custom commands that users can use, and you must follow them.
             try {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
-                
                 const rawBotResponse = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
                 const processedForUI = await this.processResponseForImages(rawBotResponse);
                 const messageId = ChatApp.Utils.generateUUID();
                 const botMessageForState = { id: messageId, content: { role: "model", parts: [{ text: rawBotResponse }] } };
-
                 ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedForUI, messageId, botMessageForState);
             } catch (error) {
                 console.error("Text generation failed:", error);
                 thinkingMessageEl.remove();
-
-                const userFriendlyMessage = error.message.includes("API Error: 500")
-                    ? "Sorry, the server encountered an internal error. Please try again later."
-                    : `Sorry, an error occurred: ${error.message}`;
-
+                const userFriendlyMessage = error.message.includes("API Error: 500") ? "Sorry, the server encountered an internal error. Please try again later." : `Sorry, an error occurred: ${error.message}`;
                 const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: userFriendlyMessage }] } };
                 ChatApp.UI.renderMessage(errorBotMessage);
-                
                 ChatApp.UI.showToast(userFriendlyMessage, 'error');
-                ChatApp.State.setGenerating(false); // Allow the user to try again
+                ChatApp.State.setGenerating(false);
             }
         },
         async processResponseForImages(rawText) {
-            const imageRegex = new RegExp('\\[IMAGE: (\\{[\\s\\S]*?\\})\\]', 'g');
+            const imageRegex = /\[IMAGE: (\{[\s\S]*?\})\]/g;
             const matches = Array.from(rawText.matchAll(imageRegex));
-        
-            if (matches.length === 0) {
-                return rawText;
-            }
+            if (matches.length === 0) return rawText;
         
             const replacementPromises = matches.map(async (match) => {
-                const originalTag = match[0];
-                const jsonString = match[1];
+                const [originalTag, jsonString] = match;
                 try {
                     const params = JSON.parse(jsonString);
                     if (!params.prompt) throw new Error("Prompt is missing");
-        
                     const imageUrl = await ChatApp.Api.fetchImageResponse(params);
-                    const finalMarkdown = `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})`;
-                    
-                    return { original: originalTag, replacement: finalMarkdown };
+                    return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})` };
                 } catch (error) {
                     console.error("Failed to process image tag:", originalTag, error);
-                    const errorMessage = `[Error generating image. Reason: ${error.message}]`;
-                    return { original: originalTag, replacement: errorMessage };
+                    return { original: originalTag, replacement: `[Error generating image. Reason: ${error.message}]` };
                 }
             });
-        
             const replacements = await Promise.all(replacementPromises);
-        
             let processedText = rawText;
-            replacements.forEach(({ original, replacement }) => {
-                processedText = processedText.replace(original, replacement);
-            });
-        
+            replacements.forEach(({ original, replacement }) => { processedText = processedText.replace(original, replacement); });
             return processedText;
         },
         completeGeneration(botMessage) {
@@ -953,8 +835,8 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.clearChatArea();
             
             ChatApp.State.currentConversation.forEach(async msg => {
-                if (msg.content.role === 'model') {
-                    const rawText = msg.content.parts[0].text;
+                const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
+                if (msg.content.role === 'model' && rawText.includes('[IMAGE:')) {
                     const processedText = await this.processResponseForImages(rawText);
                     const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
                     ChatApp.UI.renderMessage(processedMsg);
@@ -980,8 +862,8 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.showToast('Chat deleted.');
         },
         downloadAllData() {
+            if (ChatApp.State.allConversations.length === 0) { ChatApp.UI.showToast('No conversation data to download.', 'error'); return; }
             const dataStr = JSON.stringify(ChatApp.State.allConversations, null, 2);
-            if (!dataStr || dataStr === '[]') { ChatApp.UI.showToast('No conversation data to download.', 'error'); return; }
             const blob = new Blob([dataStr], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1000,11 +882,11 @@ You have custom commands that users can use, and you must follow them.
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
-                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) { throw new Error("Invalid data format."); }
-                        if (confirm('This will replace all current conversations. Are you sure?')) {
+                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) throw new Error("Invalid data format.");
+                        if (confirm('This will REPLACE all current conversations. Are you sure?')) {
                             ChatApp.State.allConversations = importedData;
                             ChatApp.Store.saveAllConversations();
-                            ChatApp.UI.showToast('Data imported. Reloading...');
+                            ChatApp.UI.showToast('Data imported. Reloading...', 'info');
                             setTimeout(() => location.reload(), 1500);
                         }
                     } catch (error) { ChatApp.UI.showToast(`Import error: ${error.message}`, 'error'); }
@@ -1015,42 +897,30 @@ You have custom commands that users can use, and you must follow them.
         },
         handleDataMerge() {
             const fileInput = document.createElement('input');
-            fileInput.type = 'file';
-            fileInput.accept = '.json,application/json';
+            fileInput.type = 'file'; fileInput.accept = '.json,application/json';
             fileInput.onchange = (event) => {
-                const file = event.target.files[0];
-                if (!file) return;
+                const file = event.target.files[0]; if (!file) return;
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
-                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) {
-                            throw new Error("Invalid data format.");
-                        }
-                        if (confirm('This will merge conversations from the selected file. If any chats have the same ID as existing chats, the existing ones will be kept. Continue?')) {
-                            const currentConversations = ChatApp.State.allConversations;
-                            const conversationMap = new Map();
-        
-                            importedData.forEach(chat => conversationMap.set(chat.id, chat));
-                            currentConversations.forEach(chat => conversationMap.set(chat.id, chat));
-                            
-                            const mergedConversations = Array.from(conversationMap.values());
-        
-                            ChatApp.State.allConversations = mergedConversations;
+                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) throw new Error("Invalid data format.");
+                        if (confirm('This will merge new conversations and keep existing ones untouched. Continue?')) {
+                            const conversationMap = new Map(ChatApp.State.allConversations.map(c => [c.id, c]));
+                            importedData.forEach(chat => { if (!conversationMap.has(chat.id)) conversationMap.set(chat.id, chat); });
+                            ChatApp.State.allConversations = Array.from(conversationMap.values());
                             ChatApp.Store.saveAllConversations();
-                            ChatApp.UI.showToast('Data merged. Reloading...');
+                            ChatApp.UI.showToast('Data merged. Reloading...', 'info');
                             setTimeout(() => location.reload(), 1500);
                         }
-                    } catch (error) {
-                        ChatApp.UI.showToast(`Merge error: ${error.message}`, 'error');
-                    }
+                    } catch (error) { ChatApp.UI.showToast(`Merge error: ${error.message}`, 'error'); }
                 };
                 reader.readAsText(file);
             };
             fileInput.click();
         },
         deleteAllData() {
-            if (confirm('DANGER: This will delete ALL conversations and settings permanently. Are you sure?')) {
+            if (confirm('DANGER: This will delete ALL conversations and settings permanently. This action cannot be undone. Are you absolutely sure?')) {
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
                 ChatApp.State.allConversations = [];
@@ -1059,31 +929,29 @@ You have custom commands that users can use, and you must follow them.
             }
         },
         handleMessageAreaClick(event) {
-            // Handle code block collapse toggle
             const toggleBtn = event.target.closest('.collapse-toggle-button');
             if (toggleBtn) {
                 const wrapper = toggleBtn.closest('.code-block-wrapper');
-                if (wrapper) {
-                    wrapper.classList.toggle('is-collapsed');
-                }
-                return; // Prevent other click actions
+                if (wrapper) wrapper.classList.toggle('is-collapsed');
+                return;
             }
 
-            // Handle preview clicks
-            const image = event.target.closest('.generated-image, .attachment-media');
-            const svgBox = event.target.closest('.svg-render-box');
+            const mediaTarget = event.target.closest('.generated-image, .attachment-media, .svg-render-box img');
             const htmlBox = event.target.closest('.html-render-box');
-            if (image) { 
+            
+            if (mediaTarget) { 
                 event.preventDefault(); 
-                const mediaElement = event.target;
-                if (mediaElement.tagName === 'IMG') {
-                    ChatApp.UI.showFullscreenPreview(mediaElement.src, 'image'); 
-                } else if (mediaElement.tagName === 'VIDEO') {
-                    ChatApp.UI.showFullscreenPreview(mediaElement.src, 'video'); 
-                }
+                if (mediaTarget.tagName === 'IMG') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'image'); 
+                else if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); 
             } 
-            else if (svgBox) { const svgElement = svgBox.querySelector('svg'); if (svgElement) { ChatApp.UI.showFullscreenPreview(svgElement.outerHTML, 'svg'); } } 
-            else if (htmlBox) { const iframe = htmlBox.querySelector('iframe'); if (iframe) { ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); } }
+            else if (htmlBox) { const iframe = htmlBox.querySelector('iframe'); if (iframe) ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); }
+            else {
+                const svgWrapper = event.target.closest('.svg-preview-container');
+                if (svgWrapper) {
+                    const rawContent = svgWrapper.querySelector('.code-block-wrapper')?.dataset.rawContent;
+                    if (rawContent) ChatApp.UI.showFullscreenPreview(decodeURIComponent(rawContent), 'svg');
+                }
+            }
         },
         closeFullscreenPreview() {
             const { fullscreenOverlay, fullscreenContent, body } = ChatApp.UI.elements;
