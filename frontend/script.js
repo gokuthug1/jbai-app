@@ -591,12 +591,18 @@ You have custom commands that users can use, and you must follow them.
             const maxRetries = 3;
             let lastError = null;
         
+            // The 403 Forbidden error indicates the proxy server is rejecting the request.
+            // This is likely due to the `systemInstruction` field, which might not be supported
+            // by the proxy, causing a malformed request from its perspective.
+            // We will construct the payload without this field to send a more standard/compatible request.
+            const payload = { contents: apiContents };
+        
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
                     const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ contents: apiContents, systemInstruction })
+                        body: JSON.stringify(payload)
                     });
         
                     if (response.ok) {
@@ -828,24 +834,35 @@ You have custom commands that users can use, and you must follow them.
         loadChat(chatId) {
             if (ChatApp.State.currentChatId === chatId) return;
             const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
-            if (!chat || !Array.isArray(chat.history)) { console.error("Chat not found or is corrupted:", chatId); ChatApp.UI.showToast("Could not load the selected chat.", "error"); return; }
+            if (!chat || !Array.isArray(chat.history)) {
+                console.error("Chat not found or is corrupted:", chatId);
+                ChatApp.UI.showToast("Could not load the selected chat.", "error");
+                return;
+            }
             this.startNewChat();
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
             ChatApp.UI.clearChatArea();
-            
-            ChatApp.State.currentConversation.forEach(async msg => {
-                const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
-                if (msg.content.role === 'model' && rawText.includes('[IMAGE:')) {
-                    const processedText = await this.processResponseForImages(rawText);
-                    const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
-                    ChatApp.UI.renderMessage(processedMsg);
-                } else {
-                    ChatApp.UI.renderMessage(msg);
+            ChatApp.UI.renderSidebar(); // Render sidebar immediately to show the active chat
+        
+            // Use an async IIFE to handle sequential rendering of messages, which is crucial
+            // because processResponseForImages is async and we must maintain message order.
+            (async () => {
+                for (const msg of ChatApp.State.currentConversation) {
+                    const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
+                    // Check if the raw message from history contains the unprocessed image generation tag.
+                    if (msg.content.role === 'model' && /\[IMAGE: \{[\s\S]*?\}\]/.test(rawText)) {
+                        const processedText = await this.processResponseForImages(rawText);
+                        const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
+                        ChatApp.UI.renderMessage(processedMsg);
+                    } else {
+                        // Render the message as is if no processing is needed.
+                        ChatApp.UI.renderMessage(msg);
+                    }
                 }
-            });
-            setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
-            ChatApp.UI.renderSidebar();
+                // Once all messages are rendered, scroll to the bottom.
+                setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
+            })();
         },
         deleteMessage(messageId) {
             if (!confirm('Are you sure you want to delete this message?')) return;
