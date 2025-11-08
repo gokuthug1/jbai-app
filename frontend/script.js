@@ -590,11 +590,6 @@ You have custom commands that users can use, and you must follow them.
         async fetchTextResponse(apiContents, systemInstruction) {
             const maxRetries = 3;
             let lastError = null;
-        
-            // The 403 Forbidden error indicates the proxy server is rejecting the request.
-            // This is likely due to the `systemInstruction` field, which might not be supported
-            // by the proxy, causing a malformed request from its perspective.
-            // We will construct the payload without this field to send a more standard/compatible request.
             const payload = { contents: apiContents };
         
             for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -612,9 +607,18 @@ You have custom commands that users can use, and you must follow them.
                         return botResponseText;
                     }
         
-                    if (response.status === 500) throw new Error("API Error: 500");
-                    const errorText = response.status === 413 ? "Payload Too Large" : response.statusText;
-                    throw new Error(`API Error: ${response.status} ${errorText}`);
+                    // If the response is not OK, try to parse the error message from the body for better debugging.
+                    let errorJson;
+                    try {
+                        errorJson = await response.json();
+                    } catch (e) {
+                        // Body is not JSON or is empty, fall back to status text.
+                        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                    }
+            
+                    // Use the detailed message from the API if available.
+                    const detailedMessage = errorJson?.error?.message || JSON.stringify(errorJson);
+                    throw new Error(`API Error: ${response.status} - ${detailedMessage}`);
                     
                 } catch (error) {
                     lastError = error;
