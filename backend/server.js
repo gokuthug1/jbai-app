@@ -36,7 +36,7 @@ app.use(express.json());   // Then, enable the server to parse JSON
 const API_KEY = process.env.GOOGLE_API_KEY;
 const PORT = process.env.PORT || 3000;
 // Updated model to a generally available and performant one.
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`;
 
 // --- NEW DEBUGGING ROUTE (Health Check) ---
 // This will help us see if the server is alive and if the API key is loaded.
@@ -83,9 +83,12 @@ app.post('/api/generate', async (req, res) => {
 });
 
 // --- Start the Server ---
-app.listen(PORT, () => {
-  console.log(`✅ Backend server is running on port ${PORT}`);
-  if (!API_KEY) {
-    console.warn("⚠️  Warning: GOOGLE_API_KEY is not set in the environment variables.");
-  }
-});
+// app.listen(PORT, () => {
+//   console.log(`✅ Backend server is running on port ${PORT}`);
+//   if (!API_KEY) {
+//     console.warn("⚠️  Warning: GOOGLE_API_KEY is not set in the environment variables.");
+//   }
+// });
+
+// Export the app for Vercel
+module.exports = app;
