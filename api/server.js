@@ -7,7 +7,7 @@ app.use(cors());
 app.use(express.json());
 
 const { GOOGLE_API_KEY } = process.env;
-// Using the stable and widely available 1.5 Pro model
+// Using a stable and widely available model.
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
 
 app.post('/api/server', async (req, res) => {
@@ -18,19 +18,12 @@ app.post('/api/server', async (req, res) => {
   }
 
   try {
-    // =================================================================
-    // ===== THE FIX: Receive BOTH contents and systemInstruction ======
-    // =================================================================
+    // --- FIX: Receive BOTH contents and systemInstruction from the frontend ---
     const { contents, systemInstruction } = req.body;
-
-    // Log the received payload for debugging (optional but helpful)
-    // console.log("Received payload:", JSON.stringify({ contents, systemInstruction }, null, 2));
 
     const response = await axios.post(
       `${GOOGLE_API_URL}?key=${GOOGLE_API_KEY}`,
-      // =================================================================
-      // ===== THE FIX: Send BOTH objects to the Google Gemini API ======
-      // =================================================================
+      // --- FIX: Send BOTH objects to the Google Gemini API ---
       { contents, systemInstruction },
       { headers: { 'Content-Type': 'application/json' } }
     );
