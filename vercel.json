@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "functions": {
+    "api/server.js": {
+      "memory": 1024
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/server",
+      "destination": "/api/server.js"
+    }
+  ]
+}
