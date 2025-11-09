@@ -14,7 +14,7 @@ const ChatApp = {
      */
     Config: {
         API_URLS: {
-            TEXT: 'https://jbai-app.onrender.com/api/generate',
+            TEXT: '/api/generate',
             IMAGE: 'https://image.pollinations.ai/prompt/'
         },
         STORAGE_KEYS: {

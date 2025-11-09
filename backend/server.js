@@ -77,4 +77,8 @@ app.post('/generate', async (req, res) => {
 
 // --- Export the app for Vercel ---
 // This is the crucial part that allows Vercel to handle the app as a serverless function.
+<<<<<<< HEAD
 module.exports = app;
+=======
+module.exports = app;
+>>>>>>> 01240e30d2d0be4777ee449b837cc731a700dc4e
