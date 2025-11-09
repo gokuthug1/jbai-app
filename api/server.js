@@ -8,7 +8,7 @@ app.use(cors()); // Simplified CORS for now
 app.use(express.json());
 
 const API_KEY = process.env.GOOGLE_API_KEY;
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`;
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/models/gemini-2.5-pro:generateContent`;
 
 // When a request hits /api/server, Vercel routes it here with a path of "/"
 app.post('/', async (req, res) => {
