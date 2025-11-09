@@ -14,7 +14,7 @@ const ChatApp = {
      */
     Config: {
         API_URLS: {
-            TEXT: '/api/generate',
+            TEXT: '/api/server',
             IMAGE: 'https://image.pollinations.ai/prompt/'
         },
         STORAGE_KEYS: {
