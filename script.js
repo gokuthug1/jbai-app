@@ -542,6 +542,7 @@ const ChatApp = {
     // --- API Module ---
     Api: {
         async getSystemContext() {
+            // --- FIX: Stricter rules for HTML generation to ensure self-contained code for previews ---
             return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 
 --- Custom Commands ---
@@ -565,7 +566,10 @@ You have custom commands that users can use, and you must follow them.
   - You have control over the parameters: \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
   - Do NOT invent new parameters. Do NOT include a URL. The system will handle the actual image generation.
 - Current Date/Time: ${new Date().toLocaleString()}
-- Format HTML code as one complete, well-formatted, and readable file (HTML, CSS, and JS combined). ALWAYS enclose the full HTML code within a single \`\`\`html markdown block. DO NOT write any text outside of the markdown block.
+- Format HTML code as one complete, well-formatted, and readable file. ALWAYS enclose the full HTML code within a single \`\`\`html markdown block.
+  - The generated HTML MUST be self-contained. All CSS rules must be placed inside <style> tags and all JavaScript code must be placed inside <script> tags within the HTML itself.
+  - DO NOT use external file links like \`<link rel="stylesheet" href="...">\` or \`<script src="...">\`. The preview environment cannot access external files.
+  - DO NOT write any text outside of the markdown block.
 - Do not ask what a command means. Follow it exactly as written.
 - Avoid fluff or overexplaining—stay smart, fast, and clear.`;
         },
@@ -590,9 +594,6 @@ You have custom commands that users can use, and you must follow them.
         async fetchTextResponse(apiContents, systemInstruction) {
             const maxRetries = 3;
             let lastError = null;
-            // =================================================================
-            // ===== THIS IS THE FIX: Include systemInstruction in payload =====
-            // =================================================================
             const payload = {
                 contents: apiContents,
                 systemInstruction: systemInstruction
@@ -808,7 +809,9 @@ You have custom commands that users can use, and you must follow them.
                     return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})` };
                 } catch (error) {
                     console.error("Failed to process image tag:", originalTag, error);
-                    return { original: originalTag, replacement: `[Error generating image. Reason: ${error.message}]` };
+                    // --- FIX: Provide a user-friendly error message in the chat UI ---
+                    const userFriendlyError = `[Error generating image: The external image service failed. This could be due to a temporary outage or an issue with the prompt. Please try again later.]`;
+                    return { original: originalTag, replacement: userFriendlyError };
                 }
             });
             const replacements = await Promise.all(replacementPromises);
