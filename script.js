@@ -590,7 +590,13 @@ You have custom commands that users can use, and you must follow them.
         async fetchTextResponse(apiContents, systemInstruction) {
             const maxRetries = 3;
             let lastError = null;
-            const payload = { contents: apiContents };
+            // =================================================================
+            // ===== THIS IS THE FIX: Include systemInstruction in payload =====
+            // =================================================================
+            const payload = {
+                contents: apiContents,
+                systemInstruction: systemInstruction
+            };
         
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
@@ -607,16 +613,13 @@ You have custom commands that users can use, and you must follow them.
                         return botResponseText;
                     }
         
-                    // If the response is not OK, try to parse the error message from the body for better debugging.
                     let errorJson;
                     try {
                         errorJson = await response.json();
                     } catch (e) {
-                        // Body is not JSON or is empty, fall back to status text.
                         throw new Error(`API Error: ${response.status} ${response.statusText}`);
                     }
             
-                    // Use the detailed message from the API if available.
                     const detailedMessage = errorJson?.error?.message || JSON.stringify(errorJson);
                     throw new Error(`API Error: ${response.status} - ${detailedMessage}`);
                     
