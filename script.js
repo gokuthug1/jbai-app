@@ -486,6 +486,11 @@ const ChatApp = {
                     collapseBtn.className = 'collapse-toggle-button'; collapseBtn.type = 'button'; collapseBtn.setAttribute('data-tooltip', 'Show/Hide Code'); collapseBtn.setAttribute('aria-label', 'Show or hide code block'); collapseBtn.innerHTML = CHEVRON_DOWN;
                     actionsContainer.appendChild(collapseBtn);
                 }
+
+                // --- ADDED: Trigger Prism syntax highlighting ---
+                if (codeEl && window.Prism) {
+                    Prism.highlightElement(codeEl);
+                }
             });
         },
         renderSettingsModal() {
@@ -870,6 +875,12 @@ You have custom commands that users can use, and you must follow them.
                         ChatApp.UI.renderMessage(msg);
                     }
                 }
+                
+                // --- ADDED: Highlight all code blocks after rendering the entire chat history ---
+                if (window.Prism) {
+                    Prism.highlightAllUnder(ChatApp.UI.elements.messageArea);
+                }
+
                 // Once all messages are rendered, scroll to the bottom.
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             })();
