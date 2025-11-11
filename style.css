@@ -561,16 +561,45 @@ body.sidebar-open .open-icon { display: none; }
 .attachment-item {
     position: relative;
     width: 100%;
-    padding-top: 100%; /* Creates a square aspect ratio box */
+    background-color: var(--sidebar-hover);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
 }
 .attachment-media {
-    position: absolute;
-    top: 0;
-    left: 0;
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
-    border-radius: 8px;
+}
+.attachment-item:not(:has(.attachment-media)) {
+    aspect-ratio: 1 / 1;
+}
+
+/* FIX: Styles for generic file attachments in messages */
+.attachment-generic {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 100%;
+    padding: 8px;
+    text-align: center;
+}
+.attachment-generic svg {
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+    stroke: var(--text-secondary);
+}
+.attachment-generic .attachment-filename {
+    font-size: 12px;
+    line-height: 1.2;
+    word-break: break-all;
+    max-height: 3.6em; /* max 3 lines */
+    overflow: hidden;
+    color: var(--text-secondary);
 }
 
 
