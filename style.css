@@ -104,7 +104,7 @@
     --button-text: #f8f8f2;
     --message-user-bg: #44475a;
     --message-bot-bg: #21222c;
-    --code-bg: #191a21;
+    --code-bg: #191a21; /* A slightly darker bg for the wrapper */
     --code-text: #f8f8f2;
     --scrollbar-thumb: #6272a4;
     --modal-bg: #21222c;
@@ -574,9 +574,9 @@ body.sidebar-open .open-icon { display: none; }
 }
 
 
-/* Code Blocks & Copy Buttons */
+/* --- MODIFIED: Code Blocks & Copy Buttons Integration with Prism.js --- */
 .code-block-wrapper {
-    background-color: var(--sidebar-hover);
+    background-color: var(--code-bg); /* Use code bg for the whole container */
     border: 1px solid var(--border-color);
     border-radius: 12px;
     margin: 8px 0;
@@ -605,17 +605,11 @@ body.sidebar-open .open-icon { display: none; }
     gap: 4px;
 }
 
+/* MODIFIED: Let prism.css handle code styling */
 .message-content pre {
-    padding: 12px;
-    margin: 0;
-    overflow-x: auto;
-    white-space: pre;
-    cursor: text;
-    color: var(--code-text);
-    background-color: var(--code-bg);
-    border-radius: 0;
-    font-family: 'SF Mono', 'Fira Code', 'Courier New', Courier, monospace;
-    font-size: 0.9em;
+    margin: 0; /* Remove default margin */
+    background-color: transparent; /* Allow wrapper or prism theme to set color */
+    /* REMOVED: color, padding, and specific font styles. Prism handles this. */
 }
 
 .copy-button {
