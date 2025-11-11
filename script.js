@@ -135,6 +135,9 @@ const ChatApp = {
                 customTooltip: document.getElementById('custom-tooltip'),
             };
         },
+        hideTooltip() {
+            this.elements.customTooltip.classList.remove('visible');
+        },
         initTooltips() {
             let tooltipTimeout;
             const tooltip = this.elements.customTooltip;
@@ -142,28 +145,20 @@ const ChatApp = {
             const showTooltip = (e) => {
                 const target = e.target.closest('[data-tooltip]');
                 if (!target) return;
-
                 const tooltipText = target.getAttribute('data-tooltip');
                 if (!tooltipText) return;
-
                 tooltip.textContent = tooltipText;
                 tooltip.classList.add('visible');
-
                 const targetRect = target.getBoundingClientRect();
                 const tooltipRect = tooltip.getBoundingClientRect();
-
-                let top = targetRect.top - tooltipRect.height - 8; // 8px offset
+                let top = targetRect.top - tooltipRect.height - 8;
                 let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
-
                 if (top < 10) { top = targetRect.bottom + 8; }
                 if (left < 10) { left = 10; }
                 if (left + tooltipRect.width > window.innerWidth - 10) { left = window.innerWidth - tooltipRect.width - 10; }
-
                 tooltip.style.top = `${top}px`;
                 tooltip.style.left = `${left}px`;
             };
-
-            const hideTooltip = () => tooltip.classList.remove('visible');
 
             document.body.addEventListener('mouseover', (e) => {
                 if (e.target.closest('[data-tooltip]')) {
@@ -175,9 +170,12 @@ const ChatApp = {
             document.body.addEventListener('mouseout', (e) => {
                  if (e.target.closest('[data-tooltip]')) {
                     clearTimeout(tooltipTimeout);
-                    hideTooltip();
+                    this.hideTooltip();
                 }
             });
+
+            // FIX: Hide tooltip on scroll to prevent it from getting stuck.
+            document.addEventListener('scroll', () => this.hideTooltip(), { capture: true, passive: true });
         },
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
@@ -217,7 +215,6 @@ const ChatApp = {
                 if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); }
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
                 
-                // Accessibility Improvements
                 item.setAttribute('role', 'button');
                 item.setAttribute('tabindex', '0');
                 item.setAttribute('aria-label', `Open chat: ${title}`);
@@ -269,13 +266,66 @@ const ChatApp = {
             attachments.forEach(file => {
                 const item = document.createElement('div');
                 item.className = 'attachment-item';
-                let contentHTML = `<div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; font-size:12px; padding: 4px; text-align:center; word-break:break-all;">${ChatApp.Utils.escapeHTML(file.name)}</div>`;
+                let contentHTML = '';
+                
                 if (file.data) {
                     if (file.type.startsWith('image/')) {
                         contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
                     } else if (file.type.startsWith('video/')) {
                         contentHTML = `<video src="${file.data}" class="attachment-media" controls data-tooltip="${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
                     }
+                } else {
+                    // FIX: Render a generic icon for non-media files.
+                    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+                    const iconMap = {
+    'html': ChatApp.Config.ICONS.HTML,
+    'css': ChatApp.Config.ICONS.CSS,
+    'js': ChatApp.Config.ICONS.JS,
+    'svg': ChatApp.Config.ICONS.SVG,
+    'png': ChatApp.Config.ICONS.PNG,
+    'jpg': ChatApp.Config.ICONS.JPG,
+    'gif': ChatApp.Config.ICONS.GIF,
+    'pdf': ChatApp.Config.ICONS.PDF,
+    'doc': ChatApp.Config.ICONS.DOC,
+    'docx': ChatApp.Config.ICONS.DOCX,
+    'xls': ChatApp.Config.ICONS.XLS,
+    'xlsx': ChatApp.Config.ICONS.XLSX,
+    'zip': ChatApp.Config.ICONS.ZIP,
+    'rar': ChatApp.Config.ICONS.RAR,
+    'txt': ChatApp.Config.ICONS.TXT,
+    'json': ChatApp.Config.ICONS.JSON,
+    'xml': ChatApp.Config.ICONS.XML,
+    'md': ChatApp.Config.ICONS.MD,
+    'php': ChatApp.Config.ICONS.PHP,
+    'py': ChatApp.Config.ICONS.PYTHON,
+    'java': ChatApp.Config.ICONS.JAVA,
+    'lua': ChatApp.Config.ICONS.LUA,
+    'ts': ChatApp.Config.ICONS.TYPESCRIPT,
+    'yaml': ChatApp.Config.ICONS.YAML,
+    'yml': ChatApp.Config.ICONS.YAML_ALT,
+    'sql': ChatApp.Config.ICONS.SQL,
+    'db': ChatApp.Config.ICONS.DATABASE,
+    'key': ChatApp.Config.ICONS.KEY,
+    'exe': ChatApp.Config.ICONS.EXECUTABLE,
+    'dll': ChatApp.Config.ICONS.DLL,
+    'font': ChatApp.Config.ICONS.FONT,
+    'mp3': ChatApp.Config.ICONS.AUDIO,
+    'wav': ChatApp.Config.ICONS.AUDIO,
+    'mp4': ChatApp.Config.ICONS.VIDEO,
+    'avi': ChatApp.Config.ICONS.VIDEO,
+    'mov': ChatApp.Config.ICONS.VIDEO,
+    'config': ChatApp.Config.ICONS.CONFIG,
+    'ini': ChatApp.Config.ICONS.INI,
+    'log': ChatApp.Config.ICONS.LOG,
+    'gitignore': ChatApp.Config.ICONS.GIT,
+    'env': ChatApp.Config.ICONS.ENV,
+};
+                    const icon = iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT;
+                    contentHTML = `
+                        <div class="attachment-generic">
+                            ${icon}
+                            <span class="attachment-filename">${ChatApp.Utils.escapeHTML(file.name)}</span>
+                        </div>`;
                 }
                 item.innerHTML = contentHTML;
                 container.appendChild(item);
@@ -770,6 +820,8 @@ You have custom commands that users can use, and you must follow them.
         removeAttachedFile(index) {
             ChatApp.State.attachedFiles.splice(index, 1);
             ChatApp.UI.renderFilePreviews();
+            // FIX: Explicitly hide the tooltip in case it was visible on the deleted element.
+            ChatApp.UI.hideTooltip();
         },
         clearAttachedFiles() {
             ChatApp.State.attachedFiles = [];
@@ -809,7 +861,6 @@ You have custom commands that users can use, and you must follow them.
                     return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})` };
                 } catch (error) {
                     console.error("Failed to process image tag:", originalTag, error);
-                    // Provide a user-friendly error message directly in the chat UI
                     const userFriendlyError = `[Error generating image: The external image service failed. This could be due to a temporary outage or an issue with the prompt. Please try again later.]`;
                     return { original: originalTag, replacement: userFriendlyError };
                 }
@@ -853,24 +904,19 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
             ChatApp.UI.clearChatArea();
-            ChatApp.UI.renderSidebar(); // Render sidebar immediately to show the active chat
+            ChatApp.UI.renderSidebar();
         
-            // Use an async IIFE to handle sequential rendering of messages. This is crucial
-            // because `processResponseForImages` is async and we must maintain message order.
             (async () => {
                 for (const msg of ChatApp.State.currentConversation) {
                     const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
-                    // Check if the raw message from history contains the unprocessed image generation tag.
                     if (msg.content.role === 'model' && /\[IMAGE: \{[\s\S]*?\}\]/.test(rawText)) {
                         const processedText = await this.processResponseForImages(rawText);
                         const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
                         ChatApp.UI.renderMessage(processedMsg);
                     } else {
-                        // Render the message as is if no processing is needed.
                         ChatApp.UI.renderMessage(msg);
                     }
                 }
-                // Once all messages are rendered, scroll to the bottom.
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             })();
         },
