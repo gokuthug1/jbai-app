@@ -1,22 +1,29 @@
 /**
  * A self-contained Chat Application object.
+ * This object encapsulates all logic for configuration, state management,
+ * UI rendering, API communication, and application control.
+ *
+ * @namespace ChatApp
  */
 const ChatApp = {
     // --- Configuration Module ---
+    /**
+     * @memberof ChatApp
+     * @namespace Config
+     * @description Stores static configuration values for the application.
+     */
     Config: {
         API_URLS: {
             TEXT: '/api/server',
-            IMAGE: '/api/image' // Updated to use the new backend endpoint
+            IMAGE: 'https://image.pollinations.ai/prompt/'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
-            IMAGE_PROVIDER: 'jbai_image_provider', // New key for storing the image provider
         },
         DEFAULT_THEME: 'light',
-        DEFAULT_IMAGE_PROVIDER: 'pollinations', // 'pollinations' or 'google'
-        TYPING_SPEED_MS: 0,
-        MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
+        TYPING_SPEED_MS: 0, // Milliseconds per character
+        MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024, // 4MB limit to prevent 413 Payload Too Large errors
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
@@ -41,9 +48,12 @@ const ChatApp = {
         typingInterval: null,
         attachedFiles: [],
         setCurrentConversation(history) {
+            // This function normalizes conversation history, supporting older data formats for backward compatibility.
             this.currentConversation = history.map(msg => {
                 if (!msg) return null;
+                // Already in the new format
                 if (msg.id && msg.content && Array.isArray(msg.content.parts)) return msg;
+                // Old format: { role: 'user', text: '...' } -> migrate to new format
                 if (msg.role && typeof msg.text !== 'undefined') {
                     return {
                         id: ChatApp.Utils.generateUUID(),
@@ -54,7 +64,7 @@ const ChatApp = {
                     };
                 }
                 return null;
-            }).filter(Boolean);
+            }).filter(Boolean); // Filter out any null entries from failed migrations
         },
         addMessage(message) { this.currentConversation.push(message); },
         removeMessage(messageId) { this.currentConversation = this.currentConversation.filter(msg => msg.id !== messageId); },
@@ -99,8 +109,6 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
-        saveImageProvider(provider) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.IMAGE_PROVIDER, provider); },
-        getImageProvider() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.IMAGE_PROVIDER) || ChatApp.Config.DEFAULT_IMAGE_PROVIDER; },
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -134,17 +142,23 @@ const ChatApp = {
             const showTooltip = (e) => {
                 const target = e.target.closest('[data-tooltip]');
                 if (!target) return;
+
                 const tooltipText = target.getAttribute('data-tooltip');
                 if (!tooltipText) return;
+
                 tooltip.textContent = tooltipText;
                 tooltip.classList.add('visible');
+
                 const targetRect = target.getBoundingClientRect();
                 const tooltipRect = tooltip.getBoundingClientRect();
-                let top = targetRect.top - tooltipRect.height - 8;
+
+                let top = targetRect.top - tooltipRect.height - 8; // 8px offset
                 let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+
                 if (top < 10) { top = targetRect.bottom + 8; }
                 if (left < 10) { left = 10; }
                 if (left + tooltipRect.width > window.innerWidth - 10) { left = window.innerWidth - tooltipRect.width - 10; }
+
                 tooltip.style.top = `${top}px`;
                 tooltip.style.left = `${left}px`;
             };
@@ -203,6 +217,7 @@ const ChatApp = {
                 if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); }
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
                 
+                // Accessibility Improvements
                 item.setAttribute('role', 'button');
                 item.setAttribute('tabindex', '0');
                 item.setAttribute('aria-label', `Open chat: ${title}`);
@@ -343,8 +358,11 @@ const ChatApp = {
         },
         _formatMessageContent(text) {
             if (!text) return '';
+        
             let processedText = text;
             const blocks = [];
+        
+            // Step 1: Extract all code/HTML/SVG blocks and replace with placeholders.
             processedText = processedText.replace(/```(\w+)?\s*\r?\n([\s\S]*?)\s*```/g, (match, lang, code) => {
                 const id = blocks.length;
                 blocks.push({ type: 'code', lang: lang || 'plaintext', content: code.trim() });
@@ -355,6 +373,8 @@ const ChatApp = {
                 blocks.push({ type: 'svg', content: svgContent.trim() });
                 return `JBAIBLOCK${id}`;
             });
+        
+            // Step 2: Process standard markdown on the remaining text.
             let html = ChatApp.Utils.escapeHTML(processedText)
                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>')
                 .replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>')
@@ -366,6 +386,7 @@ const ChatApp = {
                 .replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*]\s*/, '')}</li>`).join('')}</ul>`)
                 .replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
 
+            // Step 3: Re-insert the rendered blocks.
             html = html.replace(/JBAIBLOCK(\d+)/g, (match, id) => {
                 const block = blocks[id];
                 const escapedContent = ChatApp.Utils.escapeHTML(block.content);
@@ -373,27 +394,31 @@ const ChatApp = {
 
                 if (lang === 'html') {
                     const safeHtmlForSrcdoc = block.content.replace(/"/g, '&quot;');
-                    return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre>${escapedContent}</pre></div></div></div>`;
+                    return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-html">${escapedContent}</code></pre></div></div></div>`;
                 } else if (block.type === 'svg') {
                      const encodedSvg = btoa(block.content);
-                     return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre>${escapedContent}</pre></div></div></div>`;
+                     return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-xml">${escapedContent}</code></pre></div></div></div>`;
                 } else {
-                    return `<div class="code-block-wrapper is-collapsible is-collapsed"><div class="code-block-header"><span>${ChatApp.Utils.escapeHTML(lang)}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre>${escapedContent}</pre></div></div>`;
+                    return `<div class="code-block-wrapper is-collapsible is-collapsed"><div class="code-block-header"><span>${ChatApp.Utils.escapeHTML(lang)}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-${lang}">${escapedContent}</code></pre></div></div>`;
                 }
             });
             
+            // Step 4: Process image generation tags.
             html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
                 const safeFilename = (alt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
                 return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image" aria-label="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
             });
         
+            // Step 5: (REWRITTEN) Intelligently wrap remaining text in <p> tags.
             let finalHtml = '';
+            // This regex splits the HTML by block-level elements, keeping the elements as delimiters.
             const parts = html.split(/(<(?:div|blockquote|ul|ol|h[1-6]|pre)[\s\S]*?<\/(?:div|blockquote|ul|ol|h[1-6]|pre)>)/);
             for (const part of parts) {
                 if (!part) continue;
                 if (part.match(/^(<(?:div|blockquote|ul|ol|h[1-6]|pre))/)) {
-                    finalHtml += part;
+                    finalHtml += part; // It's a block, add it as is.
                 } else {
+                    // It's text. Split by double newlines for paragraphs, then wrap.
                     const paragraphs = part.split(/\n\s*\n/).map(p => p.trim()).filter(p => p);
                     finalHtml += paragraphs.map(p => `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
                 }
@@ -415,6 +440,7 @@ const ChatApp = {
                 const pre = wrapper.querySelector('pre');
                 const actionsContainer = wrapper.querySelector('.code-block-actions');
                 if (!pre || !actionsContainer) return;
+                const codeEl = pre.querySelector('code');
 
                 if (wrapper.dataset.previewable) {
                     const openBtn = document.createElement('button');
@@ -434,13 +460,16 @@ const ChatApp = {
                 downloadBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const rawCode = pre.textContent;
-                    const lang = wrapper.querySelector('.code-block-header span')?.textContent.toLowerCase() || 'txt';
-                    const extensionMap = { html: 'html', xml: 'xml', svg: 'svg', css: 'css', javascript: 'js', js: 'js', json: 'json', python: 'py', typescript: 'ts', shell: 'sh', bash: 'sh' };
-                    const extension = extensionMap[lang] || lang;
+                    let lang = 'txt';
+                    if (codeEl && codeEl.className.startsWith('language-')) {
+                        const potentialLang = codeEl.className.replace('language-', '').toLowerCase();
+                        const extensionMap = { html: 'html', xml: 'xml', svg: 'svg', css: 'css', javascript: 'js', js: 'js', json: 'json', python: 'py', typescript: 'ts', shell: 'sh', bash: 'sh' };
+                        lang = extensionMap[potentialLang] || potentialLang.split(' ')[0];
+                    }
                     const blob = new Blob([rawCode], { type: 'text/plain;charset=utf-8' });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement('a');
-                    a.href = url; a.download = `jbai-snippet.${extension}`;
+                    a.href = url; a.download = `jbai-snippet.${lang}`;
                     document.body.appendChild(a); a.click(); document.body.removeChild(a);
                     URL.revokeObjectURL(url);
                     this.showToast('Snippet downloaded!');
@@ -474,13 +503,6 @@ const ChatApp = {
                         <option value="monokai">MonoKai</option>
                     </select>
                 </div>
-                <div class="settings-row">
-                    <label for="imageProviderSelect">Image Generation</label>
-                    <select id="imageProviderSelect">
-                        <option value="pollinations">Pollinations.ai</option>
-                        <option value="google">Google AI (Simulated)</option>
-                    </select>
-                </div>
                 <hr>
                 <h3>Data Management</h3>
                 <div class="settings-group">
@@ -493,17 +515,9 @@ const ChatApp = {
             </div>`;
             document.body.appendChild(overlay);
             overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
-
-            const imageProviderSelect = overlay.querySelector('#imageProviderSelect');
-            imageProviderSelect.value = ChatApp.Store.getImageProvider();
-            imageProviderSelect.addEventListener('change', e => {
-                ChatApp.Store.saveImageProvider(e.target.value);
-                this.showToast(`Image provider set to ${e.target.options[e.target.selectedIndex].text}`, 'info');
-            });
             
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
@@ -528,18 +542,36 @@ const ChatApp = {
     // --- API Module ---
     Api: {
         async getSystemContext() {
-            return `You are J.B.A.I., a helpful and context-aware assistant.
+            // --- FIX: Stricter rules for HTML generation to ensure self-contained code for previews ---
+            return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
+
 --- Custom Commands ---
+You have custom commands that users can use, and you must follow them.
+
 /html → Give a random HTML code that’s interesting and fun.
 /profile → List all custom commands and explain what each does.
+/concept → Ask what concept the user wants to create.
+/song → Ask about the user's music taste, then recommend a fitting song.
+/word → Give a new word and its definition.
+/tip → Share a useful lifehack or tip.
+/invention → Generate a fictional, interesting invention idea.
+/sp → Correct any text the user sends for spelling and grammar.
+/art → Suggest a prompt or idea for a creative art project.
+/bdw → Break down a word: pronunciation, definition, and similar-sounding word.
+
 --- General Rules ---
 - Use standard Markdown in your responses.
-- To generate an image, you MUST use this exact format: \`[IMAGE: { "prompt": "your detailed prompt", "height": 1024, "seed": 12345 }]\`.
-  - Be very descriptive in the prompt.
-  - Do NOT invent new parameters or include a URL. The system will handle the actual image generation.
+- To generate an image, you MUST use this exact format in your response: \`[IMAGE: { "prompt": "your detailed prompt", "height": number, "seed": number }]\`.
+  - When writing the "prompt" value, be very descriptive and literal. Place the most important subjects, features, and actions (e.g., "a bear shooting lasers from its eyes") at the beginning of the prompt to ensure they are accurately represented.
+  - You have control over the parameters: \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
+  - Do NOT invent new parameters. Do NOT include a URL. The system will handle the actual image generation.
 - Current Date/Time: ${new Date().toLocaleString()}
-- Format HTML code as one complete, self-contained file inside a \`\`\`html markdown block. All CSS must be in <style> tags and JS in <script> tags.
-- Avoid fluff—stay smart, fast, and clear.`;
+- Format HTML code as one complete, well-formatted, and readable file. ALWAYS enclose the full HTML code within a single \`\`\`html markdown block.
+  - The generated HTML MUST be self-contained. All CSS rules must be placed inside <style> tags and all JavaScript code must be placed inside <script> tags within the HTML itself.
+  - DO NOT use external file links like \`<link rel="stylesheet" href="...">\` or \`<script src="...">\`. The preview environment cannot access external files.
+  - DO NOT write any text outside of the markdown block.
+- Do not ask what a command means. Follow it exactly as written.
+- Avoid fluff or overexplaining—stay smart, fast, and clear.`;
         },
         async fetchTitle(chatHistory) {
             const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
@@ -562,7 +594,10 @@ const ChatApp = {
         async fetchTextResponse(apiContents, systemInstruction) {
             const maxRetries = 3;
             let lastError = null;
-            const payload = { contents: apiContents, systemInstruction: systemInstruction };
+            const payload = {
+                contents: apiContents,
+                systemInstruction: systemInstruction
+            };
         
             for (let attempt = 0; attempt < maxRetries; attempt++) {
                 try {
@@ -571,16 +606,24 @@ const ChatApp = {
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify(payload)
                     });
+        
                     if (response.ok) {
                         const data = await response.json();
                         const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
                         if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
                         return botResponseText;
                     }
+        
                     let errorJson;
-                    try { errorJson = await response.json(); } catch (e) { throw new Error(`API Error: ${response.status} ${response.statusText}`); }
+                    try {
+                        errorJson = await response.json();
+                    } catch (e) {
+                        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                    }
+            
                     const detailedMessage = errorJson?.error?.message || JSON.stringify(errorJson);
                     throw new Error(`API Error: ${response.status} - ${detailedMessage}`);
+                    
                 } catch (error) {
                     lastError = error;
                     console.warn(`Attempt ${attempt + 1} failed: ${error.message}. Retrying...`);
@@ -590,23 +633,23 @@ const ChatApp = {
             throw new Error(`Failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
         },
         async fetchImageResponse(params) {
-            const provider = ChatApp.Store.getImageProvider();
-            const payload = { ...params, provider };
+            const { prompt, height, seed, model } = params;
+            if (!prompt) throw new Error("A prompt is required for image generation.");
+
+            const encodedPrompt = encodeURIComponent(prompt);
+            const queryParams = new URLSearchParams({ model: model || 'flux', enhance: 'true', nologo: 'true' });
+            if (height) queryParams.set('height', height);
+            if (seed) queryParams.set('seed', seed);
             
-            const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
-            });
+            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodedPrompt}?${queryParams.toString()}`;
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(`Image generation failed: ${errorData.message || response.statusText}`);
-            }
-
-            const data = await response.json();
-            if (!data.imageUrl) throw new Error("Could not get image URL from the API response.");
-            return data.imageUrl;
+            const response = await fetch(fullUrl);
+            if (!response.ok) { throw new Error(`Server error: ${response.status} ${response.statusText}`); }
+            const imageBlob = await response.blob();
+            if (imageBlob.type.startsWith('text/')) { throw new Error("Image generation failed. The API may be down or the prompt was invalid."); }
+            const imageUrl = URL.createObjectURL(imageBlob);
+            if (!imageUrl) throw new Error("Could not create image URL from the API response.");
+            return imageUrl;
         }
     },
     
@@ -642,6 +685,7 @@ const ChatApp = {
             elements.fullscreenOverlay.addEventListener('click', (e) => { if (e.target === elements.fullscreenOverlay) { Controller.closeFullscreenPreview(); } });
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) { Controller.closeFullscreenPreview(); } });
 
+            // Drag and Drop Listeners
             elements.body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.add('drag-over'); });
             elements.body.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) { elements.body.classList.remove('drag-over'); } });
             elements.body.addEventListener('drop', (e) => {
@@ -711,7 +755,7 @@ const ChatApp = {
         },
         handleFileSelection(event) {
             this.addFilesToState(event.target.files);
-            event.target.value = null;
+            event.target.value = null; // Reset input to allow selecting the same file again
         },
         handlePaste(event) {
             const files = event.clipboardData?.files;
@@ -765,11 +809,12 @@ const ChatApp = {
                     return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})` };
                 } catch (error) {
                     console.error("Failed to process image tag:", originalTag, error);
-                    const userFriendlyError = `[Error generating image: ${error.message}]`;
+                    // --- FIX: Provide a user-friendly error message in the chat UI ---
+                    const userFriendlyError = `[Error generating image: The external image service failed. This could be due to a temporary outage or an issue with the prompt. Please try again later.]`;
                     return { original: originalTag, replacement: userFriendlyError };
                 }
             });
-            const replacements = await Promise.all(replacements);
+            const replacements = await Promise.all(replacementPromises);
             let processedText = rawText;
             replacements.forEach(({ original, replacement }) => { processedText = processedText.replace(original, replacement); });
             return processedText;
@@ -808,19 +853,24 @@ const ChatApp = {
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
             ChatApp.UI.clearChatArea();
-            ChatApp.UI.renderSidebar();
+            ChatApp.UI.renderSidebar(); // Render sidebar immediately to show the active chat
         
+            // Use an async IIFE to handle sequential rendering of messages, which is crucial
+            // because processResponseForImages is async and we must maintain message order.
             (async () => {
                 for (const msg of ChatApp.State.currentConversation) {
                     const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
+                    // Check if the raw message from history contains the unprocessed image generation tag.
                     if (msg.content.role === 'model' && /\[IMAGE: \{[\s\S]*?\}\]/.test(rawText)) {
                         const processedText = await this.processResponseForImages(rawText);
                         const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
                         ChatApp.UI.renderMessage(processedMsg);
                     } else {
+                        // Render the message as is if no processing is needed.
                         ChatApp.UI.renderMessage(msg);
                     }
                 }
+                // Once all messages are rendered, scroll to the bottom.
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             })();
         },
