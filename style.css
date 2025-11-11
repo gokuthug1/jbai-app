@@ -279,7 +279,7 @@ body.drag-over::before {
     background: var(--input-bg);
     border: 1px solid var(--border-color);
     border-radius: 50%;
-    transition: background-color 0.2s, border-color 0.2s;
+    transition: background-color 0.2s, border-color 0.2s, left 0.35s ease-in-out;
 }
 #sidebar-toggle:hover {
     background-color: var(--sidebar-hover);
@@ -836,7 +836,7 @@ body.sidebar-open .open-icon { display: none; }
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus-color) 20%, transparent);
 }
 
-textarea {
+textarea#chat-input {
     flex-grow: 1;
     max-height: 200px;
     padding: 10px;
@@ -849,7 +849,7 @@ textarea {
     font-size: 16px;
     line-height: 1.5;
 }
-textarea:focus-visible {
+textarea#chat-input:focus-visible {
     border-color: transparent;
     box-shadow: none;
 }
@@ -1154,15 +1154,9 @@ input:focus-visible + .slider {
     .sidebar-backdrop {
         display: none; /* Hide backdrop on desktop */
     }
-    #sidebar-toggle {
-        /* Add back the transition for the left property */
-        transition: left 0.35s ease-in-out, background-color 0.2s, border-color 0.2s;
-    }
     body.sidebar-open #sidebar-toggle {
         left: 276px; /* Move the toggle button with the sidebar */
     }
-    body.sidebar-open .close-icon { display: block; }
-    body.sidebar-open .open-icon { display: none; }
 }
 
 /* ==========================================================================
