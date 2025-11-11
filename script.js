@@ -173,8 +173,7 @@ const ChatApp = {
                     this.hideTooltip();
                 }
             });
-
-            // FIX: Hide tooltip on scroll to prevent it from getting stuck.
+            
             document.addEventListener('scroll', () => this.hideTooltip(), { capture: true, passive: true });
         },
         applyTheme(themeName) {
@@ -275,57 +274,27 @@ const ChatApp = {
                         contentHTML = `<video src="${file.data}" class="attachment-media" controls data-tooltip="${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
                     }
                 } else {
-                    // FIX: Render a generic icon for non-media files.
+                    // Render a generic icon, filename, and extension for non-media files.
                     const extension = file.name.split('.').pop()?.toLowerCase() || '';
                     const iconMap = {
-    'html': ChatApp.Config.ICONS.HTML,
-    'css': ChatApp.Config.ICONS.CSS,
-    'js': ChatApp.Config.ICONS.JS,
-    'svg': ChatApp.Config.ICONS.SVG,
-    'png': ChatApp.Config.ICONS.PNG,
-    'jpg': ChatApp.Config.ICONS.JPG,
-    'gif': ChatApp.Config.ICONS.GIF,
-    'pdf': ChatApp.Config.ICONS.PDF,
-    'doc': ChatApp.Config.ICONS.DOC,
-    'docx': ChatApp.Config.ICONS.DOCX,
-    'xls': ChatApp.Config.ICONS.XLS,
-    'xlsx': ChatApp.Config.ICONS.XLSX,
-    'zip': ChatApp.Config.ICONS.ZIP,
-    'rar': ChatApp.Config.ICONS.RAR,
-    'txt': ChatApp.Config.ICONS.TXT,
-    'json': ChatApp.Config.ICONS.JSON,
-    'xml': ChatApp.Config.ICONS.XML,
-    'md': ChatApp.Config.ICONS.MD,
-    'php': ChatApp.Config.ICONS.PHP,
-    'py': ChatApp.Config.ICONS.PYTHON,
-    'java': ChatApp.Config.ICONS.JAVA,
-    'lua': ChatApp.Config.ICONS.LUA,
-    'ts': ChatApp.Config.ICONS.TYPESCRIPT,
-    'yaml': ChatApp.Config.ICONS.YAML,
-    'yml': ChatApp.Config.ICONS.YAML_ALT,
-    'sql': ChatApp.Config.ICONS.SQL,
-    'db': ChatApp.Config.ICONS.DATABASE,
-    'key': ChatApp.Config.ICONS.KEY,
-    'exe': ChatApp.Config.ICONS.EXECUTABLE,
-    'dll': ChatApp.Config.ICONS.DLL,
-    'font': ChatApp.Config.ICONS.FONT,
-    'mp3': ChatApp.Config.ICONS.AUDIO,
-    'wav': ChatApp.Config.ICONS.AUDIO,
-    'mp4': ChatApp.Config.ICONS.VIDEO,
-    'avi': ChatApp.Config.ICONS.VIDEO,
-    'mov': ChatApp.Config.ICONS.VIDEO,
-    'config': ChatApp.Config.ICONS.CONFIG,
-    'ini': ChatApp.Config.ICONS.INI,
-    'log': ChatApp.Config.ICONS.LOG,
-    'gitignore': ChatApp.Config.ICONS.GIT,
-    'env': ChatApp.Config.ICONS.ENV,
-};
+                        'html': ChatApp.Config.ICONS.HTML,
+                        'css': ChatApp.Config.ICONS.CSS,
+                        'js': ChatApp.Config.ICONS.JS,
+                        'svg': ChatApp.Config.ICONS.SVG,
+                        'lua': ChatApp.Config.ICONS.LUA,
+                        'txt': ChatApp.Config.ICONS.TEXT,
+                        'json': ChatApp.Config.ICONS.JSON,
+			'png': ChatApp.Config.ICONS.IMAGE,
+			'jpg': ChatApp.Config.ICONS.IMAGE,
+			'gif': ChatApp.Config.ICONS.GIF
+                    };
                     const icon = iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT;
                     contentHTML = `
                         <div class="attachment-generic">
                             ${icon}
                             <span class="attachment-filename">${ChatApp.Utils.escapeHTML(file.name)}</span>
-                        </div>`;
+                        </div>
+                        <span class="file-preview-extension">${ChatApp.Utils.escapeHTML(extension.substring(0, 4))}</span>`;
                 }
                 item.innerHTML = contentHTML;
                 container.appendChild(item);
@@ -820,7 +789,6 @@ You have custom commands that users can use, and you must follow them.
         removeAttachedFile(index) {
             ChatApp.State.attachedFiles.splice(index, 1);
             ChatApp.UI.renderFilePreviews();
-            // FIX: Explicitly hide the tooltip in case it was visible on the deleted element.
             ChatApp.UI.hideTooltip();
         },
         clearAttachedFiles() {
