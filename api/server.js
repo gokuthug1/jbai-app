@@ -7,7 +7,7 @@ app.use(cors());
 app.use(express.json());
 
 const { GOOGLE_API_KEY } = process.env;
-// Using a stable and widely available model.
+// FIX 1: Switched from '-latest' to a stable and reliable model version.
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
 
 app.post('/api/server', async (req, res) => {
@@ -18,12 +18,17 @@ app.post('/api/server', async (req, res) => {
   }
 
   try {
-    // --- FIX: Receive BOTH contents and systemInstruction from the frontend ---
+    // FIX 2: Receive BOTH contents and systemInstruction from the frontend.
     const { contents, systemInstruction } = req.body;
+
+    // Validate that 'contents' exists, as it's required by the API.
+    if (!contents) {
+        return res.status(400).json({ message: "Bad Request: 'contents' field is missing." });
+    }
 
     const response = await axios.post(
       `${GOOGLE_API_URL}?key=${GOOGLE_API_KEY}`,
-      // --- FIX: Send BOTH objects to the Google Gemini API ---
+      // FIX 2 (cont.): Send BOTH objects to the Google Gemini API.
       { contents, systemInstruction },
       { headers: { 'Content-Type': 'application/json' } }
     );
