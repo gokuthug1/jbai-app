@@ -22,7 +22,7 @@ const ChatApp = {
             CONVERSATIONS: 'jbai_conversations',
         },
         DEFAULT_THEME: 'light',
-        TYPING_SPEED_MS: 0, // Milliseconds per character
+        TYPING_SPEED_MS: 0, // Milliseconds per character. Set to 0 for instant responses.
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024, // 4MB limit to prevent 413 Payload Too Large errors
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -409,7 +409,7 @@ const ChatApp = {
                 return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${ChatApp.Utils.escapeHTML(alt)}</em></p><div class="image-container"><img src="${url}" alt="${ChatApp.Utils.escapeHTML(alt)}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image" aria-label="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
             });
         
-            // Step 5: (REWRITTEN) Intelligently wrap remaining text in <p> tags.
+            // Step 5: Intelligently wrap remaining text in <p> tags. This avoids wrapping block-level elements.
             let finalHtml = '';
             // This regex splits the HTML by block-level elements, keeping the elements as delimiters.
             const parts = html.split(/(<(?:div|blockquote|ul|ol|h[1-6]|pre)[\s\S]*?<\/(?:div|blockquote|ul|ol|h[1-6]|pre)>)/);
@@ -542,7 +542,7 @@ const ChatApp = {
     // --- API Module ---
     Api: {
         async getSystemContext() {
-            // --- FIX: Stricter rules for HTML generation to ensure self-contained code for previews ---
+            // Stricter rules for HTML generation to ensure self-contained code for previews
             return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 
 --- Custom Commands ---
@@ -809,7 +809,7 @@ You have custom commands that users can use, and you must follow them.
                     return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})` };
                 } catch (error) {
                     console.error("Failed to process image tag:", originalTag, error);
-                    // --- FIX: Provide a user-friendly error message in the chat UI ---
+                    // Provide a user-friendly error message directly in the chat UI
                     const userFriendlyError = `[Error generating image: The external image service failed. This could be due to a temporary outage or an issue with the prompt. Please try again later.]`;
                     return { original: originalTag, replacement: userFriendlyError };
                 }
@@ -855,8 +855,8 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar(); // Render sidebar immediately to show the active chat
         
-            // Use an async IIFE to handle sequential rendering of messages, which is crucial
-            // because processResponseForImages is async and we must maintain message order.
+            // Use an async IIFE to handle sequential rendering of messages. This is crucial
+            // because `processResponseForImages` is async and we must maintain message order.
             (async () => {
                 for (const msg of ChatApp.State.currentConversation) {
                     const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
