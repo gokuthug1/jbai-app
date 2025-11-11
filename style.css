@@ -576,7 +576,6 @@ body.sidebar-open .open-icon { display: none; }
     aspect-ratio: 1 / 1;
 }
 
-/* FIX: Styles for generic file attachments in messages */
 .attachment-generic {
     display: flex;
     flex-direction: column;
@@ -599,7 +598,7 @@ body.sidebar-open .open-icon { display: none; }
     word-break: break-all;
     max-height: 3.6em; /* max 3 lines */
     overflow: hidden;
-    color: var(--text-secondary);
+    color: var(--text-color); /* Changed for better contrast */
 }
 
 
