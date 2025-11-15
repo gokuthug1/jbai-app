@@ -232,7 +232,7 @@ const ChatApp = {
                 this.elements.conversationList.appendChild(item);
             });
         },
-        renderMessage(message, isTyping = false) {
+        async renderMessage(message, isTyping = false) {
             const messageEl = document.createElement('div');
             messageEl.dataset.messageId = message.id;
             const contentEl = document.createElement('div');
@@ -247,7 +247,7 @@ const ChatApp = {
                 const textPart = content.parts.find(p => p.text);
                 rawText = textPart ? textPart.text : '';
                 messageEl.className = `message ${sender}`;
-                contentEl.innerHTML = this._formatMessageContent(rawText);
+                contentEl.innerHTML = await this._formatMessageContent(rawText);
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
                     contentEl.prepend(attachmentsContainer);
@@ -331,7 +331,7 @@ const ChatApp = {
             });
             this.toggleSendButtonState();
         },
-        finalizeBotMessage(messageEl, fullText, messageId, botMessageForState) {
+        async finalizeBotMessage(messageEl, fullText, messageId, botMessageForState) {
             if (ChatApp.State.typingInterval) {
                 clearInterval(ChatApp.State.typingInterval);
                 ChatApp.State.typingInterval = null;
@@ -341,7 +341,7 @@ const ChatApp = {
             const contentEl = messageEl.querySelector('.message-content');
 
             if (ChatApp.Config.TYPING_SPEED_MS === 0) {
-                 contentEl.innerHTML = this._formatMessageContent(fullText);
+                 contentEl.innerHTML = await this._formatMessageContent(fullText);
                  this._addMessageInteractions(messageEl, fullText, messageId);
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
@@ -350,7 +350,7 @@ const ChatApp = {
             
             contentEl.innerHTML = '';
             let i = 0;
-            ChatApp.State.typingInterval = setInterval(() => {
+            ChatApp.State.typingInterval = setInterval(async () => {
                 if (i < fullText.length) {
                     contentEl.textContent += fullText[i];
                     i++;
@@ -358,7 +358,7 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    contentEl.innerHTML = this._formatMessageContent(fullText);
+                    contentEl.innerHTML = await this._formatMessageContent(fullText);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     this.scrollToBottom();
                     ChatApp.Controller.completeGeneration(botMessageForState);
@@ -375,7 +375,49 @@ const ChatApp = {
             messageEl.addEventListener('touchend', clearDeleteTimer);
             messageEl.addEventListener('touchmove', clearDeleteTimer);
         },
-        _formatMessageContent(text) {
+        async _inlineExternalScripts(htmlContent) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlContent, 'text/html');
+            const scriptTags = doc.querySelectorAll('script[src]');
+        
+            if (scriptTags.length === 0) {
+                return htmlContent; // No external scripts, return original content
+            }
+        
+            const fetchPromises = Array.from(scriptTags).map(async (scriptTag) => {
+                const src = scriptTag.getAttribute('src');
+                if (!src) return;
+        
+                try {
+                    // Fetch the script content.
+                    const response = await fetch(src);
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch script: ${response.statusText}`);
+                    }
+                    const scriptText = await response.text();
+                    
+                    // Create a new inline script element
+                    const inlineScript = doc.createElement('script');
+                    inlineScript.textContent = scriptText;
+                    
+                    // Replace the original external script tag with the new inline one
+                    scriptTag.parentNode.replaceChild(inlineScript, scriptTag);
+        
+                } catch (error) {
+                    console.error(`Error inlining script from ${src}:`, error);
+                    // Replace the script tag with a comment indicating failure
+                    const errorComment = doc.createComment(` JBAI Error: Failed to load script from ${src} `);
+                    scriptTag.parentNode.replaceChild(errorComment, scriptTag);
+                }
+            });
+        
+            // Wait for all scripts to be fetched and replaced
+            await Promise.all(fetchPromises);
+        
+            // Serialize the modified document back to an HTML string
+            return doc.documentElement.outerHTML;
+        },
+        async _formatMessageContent(text) {
             if (!text) return '';
         
             let processedText = text;
@@ -405,22 +447,29 @@ const ChatApp = {
                 .replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*]\s*/, '')}</li>`).join('')}</ul>`)
                 .replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
 
-            // Step 3: Re-insert the rendered blocks.
-            html = html.replace(/JBAIBLOCK(\d+)/g, (match, id) => {
+            // Step 3: Re-insert the rendered blocks asynchronously.
+            const replacedParts = await Promise.all(html.split(/(JBAIBLOCK\d+)/g).map(async (part) => {
+                const match = part.match(/JBAIBLOCK(\d+)/);
+                if (!match) return part;
+        
+                const id = match[1];
                 const block = blocks[id];
                 const escapedContent = ChatApp.Utils.escapeHTML(block.content);
                 const lang = block.lang?.toLowerCase() || '';
-
+        
                 if (lang === 'html') {
-                    const safeHtmlForSrcdoc = block.content.replace(/"/g, '&quot;');
-                    return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-html">${escapedContent}</code></pre></div></div></div>`;
+                    const inlinedHtml = await this._inlineExternalScripts(block.content);
+                    const safeHtmlForSrcdoc = inlinedHtml.replace(/"/g, '&quot;');
+                    return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-html">${escapedContent}</code></pre></div></div></div>`;
                 } else if (block.type === 'svg') {
                      const encodedSvg = btoa(block.content);
                      return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-xml">${escapedContent}</code></pre></div></div></div>`;
                 } else {
                     return `<div class="code-block-wrapper is-collapsible is-collapsed"><div class="code-block-header"><span>${ChatApp.Utils.escapeHTML(lang)}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-${lang}">${escapedContent}</code></pre></div></div>`;
                 }
-            });
+            }));
+        
+            html = replacedParts.join('');
             
             // Step 4: Process image generation tags.
             html = html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
@@ -585,10 +634,12 @@ You have custom commands that users can use, and you must follow them.
   - You have control over the parameters: \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
   - Do NOT invent new parameters. Do NOT include a URL. The system will handle the actual image generation.
 - Current Date/Time: ${new Date().toLocaleString()}
-- Format HTML code as one complete, well-formatted, and readable file. ALWAYS enclose the full HTML code within a single \`\`\`html markdown block.
-  - The generated HTML MUST be self-contained. All CSS rules must be placed inside <style> tags and all JavaScript code must be placed inside <script> tags within the HTML itself.
-  - DO NOT use external file links like \`<link rel="stylesheet" href="...">\` or \`<script src="...">\`. The preview environment cannot access external files.
-  - DO NOT write any text outside of the markdown block.
+- **Crucial Rule for HTML Generation:** The generated HTML MUST be 100% self-contained in a single file.
+  - All JavaScript code MUST be placed directly inside \`<script>\` tags.
+  - **You MUST NOT use external JavaScript libraries or frameworks like jQuery, React, Vue, D3.js, etc.** Do not include \`<script src="...">\` tags pointing to external files.
+  - All JavaScript you write must be "vanilla" (plain) JavaScript that runs in a modern browser without any outside dependencies.
+  - All CSS rules MUST be placed inside \`<style>\` tags. Do not use \`<link rel="stylesheet" href="...">\`.
+  - Failing to follow this self-containment rule will break the live preview.
 - Do not ask what a command means. Follow it exactly as written.
 - Avoid fluff or overexplaining—stay smart, fast, and clear.`;
         },
@@ -751,7 +802,7 @@ You have custom commands that users can use, and you must follow them.
 
             const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: userMessageAttachments };
             ChatApp.State.addMessage(userMessage);
-            ChatApp.UI.renderMessage(userMessage);
+            await ChatApp.UI.renderMessage(userMessage);
             await this._generateText();
         },
         addFilesToState(files) {
@@ -796,7 +847,7 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.renderFilePreviews();
         },
         async _generateText() {
-            const thinkingMessageEl = ChatApp.UI.renderMessage({ id: null }, true);
+            const thinkingMessageEl = await ChatApp.UI.renderMessage({ id: null }, true);
             try {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
@@ -804,13 +855,13 @@ You have custom commands that users can use, and you must follow them.
                 const processedForUI = await this.processResponseForImages(rawBotResponse);
                 const messageId = ChatApp.Utils.generateUUID();
                 const botMessageForState = { id: messageId, content: { role: "model", parts: [{ text: rawBotResponse }] } };
-                ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedForUI, messageId, botMessageForState);
+                await ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedForUI, messageId, botMessageForState);
             } catch (error) {
                 console.error("Text generation failed:", error);
                 thinkingMessageEl.remove();
                 const userFriendlyMessage = error.message.includes("API Error: 500") ? "Sorry, the server encountered an internal error. Please try again later." : `Sorry, an error occurred: ${error.message}`;
                 const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: userFriendlyMessage }] } };
-                ChatApp.UI.renderMessage(errorBotMessage);
+                await ChatApp.UI.renderMessage(errorBotMessage);
                 ChatApp.UI.showToast(userFriendlyMessage, 'error');
                 ChatApp.State.setGenerating(false);
             }
@@ -880,9 +931,9 @@ You have custom commands that users can use, and you must follow them.
                     if (msg.content.role === 'model' && /\[IMAGE: \{[\s\S]*?\}\]/.test(rawText)) {
                         const processedText = await this.processResponseForImages(rawText);
                         const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
-                        ChatApp.UI.renderMessage(processedMsg);
+                        await ChatApp.UI.renderMessage(processedMsg);
                     } else {
-                        ChatApp.UI.renderMessage(msg);
+                        await ChatApp.UI.renderMessage(msg);
                     }
                 }
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
