@@ -396,23 +396,21 @@ const ChatApp = {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
                         const previewType = wrapper.dataset.previewable;
+                        const newWindow = window.open('about:blank', '_blank');
+
+                        if (!newWindow) {
+                            this.showToast('Enable popups to open in a new tab.', 'error');
+                            return;
+                        }
 
                         if (previewType === 'html' || previewType === 'svg') {
                             // For HTML and SVG, write to a blank window to render them.
-                            const newWindow = window.open('about:blank', '_blank');
-                            if (newWindow) {
-                                newWindow.document.write(rawContent);
-                                newWindow.document.close();
-                            } else {
-                                this.showToast('Enable popups to open in a new tab.', 'error');
-                            }
+                            newWindow.document.write(rawContent);
+                            newWindow.document.close();
                         } else {
-                            // For all other types, use a data: URI to show as plain text.
-                            const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(rawContent)}`;
-                            const newWindow = window.open(dataUrl, '_blank');
-                             if (!newWindow) {
-                                this.showToast('Enable popups to open in a new tab.', 'error');
-                            }
+                            // For all other types, write the escaped text content inside a <pre> tag.
+                            newWindow.document.write('<pre>' + ChatApp.Utils.escapeHTML(rawContent) + '</pre>');
+                            newWindow.document.close();
                         }
                     });
                     actionsContainer.appendChild(openBtn);
