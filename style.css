@@ -20,6 +20,18 @@
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* NEW: Animation for file previews appearing */
+@keyframes slideUpIn {
+    from { opacity: 0; transform: translateY(15px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* NEW: Animation for file previews being removed */
+@keyframes scaleDownOut {
+    from { opacity: 1; transform: scale(1); }
+    to   { opacity: 0; transform: scale(0.8); }
+}
+
 @keyframes thinking-dot {
     0%, 100% { transform: scale(0.5); opacity: 0.5; }
     50%      { transform: scale(1); opacity: 1; }
@@ -101,7 +113,7 @@
     --input-bg: #21222c;
     --button-bg: #bd93f9;
     --button-hover-bg: #ca79ff;
-    --button-text: #f8f8f2;
+    --button-text: #f8f82;
     --message-user-bg: #44475a;
     --message-bot-bg: #21222c;
     --code-bg: #191a21;
@@ -418,6 +430,8 @@ body.sidebar-open .open-icon { display: none; }
     display: flex;
     align-items: flex-start;
     max-width: 100%;
+    /* MODIFIED: Add animation for new messages */
+    animation: slideIn 0.4s cubic-bezier(0.25, 1, 0.5, 1);
 }
 .message.user {
     justify-content: flex-end;
@@ -788,6 +802,13 @@ body.sidebar-open .open-icon { display: none; }
     border-radius: 8px;
     overflow: hidden;
     background-color: var(--sidebar-hover); /* BG for generic files */
+    /* MODIFIED: Add animation for when items are added */
+    animation: slideUpIn 0.3s ease-out forwards;
+    opacity: 0; /* Start hidden for animation */
+}
+/* NEW: Class for removing items */
+.file-preview-item.removing {
+    animation: scaleDownOut 0.3s ease-out forwards;
 }
 .file-preview-item img, .file-preview-item video {
     width: 100%;
@@ -976,6 +997,14 @@ textarea#chat-input:focus-visible {
     backdrop-filter: blur(5px);
     animation: fadeIn 0.3s ease;
 }
+/* NEW: Closing state for modal */
+.modal-overlay.closing {
+    animation: fadeOut 0.3s ease forwards;
+}
+.modal-overlay.closing .settings-card {
+    animation: fadeOut 0.2s ease forwards;
+}
+
 
 .settings-card {
     width: 90%;
@@ -1218,6 +1247,10 @@ input:focus-visible + .slider {
     padding: 20px;
     animation: fadeIn 0.3s ease;
 }
+/* NEW: Closing state for fullscreen modal */
+.fullscreen-overlay.closing {
+    animation: fadeOut 0.3s ease forwards;
+}
 
 .fullscreen-close-btn {
     position: absolute;
@@ -1429,6 +1462,8 @@ body.canvas-view-active .chat-container {
     flex-grow: 1;
     padding: 1rem;
     overflow: hidden; /* Important for iframe */
+    /* MODIFIED: Add transition for smooth content updates */
+    transition: opacity 0.3s ease-in-out;
 }
 
 .canvas-content .html-render-box,
