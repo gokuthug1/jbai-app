@@ -1293,6 +1293,7 @@ input:focus-visible + .slider {
     background-color: var(--danger-color);
     color: #fff;
 }
+
 /* ==========================================================================
    8. Syntax Highlighting
    ========================================================================== */
@@ -1374,3 +1375,65 @@ input:focus-visible + .slider {
 .token.keyword { color: var(--token-keyword); }
 .token.function { color: var(--token-function); }
 .token.class-name, .token.jbai-keyword { color: var(--token-class-name); font-weight: bold; }
+
+/* ==========================================================================
+   9. Canvas (Split View) Mode
+   ========================================================================== */
+
+/* Make the message bubble wider to accommodate the split view */
+.message.canvas-active .message-content {
+    max-width: 90vw;
+    width: 1400px;
+}
+
+/* By default, the preview container is a simple block */
+.message.canvas-active .html-preview-container,
+.message.canvas-active .svg-preview-container {
+    display: flex;
+    flex-direction: column;
+}
+
+/* On larger screens, use CSS Grid for the split-view layout */
+@media (min-width: 1024px) {
+    .message.canvas-active .html-preview-container,
+    .message.canvas-active .svg-preview-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-rows: auto 1fr; /* Row for titles, row for content */
+        gap: 0 1rem; /* No row gap, 1rem column gap */
+        align-items: stretch;
+        min-height: 500px;
+    }
+
+    /* Place the elements into the grid cells */
+    .message.canvas-active .html-preview-container > h4:first-of-type,
+    .message.canvas-active .svg-preview-container > h4:first-of-type {
+        grid-area: 1 / 1 / 2 / 2;
+    }
+    .message.canvas-active .html-preview-container > .html-render-box,
+    .message.canvas-active .svg-preview-container > .svg-render-box {
+        grid-area: 2 / 1 / 3 / 2;
+    }
+    .message.canvas-active .html-preview-container > h4:last-of-type,
+    .message.canvas-active .svg-preview-container > h4:last-of-type {
+        grid-area: 1 / 2 / 2 / 3;
+    }
+    .message.canvas-active .html-preview-container > .code-block-wrapper,
+    .message.canvas-active .svg-preview-container > .code-block-wrapper {
+        grid-area: 2 / 2 / 3 / 3;
+    }
+
+    /* Ensure content blocks fill the available height */
+    .message.canvas-active .html-render-box,
+    .message.canvas-active .svg-render-box,
+    .message.canvas-active .code-block-wrapper {
+        height: 100%;
+        margin-top: 0; /* Override default margin */
+        display: flex;
+        flex-direction: column;
+    }
+    .message.canvas-active .collapsible-content,
+    .message.canvas-active .collapsible-content > pre {
+        flex-grow: 1;
+    }
+}
