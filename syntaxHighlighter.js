@@ -9,10 +9,18 @@ export const SyntaxHighlighter = {
      * The order of rules is important: process strings and comments first.
      */
     GRAMMAR: {
+        json: {
+            'property': /"(?:\\.|[^"\\])*"(?=\s*:)/,
+            'string': /"(?:\\.|[^"\\])*"/,
+            'number': /\b-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/i,
+            'boolean': /\b(?:true|false|null)\b/,
+            'operator': /:/,
+            'punctuation': /[{}[\](),]/,
+        },
         javascript: {
             'comment': /(?:\/\/.*)|(?:\/\*[\s\S]*?\*\/)/,
             'string': /(?:'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`)/,
-            'class-name': /\b[A-Z][A-Za-z0-9]+\b/,
+            'class-name': /\b[A-Z][A-Za-z0-9_]+\b/,
             'jbai-keyword': new RegExp(`\\b(ChatApp|Config|State|Utils|Store|UI|Api|Controller|init|handleChatSubmission|renderMessage|finalizeBotMessage|getSystemContext|fetchTextResponse|loadChat|saveCurrentChat)\\b`),
             'keyword': /\b(?:const|let|var|if|else|for|while|do|async|await|function|return|new|import|export|from|class|extends|super|this|switch|case|default|break|continue|try|catch|finally|throw|delete|typeof|instanceof)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
