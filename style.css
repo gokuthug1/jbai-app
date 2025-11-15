@@ -220,18 +220,25 @@ body.sidebar-open .sidebar-backdrop {
     transition: opacity 0.3s;
 }
 
+.main-content {
+    display: flex;
+    flex-grow: 1;
+    width: 100%;
+    height: 100dvh;
+    transition: margin-left 0.35s ease-in-out;
+}
+
 .chat-container {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
     position: relative;
     width: 100%;
-    height: 100vh; /* Fallback for older browsers */
     height: 100dvh;
     overflow: hidden;
     background-color: var(--chat-container-bg);
-    transition: margin-left 0.35s ease-in-out;
 }
+
 
 /* --- 2.3 Drag & Drop Overlay --- */
 body.drag-over::before {
@@ -1168,6 +1175,14 @@ input:focus-visible + .slider {
 
 /* Desktop Layout: Push Sidebar */
 @media (min-width: 769px) {
+    body {
+      /* The main body remains a flex container for the sidebar and main content */
+    }
+
+    .main-content {
+      /* This is now the primary flex container for chat + canvas */
+    }
+
     .sidebar {
         position: relative; /* Override fixed */
         left: auto; /* Override left */
@@ -1380,60 +1395,69 @@ input:focus-visible + .slider {
    9. Canvas (Split View) Mode
    ========================================================================== */
 
-/* Make the message bubble wider to accommodate the split view */
-.message.canvas-active .message-content {
-    max-width: 90vw;
-    width: 1400px;
-}
-
-/* By default, the preview container is a simple block */
-.message.canvas-active .html-preview-container,
-.message.canvas-active .svg-preview-container {
-    display: flex;
+.canvas-view {
+    display: none; /* Hidden by default */
     flex-direction: column;
+    flex-shrink: 0;
+    width: 50%; /* Takes half the screen */
+    height: 100dvh;
+    background-color: var(--bg-color);
+    border-left: 1px solid var(--sidebar-border);
 }
 
-/* On larger screens, use CSS Grid for the split-view layout */
-@media (min-width: 1024px) {
-    .message.canvas-active .html-preview-container,
-    .message.canvas-active .svg-preview-container {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        grid-template-rows: auto 1fr; /* Row for titles, row for content */
-        gap: 0 1rem; /* No row gap, 1rem column gap */
-        align-items: stretch;
-        min-height: 500px;
-    }
+body.canvas-view-active .canvas-view {
+    display: flex; /* Shown when body class is active */
+}
 
-    /* Place the elements into the grid cells */
-    .message.canvas-active .html-preview-container > h4:first-of-type,
-    .message.canvas-active .svg-preview-container > h4:first-of-type {
-        grid-area: 1 / 1 / 2 / 2;
-    }
-    .message.canvas-active .html-preview-container > .html-render-box,
-    .message.canvas-active .svg-preview-container > .svg-render-box {
-        grid-area: 2 / 1 / 3 / 2;
-    }
-    .message.canvas-active .html-preview-container > h4:last-of-type,
-    .message.canvas-active .svg-preview-container > h4:last-of-type {
-        grid-area: 1 / 2 / 2 / 3;
-    }
-    .message.canvas-active .html-preview-container > .code-block-wrapper,
-    .message.canvas-active .svg-preview-container > .code-block-wrapper {
-        grid-area: 2 / 2 / 3 / 3;
-    }
+body.canvas-view-active .chat-container {
+    width: 50%;
+    flex-shrink: 0;
+}
 
-    /* Ensure content blocks fill the available height */
-    .message.canvas-active .html-render-box,
-    .message.canvas-active .svg-render-box,
-    .message.canvas-active .code-block-wrapper {
-        height: 100%;
-        margin-top: 0; /* Override default margin */
-        display: flex;
-        flex-direction: column;
+.canvas-header {
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.canvas-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-secondary);
+}
+
+.canvas-content {
+    flex-grow: 1;
+    padding: 1rem;
+    overflow: hidden; /* Important for iframe */
+}
+
+.canvas-content .html-render-box,
+.canvas-content .svg-render-box {
+    width: 100%;
+    height: 100%;
+    cursor: default; /* No zoom-in cursor here */
+}
+
+.canvas-content .html-render-box iframe {
+    pointer-events: auto; /* Allow interaction with the iframe */
+}
+
+.canvas-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-secondary);
+    text-align: center;
+    font-style: italic;
+}
+
+/* Responsive: On smaller screens, hide the canvas view */
+@media (max-width: 1024px) {
+    .canvas-view {
+        display: none !important; /* Force hide */
     }
-    .message.canvas-active .collapsible-content,
-    .message.canvas-active .collapsible-content > pre {
-        flex-grow: 1;
+    body.canvas-view-active .chat-container {
+        width: 100%;
     }
 }
