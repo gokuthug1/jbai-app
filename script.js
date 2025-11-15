@@ -86,6 +86,7 @@ const ChatApp = {
             this.currentChatId = null;
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
+            ChatApp.UI.clearCanvas();
             if (this.isGenerating) { this.setGenerating(false); }
         }
     },
@@ -140,6 +141,8 @@ const ChatApp = {
                 fullscreenContent: document.getElementById('fullscreen-content'),
                 fullscreenCloseBtn: document.getElementById('fullscreen-close-btn'),
                 customTooltip: document.getElementById('custom-tooltip'),
+                canvasView: document.getElementById('canvas-view'),
+                canvasContent: document.getElementById('canvas-content'),
             };
         },
         hideTooltip() {
@@ -205,6 +208,9 @@ const ChatApp = {
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
         },
+        clearCanvas() {
+            this.elements.canvasContent.innerHTML = `<div class="canvas-placeholder">Canvas is active. Previews of HTML and SVG code will appear here.</div>`;
+        },
         toggleSendButtonState() {
             const hasText = this.elements.chatInput.value.trim().length > 0;
             const hasFiles = ChatApp.State.attachedFiles.length > 0;
@@ -254,7 +260,10 @@ const ChatApp = {
                 const textPart = content.parts.find(p => p.text);
                 rawText = textPart ? textPart.text : '';
                 messageEl.className = `message ${sender}`;
-                contentEl.innerHTML = await MessageFormatter.format(rawText);
+
+                const formatOptions = { canvasMode: ChatApp.State.isCanvasModeEnabled };
+                contentEl.innerHTML = await MessageFormatter.format(rawText, formatOptions);
+                
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
                     contentEl.prepend(attachmentsContainer);
@@ -262,10 +271,7 @@ const ChatApp = {
             }
             messageEl.appendChild(contentEl);
             this.elements.messageArea.appendChild(messageEl);
-            if (!isTyping) {
-                this._addMessageInteractions(messageEl, rawText, message.id);
-            }
-            this._applyCanvasClass(messageEl);
+            if (!isTyping) { this._addMessageInteractions(messageEl, rawText, message.id); }
             this.scrollToBottom();
             return messageEl;
         },
@@ -338,11 +344,14 @@ const ChatApp = {
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
+            const formatOptions = { canvasMode: ChatApp.State.isCanvasModeEnabled };
 
             if (ChatApp.Config.TYPING_SPEED_MS === 0) {
-                 contentEl.innerHTML = await MessageFormatter.format(fullText);
+                 contentEl.innerHTML = await MessageFormatter.format(fullText, formatOptions);
                  this._addMessageInteractions(messageEl, fullText, messageId);
-                 this._applyCanvasClass(messageEl);
+                 if (ChatApp.State.isCanvasModeEnabled) {
+                    ChatApp.Controller.renderPreviewToCanvas(fullText);
+                 }
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
                  return;
@@ -358,9 +367,11 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    contentEl.innerHTML = await MessageFormatter.format(fullText);
+                    contentEl.innerHTML = await MessageFormatter.format(fullText, formatOptions);
                     this._addMessageInteractions(messageEl, fullText, messageId);
-                    this._applyCanvasClass(messageEl);
+                    if (ChatApp.State.isCanvasModeEnabled) {
+                       ChatApp.Controller.renderPreviewToCanvas(fullText);
+                    }
                     this.scrollToBottom();
                     ChatApp.Controller.completeGeneration(botMessageForState);
                 }
@@ -439,17 +450,6 @@ const ChatApp = {
                 }
             });
         },
-        _applyCanvasClass(messageEl) {
-            if (!ChatApp.State.isCanvasModeEnabled) return;
-            const previewContainer = messageEl.querySelector('.html-preview-container, .svg-preview-container');
-            if (previewContainer) {
-                messageEl.classList.add('canvas-active');
-                const codeBlock = previewContainer.querySelector('.code-block-wrapper');
-                if (codeBlock) {
-                    codeBlock.classList.remove('is-collapsed');
-                }
-            }
-        },
         renderSettingsModal() {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
@@ -490,11 +490,14 @@ const ChatApp = {
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
             
             const canvasToggle = overlay.querySelector('#canvasModeToggle');
-            canvasToggle.checked = ChatApp.Store.getCanvasMode();
+            canvasToggle.checked = ChatApp.State.isCanvasModeEnabled;
             canvasToggle.addEventListener('change', e => {
-                ChatApp.State.isCanvasModeEnabled = e.target.checked;
-                ChatApp.Store.saveCanvasMode(e.target.checked);
-                this.showToast(`Canvas mode ${e.target.checked ? 'enabled' : 'disabled'}. New messages will be affected.`);
+                const isEnabled = e.target.checked;
+                ChatApp.State.isCanvasModeEnabled = isEnabled;
+                ChatApp.Store.saveCanvasMode(isEnabled);
+                this.elements.body.classList.toggle('canvas-view-active', isEnabled);
+                ChatApp.Controller.updateCanvasFromCurrentChat();
+                this.showToast(`Canvas mode ${isEnabled ? 'enabled' : 'disabled'}.`);
             });
 
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
@@ -641,6 +644,10 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.State.isCanvasModeEnabled = ChatApp.Store.getCanvasMode();
 
             ChatApp.UI.cacheElements();
+            if (ChatApp.State.isCanvasModeEnabled) {
+                ChatApp.UI.elements.body.classList.add('canvas-view-active');
+            }
+
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.UI.renderSidebar();
@@ -840,18 +847,44 @@ You have custom commands that users can use, and you must follow them.
         
             (async () => {
                 for (const msg of ChatApp.State.currentConversation) {
-                    let messageEl;
                     const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
                     if (msg.content.role === 'model' && /\[IMAGE: \{[\s\S]*?\}\]/.test(rawText)) {
                         const processedText = await this.processResponseForImages(rawText);
                         const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
-                        messageEl = await ChatApp.UI.renderMessage(processedMsg);
+                        await ChatApp.UI.renderMessage(processedMsg);
                     } else {
-                        messageEl = await ChatApp.UI.renderMessage(msg);
+                        await ChatApp.UI.renderMessage(msg);
                     }
                 }
+                this.updateCanvasFromCurrentChat();
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             })();
+        },
+        async renderPreviewToCanvas(rawText) {
+            // This is a helper to render only the preview part of a message to the canvas
+            const tempDiv = document.createElement('div');
+            // We use the normal formatter here to generate the preview box html
+            tempDiv.innerHTML = await MessageFormatter.format(rawText, { canvasMode: false });
+            
+            const previewBox = tempDiv.querySelector('.html-render-box, .svg-render-box');
+            
+            if (previewBox) {
+                ChatApp.UI.elements.canvasContent.innerHTML = '';
+                ChatApp.UI.elements.canvasContent.appendChild(previewBox);
+            }
+        },
+        updateCanvasFromCurrentChat() {
+            ChatApp.UI.clearCanvas();
+            if (!ChatApp.State.isCanvasModeEnabled) return;
+
+            const lastCodeMessage = [...ChatApp.State.currentConversation].reverse().find(msg => {
+                const text = msg.content?.parts?.[0]?.text;
+                return text && (text.includes('```html') || text.includes('<svg'));
+            });
+
+            if (lastCodeMessage) {
+                this.renderPreviewToCanvas(lastCodeMessage.content.parts[0].text);
+            }
         },
         deleteMessage(messageId) {
             if (!confirm('Are you sure you want to delete this message?')) return;
@@ -859,6 +892,7 @@ You have custom commands that users can use, and you must follow them.
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
             if (messageEl) { messageEl.classList.add('fade-out'); setTimeout(() => messageEl.remove(), 400); }
             this.saveCurrentChat();
+            this.updateCanvasFromCurrentChat(); // Re-check for the last code block
         },
         deleteConversation(chatId) {
             if (!confirm('Are you sure you want to delete this chat permanently?')) return;
@@ -950,10 +984,13 @@ You have custom commands that users can use, and you must follow them.
                 if (mediaTarget.tagName === 'IMG') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'image'); 
                 else if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); 
             } 
-            else if (htmlBox) { const iframe = htmlBox.querySelector('iframe'); if (iframe) ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); }
+            else if (htmlBox && !ChatApp.State.isCanvasModeEnabled) { // Only allow fullscreen from bubble if canvas is off
+                const iframe = htmlBox.querySelector('iframe'); 
+                if (iframe) ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); 
+            }
             else {
                 const svgWrapper = event.target.closest('.svg-preview-container');
-                if (svgWrapper) {
+                if (svgWrapper && !ChatApp.State.isCanvasModeEnabled) {
                     const rawContent = svgWrapper.querySelector('.code-block-wrapper')?.dataset.rawContent;
                     if (rawContent) ChatApp.UI.showFullscreenPreview(decodeURIComponent(rawContent), 'svg');
                 }
