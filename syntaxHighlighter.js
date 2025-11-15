@@ -23,23 +23,27 @@ export const SyntaxHighlighter = {
         },
         python: {
             'comment': /#.*/,
-            'string': /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"/,
-            'keyword': /\b(?:def|class|if|else|elif|for|while|return|import|from|as|try|except|finally|with|lambda|and|or|not|is|in)\b/,
+            'string': /(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\'|[^'])*'|"(?:\\"|[^"])*")/,
+            'keyword': /\b(?:def|class|if|else|elif|for|while|return|import|from|as|try|except|finally|with|lambda|and|or|not|is|in|pass|break|continue)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
             'number': /\b-?\d+(?:\.\d+)?\b/,
             'boolean': /\b(?:True|False|None)\b/,
+            'operator': /([*\/%+\-&|~^<>=!]=?|[*\/]=|\/\/)/,
+            'punctuation': /[{}[\]();,.:]/,
         },
         lua: {
-            'comment': /--.*/,
-            'string': /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"/,
-            'keyword': /\b(?:function|end|if|then|else|elseif|for|while|do|return|local|and|or|not)\b/,
+            'comment': /--.*|--\[\[[\s\S]*?\]\]/,
+            'string': /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\[\[[\s\S]*?\]\]/,
+            'keyword': /\b(?:function|end|if|then|else|elseif|for|while|do|return|local|and|or|not|break|repeat|until|in)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
             'number': /\b-?\d+(?:\.\d+)?\b/,
             'boolean': /\b(?:true|false|nil)\b/,
+            'operator': /[+\-%*\/#^=~]=?|~=|[<>]=?|\.\.\.?/,
+            'punctuation': /[{}[\]();,.:]/,
         },
         html: {
             'comment': /<!--[\s\S]*?-->/,
-            'tag': /<\/?[\w\s="/.':-]+\/?>/,
+            'tag': /<\/?[\w\s="/.':-]+>/,
             'attr-name': /\s+[\w-.:]+(?==)/,
             'attr-value': /="[^"]*"|='[^']*'/,
         },
@@ -60,7 +64,10 @@ export const SyntaxHighlighter = {
      * @returns {string} The HTML-formatted highlighted code.
      */
     highlight(code, lang) {
-        const grammar = this.GRAMMAR[lang];
+        // Fallback for xml/svg highlighting to use html rules
+        const effectiveLang = (lang === 'xml' || lang === 'svg') ? 'html' : lang;
+        const grammar = this.GRAMMAR[effectiveLang];
+
         if (!grammar) {
             return this.escapeHtml(code);
         }
