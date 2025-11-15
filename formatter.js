@@ -114,7 +114,8 @@ export const MessageFormatter = {
         const inlinedHtml = await this._inlineExternalScripts(block.content);
         const safeHtmlForSrcdoc = inlinedHtml.replace(/"/g, '&quot;');
         const escapedContent = block.content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-html">${escapedContent}</code></pre></div></div></div>`;
+        // --- FIX #1: Added 'allow-modals' to the sandbox attribute ---
+        return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-modals" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre><code class="language-html">${escapedContent}</code></pre></div></div></div>`;
     },
 
     /**
@@ -140,7 +141,9 @@ export const MessageFormatter = {
         const fetchPromises = Array.from(scriptTags).map(async (tag) => {
             const src = tag.getAttribute('src');
             try {
-                const response = await fetch(src);
+                // --- FIX #2: Use a CORS proxy to fetch script content ---
+                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(src)}`;
+                const response = await fetch(proxyUrl);
                 if (!response.ok) throw new Error(`HTTP error ${response.status}`);
                 const scriptText = await response.text();
                 const inlineScript = doc.createElement('script');
