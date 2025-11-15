@@ -385,15 +385,35 @@ const ChatApp = {
                 if (!pre || !actionsContainer) return;
                 const codeEl = pre.querySelector('code');
 
-                if (wrapper.dataset.previewable) {
+                // MODIFIED: This block is updated to handle different content types.
+                if (wrapper.dataset.rawContent) {
                     const openBtn = document.createElement('button');
-                    openBtn.className = 'open-new-tab-button'; openBtn.type = 'button'; openBtn.setAttribute('data-tooltip', 'Open in new tab'); openBtn.innerHTML = OPEN_NEW_TAB;
+                    openBtn.className = 'open-new-tab-button';
+                    openBtn.type = 'button';
+                    openBtn.setAttribute('data-tooltip', 'Open in new tab');
+                    openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
-                        const newWindow = window.open('about:blank', '_blank');
-                        if (newWindow) { newWindow.document.write(rawContent); newWindow.document.close(); } 
-                        else { this.showToast('Enable popups to open in a new tab.', 'error'); }
+                        const previewType = wrapper.dataset.previewable;
+
+                        if (previewType === 'html' || previewType === 'svg') {
+                            // For HTML and SVG, write to a blank window to render them.
+                            const newWindow = window.open('about:blank', '_blank');
+                            if (newWindow) {
+                                newWindow.document.write(rawContent);
+                                newWindow.document.close();
+                            } else {
+                                this.showToast('Enable popups to open in a new tab.', 'error');
+                            }
+                        } else {
+                            // For all other types, use a data: URI to show as plain text.
+                            const dataUrl = `data:text/plain;charset=utf-8,${encodeURIComponent(rawContent)}`;
+                            const newWindow = window.open(dataUrl, '_blank');
+                             if (!newWindow) {
+                                this.showToast('Enable popups to open in a new tab.', 'error');
+                            }
+                        }
                     });
                     actionsContainer.appendChild(openBtn);
                 }
@@ -479,7 +499,7 @@ const ChatApp = {
                 case 'html': 
                     const iframe = document.createElement('iframe'); 
                     iframe.srcdoc = content; 
-                    iframe.sandbox = "allow-scripts allow-same-origin"; // Corrected line
+                    iframe.sandbox = "allow-scripts allow-same-origin";
                     fullscreenContent.appendChild(iframe); 
                     break;
             }
