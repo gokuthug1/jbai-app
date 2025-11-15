@@ -1,5 +1,3 @@
---- START OF FILE formatter.js ---
-
 import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
 /**
@@ -217,3 +215,4 @@ export const MessageFormatter = {
         return finalHtml;
     }
 };
+
