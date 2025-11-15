@@ -23,7 +23,6 @@ const ChatApp = {
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
-            CANVAS_MODE: 'jbai_canvas_mode',
         },
         DEFAULT_THEME: 'light',
         TYPING_SPEED_MS: 0, // Milliseconds per character. Set to 0 for instant responses.
@@ -49,7 +48,6 @@ const ChatApp = {
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
-        isCanvasModeEnabled: false,
         typingInterval: null,
         attachedFiles: [],
         setCurrentConversation(history) {
@@ -86,7 +84,6 @@ const ChatApp = {
             this.currentChatId = null;
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
-            ChatApp.UI.clearCanvas();
             if (this.isGenerating) { this.setGenerating(false); }
         }
     },
@@ -115,8 +112,6 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
-        saveCanvasMode(isEnabled) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CANVAS_MODE, isEnabled); },
-        getCanvasMode() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CANVAS_MODE) === 'true'; },
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -141,8 +136,6 @@ const ChatApp = {
                 fullscreenContent: document.getElementById('fullscreen-content'),
                 fullscreenCloseBtn: document.getElementById('fullscreen-close-btn'),
                 customTooltip: document.getElementById('custom-tooltip'),
-                canvasView: document.getElementById('canvas-view'),
-                canvasContent: document.getElementById('canvas-content'),
             };
         },
         hideTooltip() {
@@ -208,9 +201,6 @@ const ChatApp = {
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
         },
-        clearCanvas() {
-            this.elements.canvasContent.innerHTML = `<div class="canvas-placeholder">Canvas is active. Previews of HTML and SVG code will appear here.</div>`;
-        },
         toggleSendButtonState() {
             const hasText = this.elements.chatInput.value.trim().length > 0;
             const hasFiles = ChatApp.State.attachedFiles.length > 0;
@@ -229,11 +219,10 @@ const ChatApp = {
                 
                 item.setAttribute('role', 'button');
                 item.setAttribute('tabindex', '0');
-                item.setAttribute('aria-label', `Open chat: ${title}`);
 
                 item.innerHTML = `
                     <span class="conversation-title" data-tooltip="${title}">${title}</span>
-                    <button type="button" class="delete-btn" data-tooltip="Delete Chat" aria-label="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                    <button type="button" class="delete-btn" data-tooltip="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
                 
                 item.addEventListener('click', () => ChatApp.Controller.loadChat(chat.id));
                 item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ChatApp.Controller.loadChat(chat.id); } });
@@ -261,8 +250,7 @@ const ChatApp = {
                 rawText = textPart ? textPart.text : '';
                 messageEl.className = `message ${sender}`;
 
-                const formatOptions = { canvasMode: ChatApp.State.isCanvasModeEnabled };
-                contentEl.innerHTML = await MessageFormatter.format(rawText, formatOptions);
+                contentEl.innerHTML = await MessageFormatter.format(rawText);
                 
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
@@ -330,7 +318,7 @@ const ChatApp = {
                     previewContent = `${iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT}<span class="file-preview-extension">${ChatApp.Utils.escapeHTML(extension.substring(0, 4))}</span>`;
                 }
 
-                previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" data-tooltip="Remove file" type="button" aria-label="Remove file">&times;</button>`;
+                previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" data-tooltip="Remove file" type="button">&times;</button>`;
                 previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => { ChatApp.Controller.removeAttachedFile(index); });
                 this.elements.filePreviewsContainer.appendChild(previewItem);
             });
@@ -344,14 +332,10 @@ const ChatApp = {
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
-            const formatOptions = { canvasMode: ChatApp.State.isCanvasModeEnabled };
 
             if (ChatApp.Config.TYPING_SPEED_MS === 0) {
-                 contentEl.innerHTML = await MessageFormatter.format(fullText, formatOptions);
+                 contentEl.innerHTML = await MessageFormatter.format(fullText);
                  this._addMessageInteractions(messageEl, fullText, messageId);
-                 if (ChatApp.State.isCanvasModeEnabled) {
-                    ChatApp.Controller.renderPreviewToCanvas(fullText);
-                 }
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
                  return;
@@ -367,11 +351,8 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    contentEl.innerHTML = await MessageFormatter.format(fullText, formatOptions);
+                    contentEl.innerHTML = await MessageFormatter.format(fullText);
                     this._addMessageInteractions(messageEl, fullText, messageId);
-                    if (ChatApp.State.isCanvasModeEnabled) {
-                       ChatApp.Controller.renderPreviewToCanvas(fullText);
-                    }
                     this.scrollToBottom();
                     ChatApp.Controller.completeGeneration(botMessageForState);
                 }
@@ -394,7 +375,7 @@ const ChatApp = {
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
-                copyBtn.className = 'copy-button'; copyBtn.type = 'button'; copyBtn.setAttribute('data-tooltip', 'Copy message text'); copyBtn.setAttribute('aria-label', 'Copy message text'); copyBtn.innerHTML = COPY;
+                copyBtn.className = 'copy-button'; copyBtn.type = 'button'; copyBtn.setAttribute('data-tooltip', 'Copy message text'); copyBtn.innerHTML = COPY;
                 copyBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(rawText).then(() => { copyBtn.innerHTML = CHECK; this.showToast('Message copied!'); setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000); }); });
                 messageEl.appendChild(copyBtn);
             }
@@ -406,7 +387,7 @@ const ChatApp = {
 
                 if (wrapper.dataset.previewable) {
                     const openBtn = document.createElement('button');
-                    openBtn.className = 'open-new-tab-button'; openBtn.type = 'button'; openBtn.setAttribute('data-tooltip', 'Open in new tab'); openBtn.setAttribute('aria-label', 'Open in new tab'); openBtn.innerHTML = OPEN_NEW_TAB;
+                    openBtn.className = 'open-new-tab-button'; openBtn.type = 'button'; openBtn.setAttribute('data-tooltip', 'Open in new tab'); openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
@@ -418,7 +399,7 @@ const ChatApp = {
                 }
 
                 const downloadBtn = document.createElement('button');
-                downloadBtn.className = 'download-code-button'; downloadBtn.type = 'button'; downloadBtn.setAttribute('data-tooltip', 'Download snippet'); downloadBtn.setAttribute('aria-label', 'Download code snippet'); downloadBtn.innerHTML = DOWNLOAD;
+                downloadBtn.className = 'download-code-button'; downloadBtn.type = 'button'; downloadBtn.setAttribute('data-tooltip', 'Download snippet'); downloadBtn.innerHTML = DOWNLOAD;
                 downloadBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     const rawCode = pre.textContent;
@@ -439,13 +420,13 @@ const ChatApp = {
                 actionsContainer.appendChild(downloadBtn);
 
                 const copyCodeBtn = document.createElement('button');
-                copyCodeBtn.className = 'copy-code-button'; copyCodeBtn.type = 'button'; copyCodeBtn.setAttribute('data-tooltip', 'Copy code'); copyCodeBtn.setAttribute('aria-label', 'Copy code'); copyCodeBtn.innerHTML = COPY;
+                copyCodeBtn.className = 'copy-code-button'; copyCodeBtn.type = 'button'; copyCodeBtn.setAttribute('data-tooltip', 'Copy code'); copyCodeBtn.innerHTML = COPY;
                 copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; this.showToast('Code copied!'); setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
                 actionsContainer.appendChild(copyCodeBtn);
 
                 if (wrapper.classList.contains('is-collapsible')) {
                     const collapseBtn = document.createElement('button');
-                    collapseBtn.className = 'collapse-toggle-button'; collapseBtn.type = 'button'; collapseBtn.setAttribute('data-tooltip', 'Show/Hide Code'); collapseBtn.setAttribute('aria-label', 'Show or hide code block'); collapseBtn.innerHTML = CHEVRON_DOWN;
+                    collapseBtn.className = 'collapse-toggle-button'; collapseBtn.type = 'button'; collapseBtn.setAttribute('data-tooltip', 'Show/Hide Code'); collapseBtn.innerHTML = CHEVRON_DOWN;
                     actionsContainer.appendChild(collapseBtn);
                 }
             });
@@ -465,13 +446,6 @@ const ChatApp = {
                         <option value="monokai">MonoKai</option>
                     </select>
                 </div>
-                 <div class="settings-row">
-                    <label for="canvasModeToggle">Canvas</label>
-                    <label class="switch">
-                        <input type="checkbox" id="canvasModeToggle">
-                        <span class="slider"></span>
-                    </label>
-                </div>
                 <hr>
                 <h3>Data Management</h3>
                 <div class="settings-group">
@@ -489,17 +463,6 @@ const ChatApp = {
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
             
-            const canvasToggle = overlay.querySelector('#canvasModeToggle');
-            canvasToggle.checked = ChatApp.State.isCanvasModeEnabled;
-            canvasToggle.addEventListener('change', e => {
-                const isEnabled = e.target.checked;
-                ChatApp.State.isCanvasModeEnabled = isEnabled;
-                ChatApp.Store.saveCanvasMode(isEnabled);
-                this.elements.body.classList.toggle('canvas-view-active', isEnabled);
-                ChatApp.Controller.updateCanvasFromCurrentChat();
-                this.showToast(`Canvas mode ${isEnabled ? 'enabled' : 'disabled'}.`);
-            });
-
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
@@ -641,12 +604,8 @@ You have custom commands that users can use, and you must follow them.
     Controller: {
         init() {
             ChatApp.Store.loadAllConversations();
-            ChatApp.State.isCanvasModeEnabled = ChatApp.Store.getCanvasMode();
 
             ChatApp.UI.cacheElements();
-            if (ChatApp.State.isCanvasModeEnabled) {
-                ChatApp.UI.elements.body.classList.add('canvas-view-active');
-            }
 
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
@@ -856,35 +815,8 @@ You have custom commands that users can use, and you must follow them.
                         await ChatApp.UI.renderMessage(msg);
                     }
                 }
-                this.updateCanvasFromCurrentChat();
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             })();
-        },
-        async renderPreviewToCanvas(rawText) {
-            // This is a helper to render only the preview part of a message to the canvas
-            const tempDiv = document.createElement('div');
-            // We use the normal formatter here to generate the preview box html
-            tempDiv.innerHTML = await MessageFormatter.format(rawText, { canvasMode: false });
-            
-            const previewBox = tempDiv.querySelector('.html-render-box, .svg-render-box');
-            
-            if (previewBox) {
-                ChatApp.UI.elements.canvasContent.innerHTML = '';
-                ChatApp.UI.elements.canvasContent.appendChild(previewBox);
-            }
-        },
-        async updateCanvasFromCurrentChat() {
-            ChatApp.UI.clearCanvas();
-            if (!ChatApp.State.isCanvasModeEnabled) return;
-
-            const lastCodeMessage = [...ChatApp.State.currentConversation].reverse().find(msg => {
-                const text = msg.content?.parts?.[0]?.text;
-                return text && (text.includes('```html') || text.includes('<svg'));
-            });
-
-            if (lastCodeMessage) {
-                await this.renderPreviewToCanvas(lastCodeMessage.content.parts[0].text);
-            }
         },
         async deleteMessage(messageId) {
             if (!confirm('Are you sure you want to delete this message?')) return;
@@ -892,7 +824,6 @@ You have custom commands that users can use, and you must follow them.
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
             if (messageEl) { messageEl.classList.add('fade-out'); setTimeout(() => messageEl.remove(), 400); }
             this.saveCurrentChat();
-            await this.updateCanvasFromCurrentChat(); // Re-check for the last code block
         },
         deleteConversation(chatId) {
             if (!confirm('Are you sure you want to delete this chat permanently?')) return;
@@ -984,13 +915,13 @@ You have custom commands that users can use, and you must follow them.
                 if (mediaTarget.tagName === 'IMG') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'image'); 
                 else if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); 
             } 
-            else if (htmlBox && !ChatApp.State.isCanvasModeEnabled) { // Only allow fullscreen from bubble if canvas is off
+            else if (htmlBox) {
                 const iframe = htmlBox.querySelector('iframe'); 
                 if (iframe) ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); 
             }
             else {
                 const svgWrapper = event.target.closest('.svg-preview-container');
-                if (svgWrapper && !ChatApp.State.isCanvasModeEnabled) {
+                if (svgWrapper) {
                     const rawContent = svgWrapper.querySelector('.code-block-wrapper')?.dataset.rawContent;
                     if (rawContent) ChatApp.UI.showFullscreenPreview(decodeURIComponent(rawContent), 'svg');
                 }
