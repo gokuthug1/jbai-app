@@ -1,3 +1,5 @@
+--- START OF FILE formatter.js ---
+
 import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
 /**
@@ -90,7 +92,9 @@ export const MessageFormatter = {
             const block = blocks[parseInt(match[1], 10)];
             switch (block.type) {
                 case 'code':
-                    if (block.lang.toLowerCase() === 'html') {
+                    // Note: a ```html block is now handled by _renderCodeBlock first
+                    // if it is not a full HTML preview block. Previews take precedence.
+                    if (block.lang.toLowerCase() === 'html' && !options.canvasMode) {
                         return await this._renderHtmlPreview(block, options);
                     }
                     return this._renderCodeBlock(block);
@@ -111,9 +115,8 @@ export const MessageFormatter = {
         const lang = block.lang.toLowerCase();
         const displayName = LANGUAGE_MAP[lang] || lang;
         const highlightedCode = SyntaxHighlighter.highlight(block.content, lang);
-        // Standard code blocks are always collapsible, but we'll un-collapse them in canvas mode via JS/CSS
-        const isCollapsible = !['html', 'svg', 'xml'].includes(lang);
-        const wrapperClasses = `code-block-wrapper ${isCollapsible ? 'is-collapsible is-collapsed' : ''}`;
+        // MODIFIED: All code blocks are now collapsible by default.
+        const wrapperClasses = `code-block-wrapper is-collapsible is-collapsed`;
         return `<div class="${wrapperClasses}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
     },
     
