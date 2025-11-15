@@ -11,9 +11,9 @@ const LANGUAGE_MAP = {
     css: 'CSS',
     javascript: 'JavaScript',
     js: 'JavaScript',
-    lua: 'Lua.js',
+    lua: 'Lua',
     python: 'Python',
-    xml: 'SVG', // SVG uses XML highlighting, close enough for this
+    xml: 'SVG',
     svg: 'SVG'
 };
 
@@ -195,3 +195,4 @@ export const MessageFormatter = {
         return finalHtml;
     }
 };
+
