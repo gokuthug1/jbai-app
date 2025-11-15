@@ -8,7 +8,7 @@ app.use(express.json());
 
 const { GOOGLE_API_KEY } = process.env;
 // FIX 1: Switched from '-latest' to a stable and reliable model version.
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`;
 
 app.post('/api/server', async (req, res) => {
   // Check if the API key is configured on the server
