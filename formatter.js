@@ -121,7 +121,8 @@ export const MessageFormatter = {
         const safeHtmlForSrcdoc = inlinedHtml.replace(/"/g, '&quot;');
         const displayName = LANGUAGE_MAP['html'];
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
-        return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-modals" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div></div>`;
+        // --- THIS IS THE MODIFIED LINE ---
+        return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div></div>`;
     },
 
     /**
@@ -195,4 +196,3 @@ export const MessageFormatter = {
         return finalHtml;
     }
 };
-
