@@ -476,7 +476,12 @@ const ChatApp = {
                 case 'image': const img = document.createElement('img'); img.src = content; fullscreenContent.appendChild(img); break;
                 case 'video': const vid = document.createElement('video'); vid.src = content; vid.controls = true; vid.autoplay = true; fullscreenContent.appendChild(vid); break;
                 case 'svg': fullscreenContent.innerHTML = content; break;
-                case 'html': const iframe = document.createElement('iframe'); iframe.srcdoc = content; iframe.sandbox = "allow-scripts"; fullscreenContent.appendChild(iframe); break;
+                case 'html': 
+                    const iframe = document.createElement('iframe'); 
+                    iframe.srcdoc = content; 
+                    iframe.sandbox = "allow-scripts allow-same-origin"; // Corrected line
+                    fullscreenContent.appendChild(iframe); 
+                    break;
             }
             fullscreenOverlay.style.display = 'flex';
             body.classList.add('modal-open');
