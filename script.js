@@ -81,12 +81,12 @@ const ChatApp = {
                 this.typingInterval = null;
             }
         },
-        resetCurrentChat() {
+        async resetCurrentChat() {
             this.setCurrentConversation([]);
             this.currentChatId = null;
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
-            ChatApp.UI.clearCanvas();
+            await ChatApp.UI.clearCanvas();
             if (this.isGenerating) { this.setGenerating(false); }
         }
     },
@@ -208,8 +208,17 @@ const ChatApp = {
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
         },
-        clearCanvas() {
-            this.elements.canvasContent.innerHTML = `<div class="canvas-placeholder">Canvas is active. Previews of HTML and SVG code will appear here.</div>`;
+        async clearCanvas() {
+            const canvasContent = this.elements.canvasContent;
+            const hasContent = canvasContent.innerHTML.trim() !== '' && !canvasContent.querySelector('.canvas-placeholder');
+            
+            if (hasContent) {
+                canvasContent.style.opacity = '0';
+                await new Promise(resolve => setTimeout(resolve, 300)); // Match CSS transition
+            }
+            
+            canvasContent.innerHTML = `<div class="canvas-placeholder">Canvas is active. Previews of HTML and SVG code will appear here.</div>`;
+            canvasContent.style.opacity = '1';
         },
         toggleSendButtonState() {
             const hasText = this.elements.chatInput.value.trim().length > 0;
@@ -334,6 +343,10 @@ const ChatApp = {
                 previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => { ChatApp.Controller.removeAttachedFile(index); });
                 this.elements.filePreviewsContainer.appendChild(previewItem);
             });
+            // NEW: Apply staggered animation delay
+            this.elements.filePreviewsContainer.querySelectorAll('.file-preview-item').forEach((item, index) => {
+                item.style.animationDelay = `${index * 50}ms`;
+            });
             this.toggleSendButtonState();
         },
         async finalizeBotMessage(messageEl, fullText, messageId, botMessageForState) {
@@ -350,7 +363,7 @@ const ChatApp = {
                  contentEl.innerHTML = await MessageFormatter.format(fullText, formatOptions);
                  this._addMessageInteractions(messageEl, fullText, messageId);
                  if (ChatApp.State.isCanvasModeEnabled) {
-                    ChatApp.Controller.renderPreviewToCanvas(fullText);
+                    await ChatApp.Controller.renderPreviewToCanvas(fullText);
                  }
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
@@ -370,7 +383,7 @@ const ChatApp = {
                     contentEl.innerHTML = await MessageFormatter.format(fullText, formatOptions);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     if (ChatApp.State.isCanvasModeEnabled) {
-                       ChatApp.Controller.renderPreviewToCanvas(fullText);
+                       await ChatApp.Controller.renderPreviewToCanvas(fullText);
                     }
                     this.scrollToBottom();
                     ChatApp.Controller.completeGeneration(botMessageForState);
@@ -483,7 +496,14 @@ const ChatApp = {
                 <button id="closeSettingsBtn" type="button" class="btn-primary">Close</button>
             </div>`;
             document.body.appendChild(overlay);
-            overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+            // MODIFIED: Animate modal close
+            const close = () => {
+                overlay.classList.add('closing');
+                overlay.addEventListener('animationend', () => overlay.remove(), { once: true });
+            };
+            overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+            overlay.querySelector('#closeSettingsBtn').addEventListener('click', close);
             
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
@@ -504,7 +524,6 @@ const ChatApp = {
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
             overlay.querySelector('#delete-data-btn').addEventListener('click', ChatApp.Controller.deleteAllData);
-            overlay.querySelector('#closeSettingsBtn').addEventListener('click', () => overlay.remove());
         },
         showFullscreenPreview(content, type) {
             const { fullscreenContent, fullscreenOverlay, body } = this.elements;
@@ -684,8 +703,8 @@ You have custom commands that users can use, and you must follow them.
                 if (e.dataTransfer?.files?.length > 0) { Controller.addFilesToState(e.dataTransfer.files); }
             });
         },
-        startNewChat() {
-            ChatApp.State.resetCurrentChat();
+        async startNewChat() {
+            await ChatApp.State.resetCurrentChat();
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar();
         },
@@ -758,8 +777,17 @@ You have custom commands that users can use, and you must follow them.
             }
         },
         removeAttachedFile(index) {
-            ChatApp.State.attachedFiles.splice(index, 1);
-            ChatApp.UI.renderFilePreviews();
+            // MODIFIED: Animate the removal of the file preview
+            const container = ChatApp.UI.elements.filePreviewsContainer;
+            const itemToRemove = container.children[index];
+            if (itemToRemove) {
+                itemToRemove.classList.add('removing');
+                // After the animation, update the state and re-render the list
+                setTimeout(() => {
+                    ChatApp.State.attachedFiles.splice(index, 1);
+                    ChatApp.UI.renderFilePreviews();
+                }, 300); // Must match animation duration in CSS
+            }
             ChatApp.UI.hideTooltip();
         },
         clearAttachedFiles() {
@@ -804,7 +832,7 @@ You have custom commands that users can use, and you must follow them.
                     return { original: originalTag, replacement: userFriendlyError };
                 }
             });
-            const replacements = await Promise.all(replacementPromises);
+            const replacements = await Promise.all(replacements);
             let processedText = rawText;
             replacements.forEach(({ original, replacement }) => { processedText = processedText.replace(original, replacement); });
             return processedText;
@@ -831,7 +859,7 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.Store.saveAllConversations();
             ChatApp.UI.renderSidebar();
         },
-        loadChat(chatId) {
+        async loadChat(chatId) {
             if (ChatApp.State.currentChatId === chatId) return;
             const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
             if (!chat || !Array.isArray(chat.history)) {
@@ -839,7 +867,7 @@ You have custom commands that users can use, and you must follow them.
                 ChatApp.UI.showToast("Could not load the selected chat.", "error");
                 return;
             }
-            this.startNewChat();
+            await this.startNewChat(); // MODIFIED: Await the async startNewChat
             ChatApp.State.currentChatId = chatId;
             ChatApp.State.setCurrentConversation(chat.history);
             ChatApp.UI.clearChatArea();
@@ -856,25 +884,31 @@ You have custom commands that users can use, and you must follow them.
                         await ChatApp.UI.renderMessage(msg);
                     }
                 }
-                this.updateCanvasFromCurrentChat();
+                await this.updateCanvasFromCurrentChat();
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
             })();
         },
         async renderPreviewToCanvas(rawText) {
-            // This is a helper to render only the preview part of a message to the canvas
             const tempDiv = document.createElement('div');
-            // We use the normal formatter here to generate the preview box html
             tempDiv.innerHTML = await MessageFormatter.format(rawText, { canvasMode: false });
             
             const previewBox = tempDiv.querySelector('.html-render-box, .svg-render-box');
-            
+            const canvasContent = ChatApp.UI.elements.canvasContent;
+            const hasContent = canvasContent.innerHTML.trim() !== '' && !canvasContent.querySelector('.canvas-placeholder');
+
+            // MODIFIED: Smoothly transition the canvas content
             if (previewBox) {
-                ChatApp.UI.elements.canvasContent.innerHTML = '';
-                ChatApp.UI.elements.canvasContent.appendChild(previewBox);
+                if (hasContent) {
+                    canvasContent.style.opacity = '0';
+                    await new Promise(resolve => setTimeout(resolve, 300));
+                }
+                canvasContent.innerHTML = '';
+                canvasContent.appendChild(previewBox);
+                canvasContent.style.opacity = '1';
             }
         },
-        updateCanvasFromCurrentChat() {
-            ChatApp.UI.clearCanvas();
+        async updateCanvasFromCurrentChat() {
+            await ChatApp.UI.clearCanvas(); // MODIFIED: Await the animated clear
             if (!ChatApp.State.isCanvasModeEnabled) return;
 
             const lastCodeMessage = [...ChatApp.State.currentConversation].reverse().find(msg => {
@@ -883,16 +917,16 @@ You have custom commands that users can use, and you must follow them.
             });
 
             if (lastCodeMessage) {
-                this.renderPreviewToCanvas(lastCodeMessage.content.parts[0].text);
+                await this.renderPreviewToCanvas(lastCodeMessage.content.parts[0].text);
             }
         },
-        deleteMessage(messageId) {
+        async deleteMessage(messageId) {
             if (!confirm('Are you sure you want to delete this message?')) return;
             ChatApp.State.removeMessage(messageId);
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
             if (messageEl) { messageEl.classList.add('fade-out'); setTimeout(() => messageEl.remove(), 400); }
             this.saveCurrentChat();
-            this.updateCanvasFromCurrentChat(); // Re-check for the last code block
+            await this.updateCanvasFromCurrentChat(); // Re-check for the last code block
         },
         deleteConversation(chatId) {
             if (!confirm('Are you sure you want to delete this chat permanently?')) return;
@@ -997,10 +1031,15 @@ You have custom commands that users can use, and you must follow them.
             }
         },
         closeFullscreenPreview() {
+            // MODIFIED: Animate the closing of the fullscreen preview
             const { fullscreenOverlay, fullscreenContent, body } = ChatApp.UI.elements;
-            fullscreenOverlay.style.display = 'none';
-            fullscreenContent.innerHTML = '';
-            body.classList.remove('modal-open');
+            fullscreenOverlay.classList.add('closing');
+            fullscreenOverlay.addEventListener('animationend', () => {
+                fullscreenOverlay.style.display = 'none';
+                fullscreenOverlay.classList.remove('closing');
+                fullscreenContent.innerHTML = '';
+                body.classList.remove('modal-open');
+            }, { once: true });
         },
     }
 };
