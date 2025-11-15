@@ -109,8 +109,9 @@ export const MessageFormatter = {
         const lang = block.lang.toLowerCase();
         const displayName = LANGUAGE_MAP[lang] || lang;
         const highlightedCode = SyntaxHighlighter.highlight(block.content, lang);
+        // MODIFIED: Added data-previewable and data-raw-content to ALL code blocks.
         const wrapperClasses = `code-block-wrapper is-collapsible is-collapsed`;
-        return `<div class="${wrapperClasses}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
+        return `<div class="${wrapperClasses}" data-previewable="${lang}" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
     },
     
     /**
@@ -119,7 +120,6 @@ export const MessageFormatter = {
      */
     async _renderHtmlPreview(block) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
-        // FIXED: Added the <div class="collapsible-content"> wrapper around the <pre> tag to match the structure in _renderCodeBlock.
         const codeBlockHtml = `<div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div>`;
 
         const inlinedHtml = await this._inlineExternalScripts(block.content);
@@ -133,7 +133,6 @@ export const MessageFormatter = {
      */
     _renderSvgPreview(block) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
-        // FIXED: Added the <div class="collapsible-content"> wrapper around the <pre> tag to match the structure in _renderCodeBlock.
         const codeBlockHtml = `<div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-xml"><code class="language-xml">${highlightedCode}</code></pre></div></div>`;
 
         const encodedSvg = btoa(block.content);
