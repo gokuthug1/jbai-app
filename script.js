@@ -1,4 +1,5 @@
 import { MessageFormatter } from './formatter.js';
+import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
 /**
  * A self-contained Chat Application object.
@@ -249,7 +250,6 @@ const ChatApp = {
                 const textPart = content.parts.find(p => p.text);
                 rawText = textPart ? textPart.text : '';
                 messageEl.className = `message ${sender}`;
-                // Use the new MessageFormatter
                 contentEl.innerHTML = await MessageFormatter.format(rawText);
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
@@ -277,27 +277,16 @@ const ChatApp = {
                         contentHTML = `<video src="${file.data}" class="attachment-media" controls data-tooltip="${ChatApp.Utils.escapeHTML(file.name)}"></video>`;
                     }
                 } else {
-                    // Render a generic icon, filename, and extension for non-media files.
                     const extension = file.name.split('.').pop()?.toLowerCase() || '';
                     const iconMap = {
-                        'html': ChatApp.Config.ICONS.HTML,
-                        'css': ChatApp.Config.ICONS.CSS,
-                        'js': ChatApp.Config.ICONS.JS,
-                        'svg': ChatApp.Config.ICONS.SVG,
-                        'lua': ChatApp.Config.ICONS.LUA,
-                        'txt': ChatApp.Config.ICONS.TEXT,
-                        'json': ChatApp.Config.ICONS.JSON,
-			'png': ChatApp.Config.ICONS.IMAGE,
-			'jpg': ChatApp.Config.ICONS.IMAGE,
-			'gif': ChatApp.Config.ICONS.GIF
+                        'html': ChatApp.Config.ICONS.HTML, 'css': ChatApp.Config.ICONS.CSS, 'js': ChatApp.Config.ICONS.JS, 'svg': ChatApp.Config.ICONS.SVG,
                     };
                     const icon = iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT;
                     contentHTML = `
                         <div class="attachment-generic">
                             ${icon}
                             <span class="attachment-filename">${ChatApp.Utils.escapeHTML(file.name)}</span>
-                        </div>
-                        <span class="file-preview-extension">${ChatApp.Utils.escapeHTML(extension.substring(0, 4))}</span>`;
+                        </div>`;
                 }
                 item.innerHTML = contentHTML;
                 container.appendChild(item);
@@ -344,7 +333,6 @@ const ChatApp = {
             const contentEl = messageEl.querySelector('.message-content');
 
             if (ChatApp.Config.TYPING_SPEED_MS === 0) {
-                 // Use the new MessageFormatter
                  contentEl.innerHTML = await MessageFormatter.format(fullText);
                  this._addMessageInteractions(messageEl, fullText, messageId);
                  this.scrollToBottom();
@@ -362,7 +350,6 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    // Use the new MessageFormatter
                     contentEl.innerHTML = await MessageFormatter.format(fullText);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     this.scrollToBottom();
