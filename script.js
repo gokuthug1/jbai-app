@@ -23,6 +23,7 @@ const ChatApp = {
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
+            CANVAS_MODE: 'jbai_canvas_mode',
         },
         DEFAULT_THEME: 'light',
         TYPING_SPEED_MS: 0, // Milliseconds per character. Set to 0 for instant responses.
@@ -48,6 +49,7 @@ const ChatApp = {
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
+        isCanvasModeEnabled: false,
         typingInterval: null,
         attachedFiles: [],
         setCurrentConversation(history) {
@@ -112,6 +114,8 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
+        saveCanvasMode(isEnabled) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CANVAS_MODE, isEnabled); },
+        getCanvasMode() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CANVAS_MODE) === 'true'; },
     },
 
     // --- UI Module (DOM Interaction & Rendering) ---
@@ -258,7 +262,10 @@ const ChatApp = {
             }
             messageEl.appendChild(contentEl);
             this.elements.messageArea.appendChild(messageEl);
-            if (!isTyping) { this._addMessageInteractions(messageEl, rawText, message.id); }
+            if (!isTyping) {
+                this._addMessageInteractions(messageEl, rawText, message.id);
+            }
+            this._applyCanvasClass(messageEl);
             this.scrollToBottom();
             return messageEl;
         },
@@ -335,6 +342,7 @@ const ChatApp = {
             if (ChatApp.Config.TYPING_SPEED_MS === 0) {
                  contentEl.innerHTML = await MessageFormatter.format(fullText);
                  this._addMessageInteractions(messageEl, fullText, messageId);
+                 this._applyCanvasClass(messageEl);
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
                  return;
@@ -352,6 +360,7 @@ const ChatApp = {
                     ChatApp.State.typingInterval = null;
                     contentEl.innerHTML = await MessageFormatter.format(fullText);
                     this._addMessageInteractions(messageEl, fullText, messageId);
+                    this._applyCanvasClass(messageEl);
                     this.scrollToBottom();
                     ChatApp.Controller.completeGeneration(botMessageForState);
                 }
@@ -430,6 +439,17 @@ const ChatApp = {
                 }
             });
         },
+        _applyCanvasClass(messageEl) {
+            if (!ChatApp.State.isCanvasModeEnabled) return;
+            const previewContainer = messageEl.querySelector('.html-preview-container, .svg-preview-container');
+            if (previewContainer) {
+                messageEl.classList.add('canvas-active');
+                const codeBlock = previewContainer.querySelector('.code-block-wrapper');
+                if (codeBlock) {
+                    codeBlock.classList.remove('is-collapsed');
+                }
+            }
+        },
         renderSettingsModal() {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
@@ -445,6 +465,13 @@ const ChatApp = {
                         <option value="monokai">MonoKai</option>
                     </select>
                 </div>
+                 <div class="settings-row">
+                    <label for="canvasModeToggle">Canvas</label>
+                    <label class="switch">
+                        <input type="checkbox" id="canvasModeToggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
                 <hr>
                 <h3>Data Management</h3>
                 <div class="settings-group">
@@ -457,10 +484,19 @@ const ChatApp = {
             </div>`;
             document.body.appendChild(overlay);
             overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+            
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
             
+            const canvasToggle = overlay.querySelector('#canvasModeToggle');
+            canvasToggle.checked = ChatApp.Store.getCanvasMode();
+            canvasToggle.addEventListener('change', e => {
+                ChatApp.State.isCanvasModeEnabled = e.target.checked;
+                ChatApp.Store.saveCanvasMode(e.target.checked);
+                this.showToast(`Canvas mode ${e.target.checked ? 'enabled' : 'disabled'}. New messages will be affected.`);
+            });
+
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
             overlay.querySelector('#download-data-btn').addEventListener('click', ChatApp.Controller.downloadAllData);
@@ -601,10 +637,12 @@ You have custom commands that users can use, and you must follow them.
     // --- Controller Module (Application Logic) ---
     Controller: {
         init() {
+            ChatApp.Store.loadAllConversations();
+            ChatApp.State.isCanvasModeEnabled = ChatApp.Store.getCanvasMode();
+
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
-            ChatApp.Store.loadAllConversations();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
             
@@ -802,13 +840,14 @@ You have custom commands that users can use, and you must follow them.
         
             (async () => {
                 for (const msg of ChatApp.State.currentConversation) {
+                    let messageEl;
                     const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
                     if (msg.content.role === 'model' && /\[IMAGE: \{[\s\S]*?\}\]/.test(rawText)) {
                         const processedText = await this.processResponseForImages(rawText);
                         const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
-                        await ChatApp.UI.renderMessage(processedMsg);
+                        messageEl = await ChatApp.UI.renderMessage(processedMsg);
                     } else {
-                        await ChatApp.UI.renderMessage(msg);
+                        messageEl = await ChatApp.UI.renderMessage(msg);
                     }
                 }
                 setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
