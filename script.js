@@ -512,6 +512,9 @@ You have custom commands that users can use, and you must follow them.
   - The generated HTML MUST be self-contained. All CSS rules must be placed inside <style> tags and all JavaScript code must be placed inside <script> tags within the HTML itself.
   - DO NOT use external file links like \`<link rel="stylesheet" href="...">\` or \`<script src="...">\`. The preview environment cannot access external files.
   - DO NOT write any text outside of the markdown block.
+
+- **CRITICAL RULE: You must generate the complete, full code. NEVER use placeholders like "...", "...", "// ... rest of the code", or any other form of truncation in your code blocks. The code you provide must be fully functional and runnable as-is.**
+
 - Do not ask what a command means. Follow it exactly as written.
 - Avoid fluff or overexplaining—stay smart, fast, and clear.`;
         },
