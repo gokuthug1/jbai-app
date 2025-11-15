@@ -22,13 +22,15 @@ export const MessageFormatter = {
     /**
      * The main entry point for formatting a raw text message from the AI.
      * @param {string} text - The raw text content.
+     * @param {object} options - Formatting options.
+     * @param {boolean} options.canvasMode - If true, previews are omitted from the output.
      * @returns {Promise<string>} A promise that resolves to the fully formatted HTML string.
      */
-    async format(text) {
+    async format(text, options = {}) {
         if (!text) return '';
         const { processedText, blocks } = this._extractAndReplaceBlocks(text);
         let html = this._processMarkdown(processedText);
-        html = await this._reinsertBlocks(html, blocks);
+        html = await this._reinsertBlocks(html, blocks, options);
         html = this._processImageTags(html);
         return this._wrapInParagraphs(html);
     },
@@ -79,7 +81,7 @@ export const MessageFormatter = {
      * Asynchronously replaces placeholders with fully rendered HTML for each block.
      * @private
      */
-    async _reinsertBlocks(html, blocks) {
+    async _reinsertBlocks(html, blocks, options) {
         const parts = html.split(/(JBAIBLOCK\d+)/g);
         const processedParts = await Promise.all(parts.map(async (part) => {
             const match = part.match(/JBAIBLOCK(\d+)/);
@@ -89,11 +91,11 @@ export const MessageFormatter = {
             switch (block.type) {
                 case 'code':
                     if (block.lang.toLowerCase() === 'html') {
-                        return await this._renderHtmlPreview(block);
+                        return await this._renderHtmlPreview(block, options);
                     }
                     return this._renderCodeBlock(block);
                 case 'svg':
-                    return this._renderSvgPreview(block);
+                    return this._renderSvgPreview(block, options);
                 default:
                     return '';
             }
@@ -109,31 +111,47 @@ export const MessageFormatter = {
         const lang = block.lang.toLowerCase();
         const displayName = LANGUAGE_MAP[lang] || lang;
         const highlightedCode = SyntaxHighlighter.highlight(block.content, lang);
-        return `<div class="code-block-wrapper is-collapsible is-collapsed"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
+        // Standard code blocks are always collapsible, but we'll un-collapse them in canvas mode via JS/CSS
+        const isCollapsible = !['html', 'svg', 'xml'].includes(lang);
+        const wrapperClasses = `code-block-wrapper ${isCollapsible ? 'is-collapsible is-collapsed' : ''}`;
+        return `<div class="${wrapperClasses}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
     },
     
     /**
      * Renders an HTML preview block, inlining scripts and highlighting the code view.
      * @private
      */
-    async _renderHtmlPreview(block) {
+    async _renderHtmlPreview(block, options = {}) {
+        const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
+        const codeBlockHtml = `<div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div>`;
+
+        if (options.canvasMode) {
+            // In Canvas mode, only render the code block inside the chat message.
+            return codeBlockHtml;
+        }
+
+        // In normal mode, render the preview and the collapsible code block.
         const inlinedHtml = await this._inlineExternalScripts(block.content);
         const safeHtmlForSrcdoc = inlinedHtml.replace(/"/g, '&quot;');
-        const displayName = LANGUAGE_MAP['html'];
-        const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
-        // --- THIS IS THE MODIFIED LINE ---
-        return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div></div>`;
+        return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4>${codeBlockHtml.replace('<div class="code-block-wrapper"', '<div class="code-block-wrapper is-collapsible is-collapsed"')}`
     },
 
     /**
      * Renders an SVG preview block and highlights the code view.
      * @private
      */
-    _renderSvgPreview(block) {
-        const encodedSvg = btoa(block.content);
-        const displayName = LANGUAGE_MAP['svg'];
+    _renderSvgPreview(block, options = {}) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html'); // Use HTML grammar for SVG
-        return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4><div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-xml"><code class="language-xml">${highlightedCode}</code></pre></div></div></div>`;
+        const codeBlockHtml = `<div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><pre class="language-xml"><code class="language-xml">${highlightedCode}</code></pre></div>`;
+
+        if (options.canvasMode) {
+            // In Canvas mode, only render the code block inside the chat message.
+            return codeBlockHtml;
+        }
+
+        // In normal mode, render the preview and the collapsible code block.
+        const encodedSvg = btoa(block.content);
+        return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4>${codeBlockHtml.replace('<div class="code-block-wrapper"', '<div class="code-block-wrapper is-collapsible is-collapsed"')}`;
     },
     
     /**
