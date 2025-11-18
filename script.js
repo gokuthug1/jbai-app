@@ -1,20 +1,7 @@
 import { MessageFormatter } from './formatter.js';
 import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
-/**
- * A self-contained Chat Application object.
- * This object encapsulates all logic for configuration, state management,
- * UI rendering, API communication, and application control.
- *
- * @namespace ChatApp
- */
 const ChatApp = {
-    // --- Configuration Module ---
-    /**
-     * @memberof ChatApp
-     * @namespace Config
-     * @description Stores static configuration values for the application.
-     */
     Config: {
         API_URLS: {
             TEXT: '/api/server',
@@ -25,8 +12,8 @@ const ChatApp = {
             CONVERSATIONS: 'jbai_conversations',
         },
         DEFAULT_THEME: 'light',
-        TYPING_SPEED_MS: 0, // Milliseconds per character. Set to 0 for instant responses.
-        MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024, // 4MB limit to prevent 413 Payload Too Large errors
+        TYPING_SPEED_MS: 0,
+        MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
@@ -38,11 +25,11 @@ const ChatApp = {
             CSS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline><line x1="12" y1="2" x2="12" y2="22"></line></svg>`,
             JS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18h2a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2v12z"></path><path d="M8 12h2a2 2 0 1 0 0-4H8v4z"></path><path d="M6 18V6"></path></svg>`,
             SVG: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m14.31 8 5.74 9.94M9.69 8h11.48M12 2.25 2.25 18H21.75L12 2.25z"></path></svg>`,
-            CHEVRON_DOWN: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`
+            CHEVRON_DOWN: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
+            STOP: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"/></svg>`
         }
     },
 
-    // --- State Management Module ---
     State: {
         currentConversation: [],
         allConversations: [],
@@ -50,13 +37,11 @@ const ChatApp = {
         isGenerating: false,
         typingInterval: null,
         attachedFiles: [],
+        abortController: null, // Added for stopping generation
         setCurrentConversation(history) {
-            // This function normalizes conversation history, supporting older data formats for backward compatibility.
             this.currentConversation = history.map(msg => {
                 if (!msg) return null;
-                // Already in the new format
                 if (msg.id && msg.content && Array.isArray(msg.content.parts)) return msg;
-                // Old format: { role: 'user', text: '...' } -> migrate to new format
                 if (msg.role && typeof msg.text !== 'undefined') {
                     return {
                         id: ChatApp.Utils.generateUUID(),
@@ -67,28 +52,34 @@ const ChatApp = {
                     };
                 }
                 return null;
-            }).filter(Boolean); // Filter out any null entries from failed migrations
+            }).filter(Boolean);
         },
         addMessage(message) { this.currentConversation.push(message); },
         removeMessage(messageId) { this.currentConversation = this.currentConversation.filter(msg => msg.id !== messageId); },
         setGenerating(status) {
             this.isGenerating = status;
             ChatApp.UI.toggleSendButtonState();
-            if (!status && this.typingInterval) {
-                clearInterval(this.typingInterval);
-                this.typingInterval = null;
+            ChatApp.UI.toggleStopButton(status);
+            if (!status) {
+                if (this.typingInterval) {
+                    clearInterval(this.typingInterval);
+                    this.typingInterval = null;
+                }
+                this.abortController = null;
             }
         },
         resetCurrentChat() {
+            if (this.isGenerating && this.abortController) {
+                this.abortController.abort();
+            }
             this.setCurrentConversation([]);
             this.currentChatId = null;
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
-            if (this.isGenerating) { this.setGenerating(false); }
+            this.setGenerating(false);
         }
     },
 
-    // --- Utility Module ---
     Utils: {
         escapeHTML(str) {
             const p = document.createElement('p');
@@ -98,7 +89,6 @@ const ChatApp = {
         generateUUID() { return crypto.randomUUID(); }
     },
 
-    // --- Local Storage Module ---
     Store: {
         saveAllConversations() { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations)); },
         loadAllConversations() {
@@ -114,7 +104,6 @@ const ChatApp = {
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
     },
 
-    // --- UI Module (DOM Interaction & Rendering) ---
     UI: {
         elements: {},
         cacheElements() {
@@ -128,6 +117,7 @@ const ChatApp = {
                 messageArea: document.getElementById('message-area'),
                 chatInput: document.getElementById('chat-input'),
                 sendButton: document.getElementById('send-button'),
+                stopButton: document.getElementById('stop-button'), // Cached Stop Button
                 settingsButton: document.getElementById('toggle-options-button'),
                 attachFileButton: document.getElementById('attach-file-button'),
                 fileInput: document.getElementById('file-input'),
@@ -144,7 +134,6 @@ const ChatApp = {
         initTooltips() {
             let tooltipTimeout;
             const tooltip = this.elements.customTooltip;
-
             const showTooltip = (e) => {
                 const target = e.target.closest('[data-tooltip]');
                 if (!target) return;
@@ -162,21 +151,18 @@ const ChatApp = {
                 tooltip.style.top = `${top}px`;
                 tooltip.style.left = `${left}px`;
             };
-
             document.body.addEventListener('mouseover', (e) => {
                 if (e.target.closest('[data-tooltip]')) {
                     clearTimeout(tooltipTimeout);
                     tooltipTimeout = setTimeout(() => showTooltip(e), 300);
                 }
             });
-
             document.body.addEventListener('mouseout', (e) => {
                  if (e.target.closest('[data-tooltip]')) {
                     clearTimeout(tooltipTimeout);
                     this.hideTooltip();
                 }
             });
-            
             document.addEventListener('scroll', () => this.hideTooltip(), { capture: true, passive: true });
         },
         applyTheme(themeName) {
@@ -194,7 +180,18 @@ const ChatApp = {
                 toast.addEventListener('transitionend', () => toast.remove());
             }, 3000);
         },
-        scrollToBottom() { this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight; },
+        // Improved: Only scroll to bottom if the user is already near the bottom
+        scrollToBottom() {
+            const area = this.elements.messageArea;
+            const threshold = 100;
+            const isNearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < threshold;
+            if (isNearBottom) {
+                area.scrollTop = area.scrollHeight;
+            }
+        },
+        forceScrollToBottom() {
+            this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight;
+        },
         clearChatArea() {
             this.elements.messageArea.innerHTML = '';
             this.elements.chatInput.value = '';
@@ -206,6 +203,10 @@ const ChatApp = {
             const hasFiles = ChatApp.State.attachedFiles.length > 0;
             const isGenerating = ChatApp.State.isGenerating;
             this.elements.sendButton.disabled = (!hasText && !hasFiles) || isGenerating;
+            this.elements.sendButton.style.display = isGenerating ? 'none' : 'flex';
+        },
+        toggleStopButton(isGenerating) {
+            this.elements.stopButton.style.display = isGenerating ? 'flex' : 'none';
         },
         renderSidebar() {
             this.elements.conversationList.innerHTML = '';
@@ -385,7 +386,6 @@ const ChatApp = {
                 if (!pre || !actionsContainer) return;
                 const codeEl = pre.querySelector('code');
 
-                // MODIFIED: This block is updated to handle different content types.
                 if (wrapper.dataset.rawContent) {
                     const openBtn = document.createElement('button');
                     openBtn.className = 'open-new-tab-button';
@@ -404,11 +404,9 @@ const ChatApp = {
                         }
 
                         if (previewType === 'html' || previewType === 'svg') {
-                            // For HTML and SVG, write to a blank window to render them.
                             newWindow.document.write(rawContent);
                             newWindow.document.close();
                         } else {
-                            // For all other types, write the escaped text content inside a <pre> tag.
                             newWindow.document.write('<pre>' + ChatApp.Utils.escapeHTML(rawContent) + '</pre>');
                             newWindow.document.close();
                         }
@@ -506,15 +504,11 @@ const ChatApp = {
         },
     },
 
-    // --- API Module ---
     Api: {
         async getSystemContext() {
-            // Stricter rules for HTML generation to ensure self-contained code for previews
             return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 
 --- Custom Commands ---
-You have custom commands that users can use, and you must follow them.
-
 /html → Give a random HTML code that’s interesting and fun.
 /profile → List all custom commands and explain what each does.
 /concept → Ask what concept the user wants to create.
@@ -529,19 +523,16 @@ You have custom commands that users can use, and you must follow them.
 --- General Rules ---
 - Use standard Markdown in your responses.
 - To generate an image, you MUST use this exact format in your response: \`[IMAGE: { "prompt": "your detailed prompt", "height": number, "seed": number }]\`.
-  - When writing the "prompt" value, be very descriptive and literal. Place the most important subjects, features, and actions (e.g., "a bear shooting lasers from its eyes") at the beginning of the prompt to ensure they are accurately represented.
+  - When writing the "prompt" value, be very descriptive and literal.
   - You have control over the parameters: \`height\` (e.g., 768, 1024), and \`seed\` (any number for reproducibility).
-  - Do NOT invent new parameters. Do NOT include a URL. The system will handle the actual image generation.
+  - Do NOT invent new parameters. Do NOT include a URL.
 - Current Date/Time: ${new Date().toLocaleString()}
 - Format HTML code as one complete, well-formatted, and readable file. ALWAYS enclose the full HTML code within a single \`\`\`html markdown block.
   - The generated HTML MUST be self-contained. All CSS rules must be placed inside <style> tags and all JavaScript code must be placed inside <script> tags within the HTML itself.
   - DO NOT use external file links like \`<link rel="stylesheet" href="...">\` or \`<script src="...">\`. The preview environment cannot access external files.
   - DO NOT write any text outside of the markdown block.
 
-- **CRITICAL RULE: You must generate the complete, full code. NEVER use placeholders like "...", "...", "// ... rest of the code", or any other form of truncation in your code blocks. The code you provide must be fully functional and runnable as-is.**
-
-- Do not ask what a command means. Follow it exactly as written.
-- Avoid fluff or overexplaining—stay smart, fast, and clear.`;
+- **CRITICAL RULE: You must generate the complete, full code. NEVER use placeholders like "// ... rest of the code". The code must be functional.**`;
         },
         async fetchTitle(chatHistory) {
             const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
@@ -557,50 +548,46 @@ You have custom commands that users can use, and you must follow them.
                 const data = await response.json();
                 return data?.candidates?.[0]?.content?.parts?.[0]?.text.trim().replace(/["*]/g, '') || "Chat";
             } catch (error) {
-                console.error("Title generation failed:", error);
                 return "Titled Chat";
             }
         },
-        async fetchTextResponse(apiContents, systemInstruction) {
-            const maxRetries = 3;
-            let lastError = null;
+        async fetchTextResponse(apiContents, systemInstruction, signal) {
             const payload = {
                 contents: apiContents,
                 systemInstruction: systemInstruction
             };
         
-            for (let attempt = 0; attempt < maxRetries; attempt++) {
-                try {
-                    const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify(payload)
-                    });
-        
-                    if (response.ok) {
-                        const data = await response.json();
-                        const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                        if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
-                        return botResponseText;
-                    }
-        
-                    let errorJson;
-                    try {
-                        errorJson = await response.json();
-                    } catch (e) {
-                        throw new Error(`API Error: ${response.status} ${response.statusText}`);
-                    }
-            
-                    const detailedMessage = errorJson?.error?.message || JSON.stringify(errorJson);
-                    throw new Error(`API Error: ${response.status} - ${detailedMessage}`);
-                    
-                } catch (error) {
-                    lastError = error;
-                    console.warn(`Attempt ${attempt + 1} failed: ${error.message}. Retrying...`);
+            try {
+                const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload),
+                    signal: signal // Pass abort signal
+                });
+    
+                if (response.ok) {
+                    const data = await response.json();
+                    const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
+                    return botResponseText;
                 }
-                if (attempt < maxRetries - 1) await new Promise(res => setTimeout(res, 1500 * (attempt + 1)));
+    
+                let errorJson;
+                try {
+                    errorJson = await response.json();
+                } catch (e) {
+                    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                }
+        
+                const detailedMessage = errorJson?.error?.message || JSON.stringify(errorJson);
+                throw new Error(`API Error: ${response.status} - ${detailedMessage}`);
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    throw new Error("Generation stopped by user.");
+                }
+                throw error;
             }
-            throw new Error(`Failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
         },
         async fetchImageResponse(params) {
             const { prompt, height, seed, model } = params;
@@ -616,20 +603,16 @@ You have custom commands that users can use, and you must follow them.
             const response = await fetch(fullUrl);
             if (!response.ok) { throw new Error(`Server error: ${response.status} ${response.statusText}`); }
             const imageBlob = await response.blob();
-            if (imageBlob.type.startsWith('text/')) { throw new Error("Image generation failed. The API may be down or the prompt was invalid."); }
+            if (imageBlob.type.startsWith('text/')) { throw new Error("Image generation failed."); }
             const imageUrl = URL.createObjectURL(imageBlob);
-            if (!imageUrl) throw new Error("Could not create image URL from the API response.");
             return imageUrl;
         }
     },
     
-    // --- Controller Module (Application Logic) ---
     Controller: {
         init() {
             ChatApp.Store.loadAllConversations();
-
             ChatApp.UI.cacheElements();
-
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.UI.renderSidebar();
@@ -639,6 +622,7 @@ You have custom commands that users can use, and you must follow them.
             const { Controller } = ChatApp;
             
             elements.sendButton.addEventListener('click', Controller.handleChatSubmission.bind(Controller));
+            elements.stopButton.addEventListener('click', Controller.stopGeneration.bind(Controller));
             elements.chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); Controller.handleChatSubmission(); } });
             elements.chatInput.addEventListener('input', () => {
                 elements.chatInput.style.height = 'auto';
@@ -671,6 +655,15 @@ You have custom commands that users can use, and you must follow them.
             ChatApp.UI.clearChatArea();
             ChatApp.UI.renderSidebar();
         },
+        stopGeneration() {
+            if (ChatApp.State.isGenerating && ChatApp.State.abortController) {
+                ChatApp.State.abortController.abort();
+                ChatApp.State.setGenerating(false);
+                ChatApp.UI.showToast("Generation stopped.");
+                const thinkingMsg = document.querySelector('.message.thinking');
+                if (thinkingMsg) thinkingMsg.remove();
+            }
+        },
         async handleChatSubmission() {
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = [...ChatApp.State.attachedFiles];
@@ -678,7 +671,11 @@ You have custom commands that users can use, and you must follow them.
 
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+            
+            // Create new abort controller for this request
+            ChatApp.State.abortController = new AbortController();
             ChatApp.State.setGenerating(true);
+            
             this.clearAttachedFiles();
 
             const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
@@ -727,7 +724,7 @@ You have custom commands that users can use, and you must follow them.
         },
         handleFileSelection(event) {
             this.addFilesToState(event.target.files);
-            event.target.value = null; // Reset input to allow selecting the same file again
+            event.target.value = null;
         },
         handlePaste(event) {
             const files = event.clipboardData?.files;
@@ -753,18 +750,29 @@ You have custom commands that users can use, and you must follow them.
             try {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
-                const rawBotResponse = await ChatApp.Api.fetchTextResponse(apiContents, systemInstruction);
+                
+                // Pass the abort signal
+                const rawBotResponse = await ChatApp.Api.fetchTextResponse(
+                    apiContents, 
+                    systemInstruction,
+                    ChatApp.State.abortController.signal
+                );
+                
                 const processedForUI = await this.processResponseForImages(rawBotResponse);
                 const messageId = ChatApp.Utils.generateUUID();
                 const botMessageForState = { id: messageId, content: { role: "model", parts: [{ text: rawBotResponse }] } };
                 await ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedForUI, messageId, botMessageForState);
             } catch (error) {
-                console.error("Text generation failed:", error);
                 thinkingMessageEl.remove();
-                const userFriendlyMessage = error.message.includes("API Error: 500") ? "Sorry, the server encountered an internal error. Please try again later." : `Sorry, an error occurred: ${error.message}`;
-                const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: userFriendlyMessage }] } };
-                await ChatApp.UI.renderMessage(errorBotMessage);
-                ChatApp.UI.showToast(userFriendlyMessage, 'error');
+                if (error.message === "Generation stopped by user.") {
+                    // Do nothing, just stop
+                } else {
+                    console.error("Text generation failed:", error);
+                    const userFriendlyMessage = error.message.includes("API Error: 500") ? "Sorry, the server encountered an internal error." : `Sorry, an error occurred: ${error.message}`;
+                    const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: userFriendlyMessage }] } };
+                    await ChatApp.UI.renderMessage(errorBotMessage);
+                    ChatApp.UI.showToast(userFriendlyMessage, 'error');
+                }
                 ChatApp.State.setGenerating(false);
             }
         },
@@ -782,7 +790,7 @@ You have custom commands that users can use, and you must follow them.
                     return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})` };
                 } catch (error) {
                     console.error("Failed to process image tag:", originalTag, error);
-                    const userFriendlyError = `[Error generating image: The external image service failed. This could be due to a temporary outage or an issue with the prompt. Please try again later.]`;
+                    const userFriendlyError = `[Error generating image: ${error.message}]`;
                     return { original: originalTag, replacement: userFriendlyError };
                 }
             });
@@ -817,7 +825,6 @@ You have custom commands that users can use, and you must follow them.
             if (ChatApp.State.currentChatId === chatId) return;
             const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
             if (!chat || !Array.isArray(chat.history)) {
-                console.error("Chat not found or is corrupted:", chatId);
                 ChatApp.UI.showToast("Could not load the selected chat.", "error");
                 return;
             }
@@ -838,7 +845,7 @@ You have custom commands that users can use, and you must follow them.
                         await ChatApp.UI.renderMessage(msg);
                     }
                 }
-                setTimeout(() => ChatApp.UI.scrollToBottom(), 0);
+                setTimeout(() => ChatApp.UI.forceScrollToBottom(), 0);
             })();
         },
         async deleteMessage(messageId) {
@@ -959,7 +966,6 @@ You have custom commands that users can use, and you must follow them.
     }
 };
 
-// Start the application once the DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     ChatApp.Controller.init();
 });

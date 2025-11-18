@@ -1,13 +1,8 @@
 /**
- * A lightweight, regex-based syntax highlighter created from scratch.
- * It defines grammars for various languages and applies them to code strings.
+ * A lightweight, regex-based syntax highlighter.
  * @namespace SyntaxHighlighter
  */
 export const SyntaxHighlighter = {
-    /**
-     * Defines the grammar rules for each supported language.
-     * The order of rules is important: process strings and comments first.
-     */
     GRAMMAR: {
         json: {
             'property': /"(?:\\.|[^"\\])*"(?=\s*:)/,
@@ -18,25 +13,25 @@ export const SyntaxHighlighter = {
             'punctuation': /[{}[\](),]/,
         },
         javascript: {
-            'comment': /(?:\/\/.*)|(?:\/\*[\s\S]*?\*\/)/,
+            'comment': /(\/\/.*)|(\/\*[\s\S]*?\*\/)/,
             'string': /(?:'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`)/,
             'class-name': /\b[A-Z][A-Za-z0-9_]+\b/,
-            'jbai-keyword': new RegExp(`\\b(ChatApp|Config|State|Utils|Store|UI|Api|Controller|init|handleChatSubmission|renderMessage|finalizeBotMessage|getSystemContext|fetchTextResponse|loadChat|saveCurrentChat)\\b`),
-            'keyword': /\b(?:const|let|var|if|else|for|while|do|async|await|function|return|new|import|export|from|class|extends|super|this|switch|case|default|break|continue|try|catch|finally|throw|delete|typeof|instanceof)\b/,
+            'jbai-keyword': /\b(ChatApp|Config|State|Utils|Store|UI|Api|Controller)\b/,
+            'keyword': /\b(?:const|let|var|if|else|for|while|do|async|await|function|return|new|import|export|from|class|extends|super|this|switch|case|default|break|continue|try|catch|finally|throw|delete|typeof|instanceof|void)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
             'number': /\b-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/i,
             'boolean': /\b(?:true|false|null|undefined)\b/,
-            'operator': /[|&^!~*\/%<>=+-]=?|&&|\|\||\?/,
+            'operator': /=>|\.\.\.|[|&^!~*\/%<>=+-]=?|&&|\|\||\?/,
             'punctuation': /[{}[\]();,.:]/,
         },
         python: {
             'comment': /#.*/,
             'string': /(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\'|[^'])*'|"(?:\\"|[^"])*")/,
-            'keyword': /\b(?:def|class|if|else|elif|for|while|return|import|from|as|try|except|finally|with|lambda|and|or|not|is|in|pass|break|continue)\b/,
+            'keyword': /\b(?:def|class|if|else|elif|for|while|return|import|from|as|try|except|finally|with|lambda|and|or|not|is|in|pass|break|continue|global|nonlocal)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
             'number': /\b-?\d+(?:\.\d+)?\b/,
             'boolean': /\b(?:True|False|None)\b/,
-            'operator': /([*\/%+\-&|~^<>=!]=?|[*\/]=|\/\/)/,
+            'operator': /([*\/%+\-&|~^<>=!]=?|[*\/]=|\/\/|@)/,
             'punctuation': /[{}[\]();,.:]/,
         },
         lua: {
@@ -60,27 +55,29 @@ export const SyntaxHighlighter = {
             'selector': /[^{}\s][^{}]*(?=\s*\{)/,
             'property': /[\w-]+(?=\s*:)/,
             'string': /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'/,
-            'function': /\b(?:rgb|rgba|url|calc|var)\b/,
-            'number': /\b-?\d+(?:\.\d+)?(?:px|em|rem|%|vw|vh)?\b/,
+            'function': /\b(?:rgb|rgba|url|calc|var|min|max|clamp)\b/,
+            'number': /\b-?\d+(?:\.\d+)?(?:px|em|rem|%|vw|vh|deg|s|ms)?\b/,
         },
+        bash: {
+             'comment': /#.*/,
+             'string': /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'/,
+             'variable': /\$[a-zA-Z_][a-zA-Z0-9_]*|\$\{[^}]+\}/,
+             'keyword': /\b(?:if|then|else|elif|fi|for|while|in|do|done|case|esac|function|return|exit|echo|printf|read|source|export|local)\b/,
+             'function': /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\(\))/,
+             'operator': /&&|\|\||;;|\||&|>|<|!/,
+             'number': /\b\d+\b/
+        }
     },
 
-    /**
-     * Takes a raw code string and a language, and returns HTML with syntax highlighting.
-     * @param {string} code - The raw code to highlight.
-     * @param {string} lang - The programming language (e.g., 'javascript', 'python').
-     * @returns {string} The HTML-formatted highlighted code.
-     */
     highlight(code, lang) {
-        // Fallback for xml/svg highlighting to use html rules
-        const effectiveLang = (lang === 'xml' || lang === 'svg') ? 'html' : lang;
+        const alias = { 'xml': 'html', 'svg': 'html', 'sh': 'bash', 'shell': 'bash', 'js': 'javascript' };
+        const effectiveLang = alias[lang] || lang;
         const grammar = this.GRAMMAR[effectiveLang];
 
         if (!grammar) {
             return this.escapeHtml(code);
         }
 
-        // The token stream is an array of strings and tokens
         let tokenStream = [code];
 
         for (const tokenName in grammar) {
@@ -116,12 +113,8 @@ export const SyntaxHighlighter = {
         }).join('');
     },
 
-    /**
-     * Escapes HTML special characters in a string.
-     * @param {string} str - The string to escape.
-     * @returns {string} The escaped string.
-     */
     escapeHtml(str) {
+        if (!str) return '';
         return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 };

@@ -14,7 +14,10 @@ const LANGUAGE_MAP = {
     lua: 'Lua',
     python: 'Python',
     xml: 'SVG',
-    svg: 'SVG'
+    svg: 'SVG',
+    sh: 'Shell',
+    bash: 'Shell',
+    json: 'JSON'
 };
 
 
@@ -34,9 +37,7 @@ export const MessageFormatter = {
     },
 
     /**
-     * Finds all code, HTML, and SVG blocks, replaces them with placeholders,
-     * and returns the processed text and an array of the extracted blocks.
-     * @private
+     * Finds all code, HTML, and SVG blocks, replaces them with placeholders.
      */
     _extractAndReplaceBlocks(text) {
         let processedText = text;
@@ -59,7 +60,6 @@ export const MessageFormatter = {
 
     /**
      * Applies standard Markdown-to-HTML conversions.
-     * @private
      */
     _processMarkdown(text) {
         const escapedText = SyntaxHighlighter.escapeHtml(text);
@@ -76,8 +76,7 @@ export const MessageFormatter = {
     },
 
     /**
-     * Asynchronously replaces placeholders with fully rendered HTML for each block.
-     * @private
+     * Asynchronously replaces placeholders with fully rendered HTML.
      */
     async _reinsertBlocks(html, blocks) {
         const parts = html.split(/(JBAIBLOCK\d+)/g);
@@ -101,36 +100,27 @@ export const MessageFormatter = {
         return processedParts.join('');
     },
 
-    /**
-     * Renders a standard code block using the custom syntax highlighter.
-     * @private
-     */
     _renderCodeBlock(block) {
         const lang = block.lang.toLowerCase();
         const displayName = LANGUAGE_MAP[lang] || lang;
         const highlightedCode = SyntaxHighlighter.highlight(block.content, lang);
-        // MODIFIED: Added data-previewable and data-raw-content to ALL code blocks.
         const wrapperClasses = `code-block-wrapper is-collapsible is-collapsed`;
         return `<div class="${wrapperClasses}" data-previewable="${lang}" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
     },
     
-    /**
-     * Renders an HTML preview block, inlining scripts and highlighting the code view.
-     * @private
-     */
     async _renderHtmlPreview(block) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
         const codeBlockHtml = `<div class="code-block-wrapper" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div>`;
 
         const inlinedHtml = await this._inlineExternalScripts(block.content);
-        const safeHtmlForSrcdoc = inlinedHtml.replace(/"/g, '&quot;');
+        
+        // FIX: Properly escape HTML for the srcdoc attribute. 
+        // Simple quote replacement is not enough for JS code containing characters like <, >, &
+        const safeHtmlForSrcdoc = this._escapeForSrcdoc(inlinedHtml);
+
         return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4>${codeBlockHtml.replace('<div class="code-block-wrapper"', '<div class="code-block-wrapper is-collapsible is-collapsed"')}`
     },
 
-    /**
-     * Renders an SVG preview block and highlights the code view.
-     * @private
-     */
     _renderSvgPreview(block) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
         const codeBlockHtml = `<div class="code-block-wrapper" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-xml"><code class="language-xml">${highlightedCode}</code></pre></div></div>`;
@@ -139,10 +129,6 @@ export const MessageFormatter = {
         return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4>${codeBlockHtml.replace('<div class="code-block-wrapper"', '<div class="code-block-wrapper is-collapsible is-collapsed"')}`;
     },
     
-    /**
-     * Fetches external scripts via a CORS proxy and embeds them as inline scripts.
-     * @private
-     */
     async _inlineExternalScripts(htmlContent) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(htmlContent, 'text/html');
@@ -161,17 +147,13 @@ export const MessageFormatter = {
                 tag.parentNode.replaceChild(inlineScript, tag);
             } catch (error) {
                 console.error(`Error inlining script from ${src}:`, error);
-                tag.parentNode.replaceChild(doc.createComment(` JBAI Error: Failed to load script from ${src} `), tag);
+                // Don't replace if failed, maybe it works via normal loading if CSP allows
             }
         });
         await Promise.all(fetchPromises);
         return doc.documentElement.outerHTML;
     },
 
-    /**
-     * Processes custom [IMAGE:...] tags into HTML.
-     * @private
-     */
     _processImageTags(html) {
         return html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
             const safeAlt = SyntaxHighlighter.escapeHtml(alt);
@@ -180,10 +162,6 @@ export const MessageFormatter = {
         });
     },
 
-    /**
-     * Intelligently wraps remaining text nodes in paragraph tags.
-     * @private
-     */
     _wrapInParagraphs(html) {
         let finalHtml = '';
         const parts = html.split(/(<(?:div|blockquote|ul|ol|h[1-6]|pre)[\s\S]*?<\/(?:div|blockquote|ul|ol|h[1-6]|pre)>)/);
@@ -197,5 +175,19 @@ export const MessageFormatter = {
             }
         }
         return finalHtml;
+    },
+
+    /**
+     * Properly escapes text for use within an HTML attribute (like srcdoc).
+     * This is crucial for JS inside HTML previews to work.
+     */
+    _escapeForSrcdoc(str) {
+        if (!str) return "";
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 };
