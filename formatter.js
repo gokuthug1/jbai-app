@@ -68,9 +68,11 @@ export const MessageFormatter = {
             .replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>')
             .replace(/~~(.*?)~~/g, '<s>$1</s>')
             .replace(/`([^`]+)`/g, '<code>$1</code>')
-            // FIXED: Changed [^\\] to [^\]] to correctly stop at the closing bracket
             .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
-            .replace(/^# (.*$)/gim, '<h1>$1</h1>').replace(/^## (.*$)/gim, '<h2>$1</h2>').replace(/^### (.*$)/gim, '<h3>$1</h3>')
+            // FIXED: Added \s* to allow headers to work even if they are indented with spaces
+            .replace(/^\s*# (.*$)/gim, '<h1>$1</h1>')
+            .replace(/^\s*## (.*$)/gim, '<h2>$1</h2>')
+            .replace(/^\s*### (.*$)/gim, '<h3>$1</h3>')
             .replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`)
             .replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*]\s*/, '')}</li>`).join('')}</ul>`)
             .replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
@@ -115,8 +117,6 @@ export const MessageFormatter = {
 
         const inlinedHtml = await this._inlineExternalScripts(block.content);
         
-        // FIX: Properly escape HTML for the srcdoc attribute. 
-        // Simple quote replacement is not enough for JS code containing characters like <, >, &
         const safeHtmlForSrcdoc = this._escapeForSrcdoc(inlinedHtml);
 
         return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4>${codeBlockHtml.replace('<div class="code-block-wrapper"', '<div class="code-block-wrapper is-collapsible is-collapsed"')}`
@@ -148,7 +148,6 @@ export const MessageFormatter = {
                 tag.parentNode.replaceChild(inlineScript, tag);
             } catch (error) {
                 console.error(`Error inlining script from ${src}:`, error);
-                // Don't replace if failed, maybe it works via normal loading if CSP allows
             }
         });
         await Promise.all(fetchPromises);
@@ -178,10 +177,6 @@ export const MessageFormatter = {
         return finalHtml;
     },
 
-    /**
-     * Properly escapes text for use within an HTML attribute (like srcdoc).
-     * This is crucial for JS inside HTML previews to work.
-     */
     _escapeForSrcdoc(str) {
         if (!str) return "";
         return str
