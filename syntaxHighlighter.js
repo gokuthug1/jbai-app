@@ -46,9 +46,11 @@ export const SyntaxHighlighter = {
         },
         html: {
             'comment': /<!--[\s\S]*?-->/,
-            'tag': /<\/?[\w\s="/.':-]+>/,
-            'attr-name': /\s+[\w-.:]+(?==)/,
-            'attr-value': /="[^"]*"|='[^']*'/,
+            'doctype': /<!DOCTYPE[\s\S]+?>/i,
+            'tag': /<\/?[\w:-]+\b/, 
+            'attr-value': /("|')(?:\\\1|.)*?\1/,
+            'attr-name': /[\w:-]+(?=\s*=\s*["'])/, 
+            'punctuation': /\/?>|=/
         },
         css: {
             'comment': /\/\*[\s\S]*?\*\//,
@@ -72,8 +74,65 @@ export const SyntaxHighlighter = {
     highlight(code, lang) {
         const alias = { 'xml': 'html', 'svg': 'html', 'sh': 'bash', 'shell': 'bash', 'js': 'javascript' };
         const effectiveLang = alias[lang] || lang;
-        const grammar = this.GRAMMAR[effectiveLang];
 
+        if (effectiveLang === 'html') {
+            return this.highlightHtml(code);
+        }
+
+        return this._highlightBasic(code, effectiveLang);
+    },
+
+    highlightHtml(code) {
+        // Regex to split by script and style tags to handle embedded languages
+        // Capturing groups: 1=open tag, 2=content, 3=close tag
+        const regex = /(<script[\s\S]*?>)([\s\S]*?)(<\/script>)|(<style[\s\S]*?>)([\s\S]*?)(<\/style>)/gi;
+        
+        let lastIndex = 0;
+        let result = '';
+        let match;
+
+        while ((match = regex.exec(code)) !== null) {
+            // Text before the match (Standard HTML)
+            const htmlPart = code.slice(lastIndex, match.index);
+            if (htmlPart) {
+                result += this._highlightBasic(htmlPart, 'html');
+            }
+
+            if (match[1]) { // It's a script
+                const openTag = match[1];
+                const scriptContent = match[2];
+                const closeTag = match[3];
+                
+                // Highlight the tags as HTML
+                result += this._highlightBasic(openTag, 'html');
+                // Highlight the content as JS
+                result += this._highlightBasic(scriptContent, 'javascript');
+                // Highlight the close tag as HTML
+                result += this._highlightBasic(closeTag, 'html');
+            } else if (match[4]) { // It's a style
+                const openTag = match[4];
+                const styleContent = match[5];
+                const closeTag = match[6];
+                
+                result += this._highlightBasic(openTag, 'html');
+                result += this._highlightBasic(styleContent, 'css');
+                result += this._highlightBasic(closeTag, 'html');
+            }
+
+            lastIndex = regex.lastIndex;
+        }
+
+        // Remaining HTML
+        const tail = code.slice(lastIndex);
+        if (tail) {
+            result += this._highlightBasic(tail, 'html');
+        }
+
+        return result;
+    },
+
+    _highlightBasic(code, lang) {
+        const grammar = this.GRAMMAR[lang];
         if (!grammar) {
             return this.escapeHtml(code);
         }
