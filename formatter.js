@@ -2,7 +2,7 @@ import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
 /**
  * A dedicated module for formatting AI message content.
- * Handles Markdown, code blocks, HTML/SVG previews, and Code Execution results.
+ * Handles Markdown, code blocks, HTML/SVG previews, Code Execution results, and Grounding.
  * @namespace MessageFormatter
  */
 
@@ -25,10 +25,11 @@ const LANGUAGE_MAP = {
 export const MessageFormatter = {
     /**
      * The main entry point for formatting message content.
-     * @param {string|Array} input - The raw text content OR an array of parts (for code execution).
+     * @param {string|Array} input - The raw text content OR an array of parts.
+     * @param {Object} [metadata] - Optional metadata (e.g. groundingMetadata) for citations.
      * @returns {Promise<string>} A promise that resolves to the fully formatted HTML string.
      */
-    async format(input) {
+    async format(input, metadata = null) {
         if (!input) return '';
 
         // Normalize input to an array of parts
@@ -44,7 +45,14 @@ export const MessageFormatter = {
         for (const part of parts) {
             if (part.text) {
                 // Regular Text / Markdown
-                const { processedText, blocks } = this._extractAndReplaceBlocks(part.text);
+                let textContent = part.text;
+                
+                // If we have grounding metadata, process in-text citations [1]
+                if (metadata && metadata.groundingChunks) {
+                    textContent = this._processCitations(textContent, metadata.groundingChunks);
+                }
+
+                const { processedText, blocks } = this._extractAndReplaceBlocks(textContent);
                 let html = this._processMarkdown(processedText);
                 html = await this._reinsertBlocks(html, blocks);
                 html = this._processImageTags(html);
@@ -55,12 +63,8 @@ export const MessageFormatter = {
                 const code = part.executableCode.code;
                 const lang = part.executableCode.language.toLowerCase();
                 
-                // Render as a code block, but force it open and add a title
-                finalHtml += this._renderCodeBlock({ 
-                    type: 'code', 
-                    lang: lang, 
-                    content: code 
-                }, 'Running Code...');
+                // Render as a "Terminal" style block
+                finalHtml += this._renderTerminalBlock(code, lang);
             } 
             else if (part.codeExecutionResult) {
                 // The Output from the execution
@@ -69,10 +73,15 @@ export const MessageFormatter = {
                 const isError = outcome !== "OUTCOME_OK";
 
                 finalHtml += `<div class="execution-result ${isError ? 'error' : ''}">
-                    <div class="execution-header">${isError ? '⚠️ Execution Failed' : '✓ Output'}</div>
+                    <div class="execution-header">${isError ? '⚠️ Execution Failed' : '✓ Standard Output'}</div>
                     <pre>${SyntaxHighlighter.escapeHtml(output)}</pre>
                 </div>`;
             }
+        }
+
+        // Append Sources List if metadata exists
+        if (metadata && metadata.groundingChunks) {
+            finalHtml += this._renderSourcesList(metadata.groundingChunks);
         }
 
         return finalHtml;
@@ -104,8 +113,21 @@ export const MessageFormatter = {
      * Applies standard Markdown-to-HTML conversions.
      */
     _processMarkdown(text) {
-        const escapedText = SyntaxHighlighter.escapeHtml(text);
-        return escapedText
+        const escapedText = text; // Text is already partially escaped if citations were processed, else we escape later? 
+        // Actually, let's escape HTML entities that aren't our Citation tags or Block placeholders
+        // For simplicity in this implementation, we assume text is safe except for blocks.
+        // We need to escape raw HTML characters to prevent injection, excluding our specific markers.
+        
+        // Basic escape for the bulk text, but protecting our <a href...> citations if they exist
+        // Note: Ideally, markdown processing happens before citation injection, but regex makes it tricky.
+        // We will escape everything that isn't a JBAIBLOCK or a citation link.
+        
+        let workingText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
+        // Revert escaping for Citation Links (hacky but effective for simple needs)
+        workingText = workingText.replace(/&lt;a href="([^"]+)" class="citation-ref"&gt;(\[\d+\])&lt;\/a&gt;/g, '<a href="$1" class="citation-ref">$2</a>');
+
+        return workingText
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/__(.*?)__/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/_(.*?)_/g, '<em>$1</em>')
             .replace(/~~(.*?)~~/g, '<s>$1</s>')
@@ -117,6 +139,47 @@ export const MessageFormatter = {
             .replace(/^(> (.*)\n?)+/gm, (match) => `<blockquote><p>${match.replace(/^> /gm, '').trim().replace(/\n/g, '</p><p>')}</p></blockquote>`)
             .replace(/^((\s*[-*] .*\n?)+)/gm, m => `<ul>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*[-*]\s*/, '')}</li>`).join('')}</ul>`)
             .replace(/^((\s*\d+\. .*\n?)+)/gm, m => `<ol>${m.trim().split('\n').map(i => `<li>${i.replace(/^\s*\d+\.\s*/, '')}</li>`).join('')}</ol>`);
+    },
+
+    /**
+     * Replaces [1], [2] etc with clickable links based on metadata.
+     */
+    _processCitations(text, chunks) {
+        // Regex to find [number]
+        return text.replace(/\[(\d+)\]/g, (match, index) => {
+            const i = parseInt(index, 10) - 1; // 1-based to 0-based
+            if (chunks[i] && chunks[i].web) {
+                const url = chunks[i].web.uri;
+                // We return a string that looks like HTML, which _processMarkdown needs to handle
+                return `<a href="${url}" class="citation-ref">[${index}]</a>`;
+            }
+            return match;
+        });
+    },
+
+    /**
+     * Generates the Sources section at the bottom.
+     */
+    _renderSourcesList(chunks) {
+        if (!chunks || chunks.length === 0) return '';
+        
+        const uniqueSources = chunks.filter(c => c.web).map((c, i) => ({
+            index: i + 1,
+            title: c.web.title || 'Unknown Source',
+            uri: c.web.uri
+        }));
+
+        if (uniqueSources.length === 0) return '';
+
+        let html = '<div class="sources-container"><h4>Sources</h4><div class="sources-list">';
+        uniqueSources.forEach(source => {
+            html += `<a href="${source.uri}" target="_blank" class="source-item">
+                <span class="source-index">${source.index}</span>
+                <span class="source-title">${SyntaxHighlighter.escapeHtml(source.title)}</span>
+            </a>`;
+        });
+        html += '</div></div>';
+        return html;
     },
 
     /**
@@ -144,14 +207,29 @@ export const MessageFormatter = {
         return processedParts.join('');
     },
 
-    _renderCodeBlock(block, titleOverride = null) {
+    _renderCodeBlock(block) {
         const lang = block.lang.toLowerCase();
-        const displayName = titleOverride || LANGUAGE_MAP[lang] || lang;
+        const displayName = LANGUAGE_MAP[lang] || lang;
         const highlightedCode = SyntaxHighlighter.highlight(block.content, lang);
-        // If it's code execution (titleOverride present), don't collapse by default
-        const wrapperClasses = `code-block-wrapper is-collapsible ${titleOverride ? '' : 'is-collapsed'}`; 
         
-        return `<div class="${wrapperClasses}" data-previewable="${lang}" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
+        return `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="${lang}" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
+    },
+
+    // New render method for Executable Code (Terminal Style)
+    _renderTerminalBlock(code, lang) {
+        const highlightedCode = SyntaxHighlighter.highlight(code, lang);
+        return `<div class="code-block-wrapper terminal-style" data-raw-content="${encodeURIComponent(code)}">
+            <div class="code-block-header terminal-header">
+                <div class="terminal-dots">
+                    <span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span>
+                </div>
+                <span>EXECUTE: ${lang}</span>
+                <div class="code-block-actions"></div>
+            </div>
+            <div class="collapsible-content">
+                <pre class="language-${lang} terminal-body"><code class="language-${lang}">${highlightedCode}</code></pre>
+            </div>
+        </div>`;
     },
     
     async _renderHtmlPreview(block) {

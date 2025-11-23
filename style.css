@@ -49,6 +49,9 @@
     --danger-color: #e53e3e;
     --danger-bg: rgba(229, 62, 62, 0.1);
     --focus-color: #007bff;
+    --citation-color: #007bff;
+    --terminal-header-bg: #2d2d2d;
+    --terminal-body-bg: #1e1e1e;
 }
 
 [data-theme="dark"] {
@@ -79,6 +82,7 @@
     --danger-color: #f56565;
     --danger-bg: rgba(245, 101, 101, 0.15);
     --focus-color: #5897fb;
+    --citation-color: #64b5f6;
 }
 
 [data-theme="dracula"] {
@@ -109,6 +113,7 @@
     --danger-color: #ff5555;
     --danger-bg: rgba(255, 85, 85, 0.15);
     --focus-color: var(--button-bg);
+    --citation-color: #8be9fd;
 }
 
 [data-theme="monokai"] {
@@ -139,6 +144,7 @@
     --danger-color: #f92672;
     --danger-bg: rgba(249, 38, 114, 0.15);
     --focus-color: var(--button-bg);
+    --citation-color: #66d9ef;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -277,9 +283,35 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 }
 .message.user .message-content blockquote { background-color: color-mix(in srgb, var(--message-user-bg) 50%, var(--bg-color) 50%); }
 .message-content blockquote p { margin: 0; }
-.message-content a { color: var(--focus-color); text-decoration: underline; font-weight: 500; }
-.message-content a:hover { text-decoration: none; }
+.message-content a:not(.citation-ref):not(.source-item) { color: var(--focus-color); text-decoration: underline; font-weight: 500; }
+.message-content a:not(.citation-ref):not(.source-item):hover { text-decoration: none; }
 .message-content s { text-decoration: line-through; color: var(--text-secondary); }
+
+/* Grounding Citations and Sources */
+.citation-ref {
+    display: inline-flex; align-items: center; justify-content: center;
+    vertical-align: super; font-size: 0.75em; font-weight: bold;
+    color: var(--citation-color); text-decoration: none; margin: 0 1px;
+    cursor: pointer; background: rgba(0,0,0,0.05); border-radius: 4px; padding: 0 2px;
+}
+.citation-ref:hover { background: rgba(0,0,0,0.1); text-decoration: underline; }
+.sources-container {
+    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 0.9em;
+}
+.sources-container h4 { margin: 0 0 8px 0; font-size: 0.85em; text-transform: uppercase; color: var(--text-secondary); }
+.sources-list { display: flex; flex-direction: column; gap: 6px; }
+.source-item {
+    display: flex; align-items: center; gap: 8px; text-decoration: none;
+    color: var(--text-color); padding: 4px 8px; border-radius: 6px;
+    background: var(--bg-color); border: 1px solid transparent; transition: background-color 0.2s;
+}
+.source-item:hover { background-color: var(--sidebar-hover); }
+.source-index {
+    display: flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--citation-color); color: #fff; font-size: 11px; font-weight: bold; flex-shrink: 0;
+}
+.source-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
 
 /* Preview Containers */
 .html-preview-container, .svg-preview-container { padding-top: 8px; }
@@ -330,6 +362,23 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
     color: var(--code-text); background-color: var(--code-bg); border-radius: 0;
     font-family: 'SF Mono', 'Fira Code', 'Courier New', Courier, monospace; font-size: 0.9em;
 }
+
+/* Terminal / Code Execution Style */
+.code-block-wrapper.terminal-style {
+    border: 1px solid #444; background-color: var(--terminal-body-bg);
+}
+.code-block-header.terminal-header {
+    background-color: var(--terminal-header-bg); border-bottom: 1px solid #444; color: #ccc;
+    justify-content: flex-start; gap: 10px;
+}
+.terminal-dots { display: flex; gap: 6px; margin-right: 6px; }
+.terminal-dots .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.terminal-dots .red { background-color: #ff5f56; }
+.terminal-dots .yellow { background-color: #ffbd2e; }
+.terminal-dots .green { background-color: #27c93f; }
+.code-block-actions { margin-left: auto; }
+pre.terminal-body { background-color: var(--terminal-body-bg); color: #d4d4d4; }
+
 .copy-button {
     position: absolute; right: 8px; bottom: 8px; padding: 4px; opacity: 0;
     color: var(--text-color); background: rgba(0,0,0,0.1); display: flex;

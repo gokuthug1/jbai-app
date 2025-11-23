@@ -255,7 +255,8 @@ const ChatApp = {
             const contentEl = document.createElement('div');
             contentEl.className = 'message-content';
             let rawContent = ''; // Can be string or array
-            
+            let groundingMetadata = null;
+
             if (isTyping) {
                 messageEl.className = 'message bot thinking';
                 contentEl.innerHTML = `<span></span><span></span><span></span>`;
@@ -266,6 +267,8 @@ const ChatApp = {
                 // For user messages, text is usually in parts[0] or parts[last] (mixed with files)
                 // For bot messages, parts can be text, code, or results.
                 rawContent = content.parts || []; 
+                groundingMetadata = content.groundingMetadata || null;
+
                 if (sender === 'user') {
                     // Extract just text for simple formatting if needed, though formatter handles arrays now
                     const textPart = rawContent.find(p => p.text);
@@ -274,7 +277,8 @@ const ChatApp = {
 
                 messageEl.className = `message ${sender}`;
 
-                contentEl.innerHTML = await MessageFormatter.format(rawContent);
+                // Pass metadata to formatter for grounding citations
+                contentEl.innerHTML = await MessageFormatter.format(rawContent, groundingMetadata);
                 
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
@@ -372,9 +376,12 @@ const ChatApp = {
             // If the content is complex (code execution array) or typing speed is 0, skip animation
             const isComplex = Array.isArray(contentParts) && contentParts.length > 1;
             const fullText = Array.isArray(contentParts) ? contentParts.map(p => p.text || '').join('\n') : contentParts;
+            
+            // Extract grounding metadata from the state object to pass to formatter
+            const groundingMetadata = botMessageForState.content.groundingMetadata || null;
 
             if (ChatApp.Config.TYPING_SPEED_MS === 0 || isComplex) {
-                 contentEl.innerHTML = await MessageFormatter.format(contentParts);
+                 contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
                  this._addMessageInteractions(messageEl, fullText, messageId);
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
@@ -392,7 +399,7 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    contentEl.innerHTML = await MessageFormatter.format(contentParts);
+                    contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     this.scrollToBottom();
                     ChatApp.Controller.completeGeneration(botMessageForState);
@@ -639,7 +646,11 @@ const ChatApp = {
                     const data = await response.json();
                     const candidate = data?.candidates?.[0];
                     if (candidate?.content?.parts) {
-                        return candidate.content.parts;
+                        // Return the full candidate data to access groundingMetadata
+                        return {
+                            parts: candidate.content.parts,
+                            groundingMetadata: candidate.groundingMetadata
+                        };
                     }
                     throw new Error("Received an invalid or empty response from the API.");
                 }
@@ -821,16 +832,28 @@ const ChatApp = {
             const thinkingMessageEl = await ChatApp.UI.renderMessage({ id: null }, true);
             try {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
-                const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
+                
+                // Construct API contents from state. We must strictly follow Google's content structure.
+                // We do NOT send groundingMetadata back to the model in subsequent turns usually,
+                // but we DO need to send code execution results.
+                const apiContents = ChatApp.State.currentConversation.map(msg => {
+                    return {
+                        role: msg.content.role,
+                        parts: msg.content.parts
+                    };
+                });
                 
                 const toolsConfig = ChatApp.State.toolsConfig;
 
-                const responseParts = await ChatApp.Api.fetchTextResponse(
+                const responseData = await ChatApp.Api.fetchTextResponse(
                     apiContents, 
                     systemInstruction,
                     ChatApp.State.abortController.signal,
                     toolsConfig
                 );
+                
+                const responseParts = responseData.parts;
+                const groundingMetadata = responseData.groundingMetadata;
                 
                 // Process Image tags in any text parts
                 let processedParts = [...responseParts];
@@ -841,7 +864,15 @@ const ChatApp = {
                 }
 
                 const messageId = ChatApp.Utils.generateUUID();
-                const botMessageForState = { id: messageId, content: { role: "model", parts: processedParts } };
+                
+                // Store metadata in the content object so it persists in history
+                const contentObj = { 
+                    role: "model", 
+                    parts: processedParts,
+                    ...(groundingMetadata && { groundingMetadata }) 
+                };
+
+                const botMessageForState = { id: messageId, content: contentObj };
                 await ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedParts, messageId, botMessageForState);
             } catch (error) {
                 thinkingMessageEl.remove();
@@ -921,7 +952,7 @@ const ChatApp = {
                     let parts = msg.content.parts;
                     if (!parts) parts = [{text: msg.text || ''}];
                     
-                    // Render (handling complex parts if they exist)
+                    // Render (handling complex parts and metadata)
                     await ChatApp.UI.renderMessage({
                          ...msg,
                          content: { ...msg.content, parts: parts }
