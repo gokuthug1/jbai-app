@@ -10,8 +10,14 @@ const ChatApp = {
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
+            TOOLS: 'jbai_tools_config'
         },
         DEFAULT_THEME: 'light',
+        // Default tool settings
+        DEFAULT_TOOLS: {
+            googleSearch: false,
+            codeExecution: false
+        },
         TYPING_SPEED_MS: 0,
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
         ICONS: {
@@ -19,7 +25,7 @@ const ChatApp = {
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
             DELETE: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>`,
             OPEN_NEW_TAB: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>`,
-            DOWNLOAD: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
+            DOWNLOAD: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V10"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>`,
             DOCUMENT: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>`,
             HTML: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>`,
             CSS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline><line x1="12" y1="2" x2="12" y2="22"></line></svg>`,
@@ -37,20 +43,14 @@ const ChatApp = {
         isGenerating: false,
         typingInterval: null,
         attachedFiles: [],
-        abortController: null, // Added for stopping generation
+        abortController: null,
+        // Current session tool config
+        toolsConfig: {},
         setCurrentConversation(history) {
             this.currentConversation = history.map(msg => {
                 if (!msg) return null;
-                if (msg.id && msg.content && Array.isArray(msg.content.parts)) return msg;
-                if (msg.role && typeof msg.text !== 'undefined') {
-                    return {
-                        id: ChatApp.Utils.generateUUID(),
-                        content: {
-                            role: msg.role === 'user' ? 'user' : 'model',
-                            parts: [{ text: msg.text }]
-                        }
-                    };
-                }
+                // Basic validation
+                if (msg.id && msg.content && (msg.content.role || msg.content.parts)) return msg;
                 return null;
             }).filter(Boolean);
         },
@@ -96,12 +96,27 @@ const ChatApp = {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 ChatApp.State.allConversations = stored ? JSON.parse(stored) : [];
             } catch (e) {
-                console.error("Failed to parse conversations from localStorage, resetting.", e);
+                console.error("Failed to parse conversations, resetting.", e);
                 ChatApp.State.allConversations = [];
             }
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
+        
+        saveToolsConfig(config) { 
+            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.TOOLS, JSON.stringify(config)); 
+            ChatApp.State.toolsConfig = config;
+        },
+        getToolsConfig() {
+            try {
+                const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.TOOLS);
+                const config = stored ? JSON.parse(stored) : ChatApp.Config.DEFAULT_TOOLS;
+                ChatApp.State.toolsConfig = config;
+                return config;
+            } catch (e) {
+                return ChatApp.Config.DEFAULT_TOOLS;
+            }
+        }
     },
 
     UI: {
@@ -117,7 +132,7 @@ const ChatApp = {
                 messageArea: document.getElementById('message-area'),
                 chatInput: document.getElementById('chat-input'),
                 sendButton: document.getElementById('send-button'),
-                stopButton: document.getElementById('stop-button'), // Cached Stop Button
+                stopButton: document.getElementById('stop-button'),
                 settingsButton: document.getElementById('toggle-options-button'),
                 attachFileButton: document.getElementById('attach-file-button'),
                 fileInput: document.getElementById('file-input'),
@@ -180,7 +195,6 @@ const ChatApp = {
                 toast.addEventListener('transitionend', () => toast.remove());
             }, 3000);
         },
-        // Improved: Only scroll to bottom if the user is already near the bottom
         scrollToBottom() {
             const area = this.elements.messageArea;
             const threshold = 100;
@@ -240,18 +254,27 @@ const ChatApp = {
             messageEl.dataset.messageId = message.id;
             const contentEl = document.createElement('div');
             contentEl.className = 'message-content';
-            let rawText = '';
+            let rawContent = ''; // Can be string or array
+            
             if (isTyping) {
                 messageEl.className = 'message bot thinking';
                 contentEl.innerHTML = `<span></span><span></span><span></span>`;
             } else {
                 const { content, attachments } = message;
                 const sender = content.role === 'model' ? 'bot' : 'user';
-                const textPart = content.parts.find(p => p.text);
-                rawText = textPart ? textPart.text : '';
+                
+                // For user messages, text is usually in parts[0] or parts[last] (mixed with files)
+                // For bot messages, parts can be text, code, or results.
+                rawContent = content.parts || []; 
+                if (sender === 'user') {
+                    // Extract just text for simple formatting if needed, though formatter handles arrays now
+                    const textPart = rawContent.find(p => p.text);
+                    rawContent = textPart ? textPart.text : '';
+                }
+
                 messageEl.className = `message ${sender}`;
 
-                contentEl.innerHTML = await MessageFormatter.format(rawText);
+                contentEl.innerHTML = await MessageFormatter.format(rawContent);
                 
                 if (attachments && attachments.length > 0) {
                     const attachmentsContainer = this._createAttachmentsContainer(attachments);
@@ -260,7 +283,18 @@ const ChatApp = {
             }
             messageEl.appendChild(contentEl);
             this.elements.messageArea.appendChild(messageEl);
-            if (!isTyping) { this._addMessageInteractions(messageEl, rawText, message.id); }
+            
+            // Only add interactions if we have content and it's not the thinking bubble
+            if (!isTyping) { 
+                // For interaction, we pass the raw text representation
+                let textRepresentation = '';
+                if (Array.isArray(rawContent)) {
+                    textRepresentation = rawContent.map(p => p.text || '').join('\n');
+                } else {
+                    textRepresentation = rawContent;
+                }
+                this._addMessageInteractions(messageEl, textRepresentation, message.id); 
+            }
             this.scrollToBottom();
             return messageEl;
         },
@@ -325,7 +359,7 @@ const ChatApp = {
             });
             this.toggleSendButtonState();
         },
-        async finalizeBotMessage(messageEl, fullText, messageId, botMessageForState) {
+        async finalizeBotMessage(messageEl, contentParts, messageId, botMessageForState) {
             if (ChatApp.State.typingInterval) {
                 clearInterval(ChatApp.State.typingInterval);
                 ChatApp.State.typingInterval = null;
@@ -334,14 +368,20 @@ const ChatApp = {
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
 
-            if (ChatApp.Config.TYPING_SPEED_MS === 0) {
-                 contentEl.innerHTML = await MessageFormatter.format(fullText);
+            // Handle Typewriter effect
+            // If the content is complex (code execution array) or typing speed is 0, skip animation
+            const isComplex = Array.isArray(contentParts) && contentParts.length > 1;
+            const fullText = Array.isArray(contentParts) ? contentParts.map(p => p.text || '').join('\n') : contentParts;
+
+            if (ChatApp.Config.TYPING_SPEED_MS === 0 || isComplex) {
+                 contentEl.innerHTML = await MessageFormatter.format(contentParts);
                  this._addMessageInteractions(messageEl, fullText, messageId);
                  this.scrollToBottom();
                  ChatApp.Controller.completeGeneration(botMessageForState);
                  return;
             }
             
+            // Simple text typewriter
             contentEl.innerHTML = '';
             let i = 0;
             ChatApp.State.typingInterval = setInterval(async () => {
@@ -352,7 +392,7 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    contentEl.innerHTML = await MessageFormatter.format(fullText);
+                    contentEl.innerHTML = await MessageFormatter.format(contentParts);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     this.scrollToBottom();
                     ChatApp.Controller.completeGeneration(botMessageForState);
@@ -450,6 +490,8 @@ const ChatApp = {
         renderSettingsModal() {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
+            const tools = ChatApp.Store.getToolsConfig();
+            
             overlay.innerHTML = `
             <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
                 <h2 id="settings-title">Settings</h2>
@@ -461,6 +503,22 @@ const ChatApp = {
                         <option value="dracula">Dracula</option>
                         <option value="monokai">MonoKai</option>
                     </select>
+                </div>
+                <hr>
+                <h3>AI Capabilities</h3>
+                <div class="settings-row">
+                    <label for="toggle-google-search">Google Search (Grounding)</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-google-search" ${tools.googleSearch ? 'checked' : ''}>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <label for="toggle-code-exec">Code Execution (Python)</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-code-exec" ${tools.codeExecution ? 'checked' : ''}>
+                        <span class="slider round"></span>
+                    </label>
                 </div>
                 <hr>
                 <h3>Data Management</h3>
@@ -478,6 +536,17 @@ const ChatApp = {
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
+
+            // Tool Logic
+            const updateTools = () => {
+                const config = {
+                    googleSearch: overlay.querySelector('#toggle-google-search').checked,
+                    codeExecution: overlay.querySelector('#toggle-code-exec').checked
+                };
+                ChatApp.Store.saveToolsConfig(config);
+            };
+            overlay.querySelector('#toggle-google-search').addEventListener('change', updateTools);
+            overlay.querySelector('#toggle-code-exec').addEventListener('change', updateTools);
             
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
@@ -551,10 +620,11 @@ const ChatApp = {
                 return "Titled Chat";
             }
         },
-        async fetchTextResponse(apiContents, systemInstruction, signal) {
+        async fetchTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
             const payload = {
                 contents: apiContents,
-                systemInstruction: systemInstruction
+                systemInstruction: systemInstruction,
+                toolsConfig: toolsConfig
             };
         
             try {
@@ -562,14 +632,16 @@ const ChatApp = {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
-                    signal: signal // Pass abort signal
+                    signal: signal 
                 });
     
                 if (response.ok) {
                     const data = await response.json();
-                    const botResponseText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                    if (!botResponseText) throw new Error("Received an invalid or empty response from the API.");
-                    return botResponseText;
+                    const candidate = data?.candidates?.[0];
+                    if (candidate?.content?.parts) {
+                        return candidate.content.parts;
+                    }
+                    throw new Error("Received an invalid or empty response from the API.");
                 }
     
                 let errorJson;
@@ -612,6 +684,7 @@ const ChatApp = {
     Controller: {
         init() {
             ChatApp.Store.loadAllConversations();
+            ChatApp.Store.getToolsConfig(); // Load tools config into State
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
@@ -672,7 +745,6 @@ const ChatApp = {
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
             
-            // Create new abort controller for this request
             ChatApp.State.abortController = new AbortController();
             ChatApp.State.setGenerating(true);
             
@@ -751,21 +823,30 @@ const ChatApp = {
                 const systemInstruction = { parts: [{ text: await ChatApp.Api.getSystemContext() }] };
                 const apiContents = ChatApp.State.currentConversation.map(msg => msg.content);
                 
-                // Pass the abort signal
-                const rawBotResponse = await ChatApp.Api.fetchTextResponse(
+                const toolsConfig = ChatApp.State.toolsConfig;
+
+                const responseParts = await ChatApp.Api.fetchTextResponse(
                     apiContents, 
                     systemInstruction,
-                    ChatApp.State.abortController.signal
+                    ChatApp.State.abortController.signal,
+                    toolsConfig
                 );
                 
-                const processedForUI = await this.processResponseForImages(rawBotResponse);
+                // Process Image tags in any text parts
+                let processedParts = [...responseParts];
+                for (let i = 0; i < processedParts.length; i++) {
+                    if (processedParts[i].text) {
+                        processedParts[i].text = await this.processResponseForImages(processedParts[i].text);
+                    }
+                }
+
                 const messageId = ChatApp.Utils.generateUUID();
-                const botMessageForState = { id: messageId, content: { role: "model", parts: [{ text: rawBotResponse }] } };
-                await ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedForUI, messageId, botMessageForState);
+                const botMessageForState = { id: messageId, content: { role: "model", parts: processedParts } };
+                await ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedParts, messageId, botMessageForState);
             } catch (error) {
                 thinkingMessageEl.remove();
                 if (error.message === "Generation stopped by user.") {
-                    // Do nothing, just stop
+                    // Do nothing
                 } else {
                     console.error("Text generation failed:", error);
                     const userFriendlyMessage = error.message.includes("API Error: 500") ? "Sorry, the server encountered an internal error." : `Sorry, an error occurred: ${error.message}`;
@@ -836,14 +917,15 @@ const ChatApp = {
         
             (async () => {
                 for (const msg of ChatApp.State.currentConversation) {
-                    const rawText = msg.content?.parts?.find(p => p.text)?.text || '';
-                    if (msg.content.role === 'model' && /\[IMAGE: \{[\s\S]*?\}\]/.test(rawText)) {
-                        const processedText = await this.processResponseForImages(rawText);
-                        const processedMsg = { ...msg, content: { ...msg.content, parts: [{ text: processedText }] } };
-                        await ChatApp.UI.renderMessage(processedMsg);
-                    } else {
-                        await ChatApp.UI.renderMessage(msg);
-                    }
+                    // Normalize legacy messages
+                    let parts = msg.content.parts;
+                    if (!parts) parts = [{text: msg.text || ''}];
+                    
+                    // Render (handling complex parts if they exist)
+                    await ChatApp.UI.renderMessage({
+                         ...msg,
+                         content: { ...msg.content, parts: parts }
+                    });
                 }
                 setTimeout(() => ChatApp.UI.forceScrollToBottom(), 0);
             })();
@@ -883,7 +965,7 @@ const ChatApp = {
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
-                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) throw new Error("Invalid data format.");
+                        if (!Array.isArray(importedData)) throw new Error("Invalid data format.");
                         if (confirm('This will REPLACE all current conversations. Are you sure?')) {
                             ChatApp.State.allConversations = importedData;
                             ChatApp.Store.saveAllConversations();
@@ -905,7 +987,7 @@ const ChatApp = {
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
-                        if (!Array.isArray(importedData) || !importedData.every(c => c.id && c.title && Array.isArray(c.history))) throw new Error("Invalid data format.");
+                        if (!Array.isArray(importedData)) throw new Error("Invalid data format.");
                         if (confirm('This will merge new conversations and keep existing ones untouched. Continue?')) {
                             const conversationMap = new Map(ChatApp.State.allConversations.map(c => [c.id, c]));
                             importedData.forEach(chat => { if (!conversationMap.has(chat.id)) conversationMap.set(chat.id, chat); });
@@ -924,6 +1006,7 @@ const ChatApp = {
             if (confirm('DANGER: This will delete ALL conversations and settings permanently. This action cannot be undone. Are you absolutely sure?')) {
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
+                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.TOOLS);
                 ChatApp.State.allConversations = [];
                 ChatApp.UI.showToast('All data deleted. Reloading...', 'error');
                 setTimeout(() => location.reload(), 1500);

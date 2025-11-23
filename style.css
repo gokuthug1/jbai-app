@@ -354,6 +354,35 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .collapse-toggle-button svg { transition: transform 0.3s ease; }
 .code-block-wrapper.is-collapsed .collapse-toggle-button svg { transform: rotate(-90deg); }
 
+/* Execution Result Styles (New) */
+.execution-result {
+    margin: 10px 0;
+    border-radius: 8px;
+    background: var(--code-bg);
+    border: 1px solid var(--border-color);
+    overflow: hidden;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85em;
+}
+.execution-header {
+    padding: 6px 12px;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-weight: bold;
+}
+.execution-result.error .execution-header {
+    color: var(--danger-color);
+    background: rgba(229, 62, 62, 0.1);
+}
+.execution-result pre {
+    margin: 0;
+    padding: 12px;
+    color: var(--code-text);
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
 .generated-image-wrapper { margin: 8px 0; }
 .image-prompt-text { margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9em; }
 .image-container { position: relative; display: inline-block; max-width: 100%; }
@@ -453,6 +482,23 @@ textarea#chat-input {
 .settings-card .btn-primary:hover { background-color: var(--button-hover-bg); border-color: var(--button-hover-bg); }
 .settings-card .btn-danger { color: var(--danger-color); border-color: var(--danger-color); }
 .settings-card .btn-danger:hover { background-color: var(--danger-bg); }
+
+/* Switch Slider */
+.switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background-color: var(--switch-bg); transition: .4s;
+}
+.slider:before {
+    position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px;
+    background-color: var(--switch-handle-bg); transition: .4s;
+}
+input:checked + .slider { background-color: var(--focus-color); }
+input:focus + .slider { box-shadow: 0 0 1px var(--focus-color); }
+input:checked + .slider:before { transform: translateX(20px); }
+.slider.round { border-radius: 34px; }
+.slider.round:before { border-radius: 50%; }
 
 .custom-tooltip {
     position: fixed; z-index: 5000; padding: 6px 12px; background-color: var(--modal-bg); color: var(--text-color);

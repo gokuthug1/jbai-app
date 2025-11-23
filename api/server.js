@@ -16,15 +16,32 @@ app.post('/api/server', async (req, res) => {
   }
 
   try {
-    const { contents, systemInstruction } = req.body;
+    const { contents, systemInstruction, toolsConfig } = req.body;
 
     if (!contents) {
         return res.status(400).json({ message: "Bad Request: 'contents' field is missing." });
     }
 
+    // Construct Tools Array based on frontend settings
+    const tools = [];
+    if (toolsConfig?.googleSearch) {
+        tools.push({ googleSearch: {} });
+    }
+    if (toolsConfig?.codeExecution) {
+        tools.push({ codeExecution: {} });
+    }
+
+    // Construct Payload
+    const payload = {
+        contents,
+        systemInstruction,
+        // Only attach tools if enabled
+        ...(tools.length > 0 && { tools })
+    };
+
     const response = await axios.post(
       `${GOOGLE_API_URL}?key=${GOOGLE_API_KEY}`,
-      { contents, systemInstruction },
+      payload,
       { headers: { 'Content-Type': 'application/json' } }
     );
 
