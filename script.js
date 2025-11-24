@@ -17,8 +17,8 @@ const ChatApp = {
             googleSearch: false,
             codeExecution: false
         },
-        // Reduced to 10ms for rapid response while maintaining effect
-        TYPING_SPEED_MS: 1,
+        // Faster typing: 0ms
+        TYPING_SPEED_MS: 0,
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -383,10 +383,9 @@ const ChatApp = {
                  return;
             }
             
-            // Simple text typewriter
+            // Simple text typewriter with chunking for speed
             contentEl.innerHTML = '';
             let i = 0;
-            // Use requestAnimationFrame-like batching for smoother typing
             ChatApp.State.typingInterval = setInterval(async () => {
                 if (i < fullText.length) {
                     // Type multiple characters at once to keep it snappy

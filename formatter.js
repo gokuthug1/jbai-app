@@ -3,7 +3,8 @@ import { SyntaxHighlighter } from './syntaxHighlighter.js';
 const LANGUAGE_MAP = {
     html: 'HTML', css: 'CSS', javascript: 'JavaScript', js: 'JavaScript',
     lua: 'Lua', python: 'Python', py: 'Python', xml: 'SVG', svg: 'SVG',
-    sh: 'Shell', bash: 'Shell', json: 'JSON'
+    sh: 'Shell', bash: 'Shell', json: 'JSON',
+    bat: 'Batch', cmd: 'Batch', batch: 'Batch'
 };
 
 export const MessageFormatter = {
@@ -67,7 +68,7 @@ export const MessageFormatter = {
         let workingText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         workingText = workingText.replace(/&lt;a href="([^"]+)" class="citation-ref"&gt;(\[\d+\])&lt;\/a&gt;/g, '<a href="$1" class="citation-ref">$2</a>');
 
-        // Simple Table support
+        // Table support
         workingText = workingText.replace(/(\n|^)\|(.+)\|(\n\|[-:| ]+\|)(\n\|.+?\|)+/g, (tableMatch) => {
             const rows = tableMatch.trim().split('\n');
             let tableHtml = '<table><thead><tr>';
@@ -147,7 +148,6 @@ export const MessageFormatter = {
     _renderHtmlPreview(block) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
         const codeBlockHtml = `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div>`;
-        // Removed external script inlining for rapid loading speed and security.
         const safeHtmlForSrcdoc = this._escapeForSrcdoc(block.content);
         return `<div class="html-preview-container"><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" loading="lazy"></iframe></div>${codeBlockHtml}</div>`;
     },

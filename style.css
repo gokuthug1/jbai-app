@@ -42,8 +42,8 @@
     --button-text: #ffffff;
 
     /* Message Bubbles - Light Theme */
-    --message-user-bg: #e0e0e0; /* Slightly Darker Gray for User */
-    --message-bot-bg: #f2f2f2;  /* Light Gray for Bot (Visible Bubble) */
+    --message-user-bg: #e0e0e0;
+    --message-bot-bg: #f2f2f2;
     
     --code-bg: #f4f4f4;
     --code-text: #000000;
@@ -80,6 +80,7 @@
     --token-attr-name: #ff0000;
     --token-attr-value: #0000ff;
     --token-doctype: #0000ff;
+    --token-label: #800000; 
 }
 
 [data-theme="dark"] {
@@ -97,14 +98,12 @@
     --border-color: #333333;
     --input-bg: #2d2d2d;
     
-    /* Button: White Background, Black Text */
     --button-bg: #ffffff;
     --button-hover-bg: #e0e0e0;
     --button-text: #000000;
     
-    /* Message Bubbles - Dark Theme */
-    --message-user-bg: #3a3a3a; /* Lighter Gray for User */
-    --message-bot-bg: #2d2d2d;  /* Dark Gray for Bot (Distinct from BG) */
+    --message-user-bg: #3a3a3a;
+    --message-bot-bg: #2d2d2d;
     
     --code-bg: #1e1e1e;
     --code-text: #d4d4d4;
@@ -141,10 +140,10 @@
     --token-attr-name: #9cdcfe;
     --token-attr-value: #ce9178;
     --token-doctype: #569cd6;
+    --token-label: #d7ba7d;
 }
 
 [data-theme="dracula"] {
-    /* --- DRACULA THEME (Purple Accents) --- */
     color-scheme: dark;
     --bg-color: #282a36;
     --sidebar-bg: #21222c;
@@ -157,36 +156,24 @@
     --text-secondary: #6272a4;
     --border-color: #44475a;
     --input-bg: #44475a;
-    
-    /* Button: Purple */
     --button-bg: #bd93f9;
     --button-hover-bg: #d6acff;
     --button-text: #282a36;
-    
-    /* Message Bubbles - Dracula */
-    --message-user-bg: #6272a4; /* Purple-Gray */
-    --message-bot-bg: #44475a;  /* Dark Blue-Gray */
-    
+    --message-user-bg: #6272a4;
+    --message-bot-bg: #44475a;
     --code-bg: #21222c;
     --code-text: #f8f8f2;
     --scrollbar-thumb: #6272a4;
-    
     --modal-bg: #282a36;
     --modal-shadow: rgba(0, 0, 0, 0.6);
-    
     --switch-bg: #6272a4;
     --switch-handle-bg: #f8f8f2;
-    
     --danger-color: #ff5555;
     --danger-bg: rgba(255, 85, 85, 0.2);
-    
     --focus-color: #bd93f9;
     --citation-color: #8be9fd;
-    
     --terminal-header-bg: #191a21;
     --terminal-body-bg: #21222c;
-
-    /* Syntax Highlighting: Dracula */
     --token-comment: #6272a4;
     --token-punctuation: #f8f8f2;
     --token-property: #ff79c6;
@@ -202,10 +189,10 @@
     --token-attr-name: #50fa7b;
     --token-attr-value: #f1fa8c;
     --token-doctype: #6272a4;
+    --token-label: #ff79c6;
 }
 
 [data-theme="monokai"] {
-    /* --- MONOKAI THEME (Magenta Accents) --- */
     color-scheme: dark;
     --bg-color: #272822;
     --sidebar-bg: #1e1f1c;
@@ -218,37 +205,24 @@
     --text-secondary: #75715e;
     --border-color: #49483e;
     --input-bg: #3e3d32;
-    
-    /* Button: Magenta */
     --button-bg: #f92672;
     --button-hover-bg: #ff4d8d;
     --button-text: #f8f8f2;
-    
-    /* Message Bubbles - Monokai */
     --message-user-bg: #49483e;
     --message-bot-bg: #3e3d32;
-    
     --code-bg: #1e1f1c;
     --code-text: #f8f8f2;
     --scrollbar-thumb: #75715e;
-    
     --modal-bg: #272822;
     --modal-shadow: rgba(0, 0, 0, 0.6);
-    
     --switch-bg: #75715e;
     --switch-handle-bg: #f8f8f2;
-    
     --danger-color: #f92672;
     --danger-bg: rgba(249, 38, 114, 0.2);
-    
-    /* REPLACED GREEN with Magenta for focus/ui */
     --focus-color: #f92672; 
     --citation-color: #66d9ef;
-    
     --terminal-header-bg: #171814;
     --terminal-body-bg: #1e1f1c;
-
-    /* Syntax Highlighting: Monokai (Green Kept Here) */
     --token-comment: #75715e;
     --token-punctuation: #f8f8f2;
     --token-property: #66d9ef;
@@ -264,6 +238,7 @@
     --token-attr-name: #a6e22e;
     --token-attr-value: #e6db74;
     --token-doctype: #75715e;
+    --token-label: #a6e22e;
 }
 
 /* ==========================================================================
@@ -378,8 +353,8 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .message-area {
     display: flex; flex-direction: column; flex-grow: 1; gap: 10px;
     width: 100%; padding: 20px; overflow-y: auto; scrollbar-width: none;
-    /* Performance optimization for long chats */
-    content-visibility: auto; 
+    /* Performance for long lists */
+    content-visibility: auto;
 }
 .message-area::-webkit-scrollbar { display: none; }
 .message { display: flex; align-items: flex-start; max-width: 100%; }
@@ -417,7 +392,7 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .message-content a:not(.citation-ref):not(.source-item):hover { text-decoration: none; }
 .message-content s { text-decoration: line-through; color: var(--text-secondary); }
 
-/* Table Styles */
+/* Markdown Tables */
 .message-content table {
     width: 100%;
     border-collapse: collapse;
@@ -798,3 +773,4 @@ input:checked + .slider:before { transform: translateX(20px); }
 .token.variable { color: var(--token-variable); }
 .token.tag { color: var(--token-tag); }
 .token.attr-name { color: var(--token-attr-name); }
+.token.label { color: var(--token-label); font-weight: bold; }
