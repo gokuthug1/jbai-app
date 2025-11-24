@@ -239,17 +239,7 @@ export const MessageFormatter = {
         const inlinedHtml = await this._inlineExternalScripts(block.content);
         const safeHtmlForSrcdoc = this._escapeForSrcdoc(inlinedHtml);
 
-        return `<div class="html-preview-container">
-            <div class="preview-header">
-                <h4>Live Preview</h4>
-                <div class="preview-actions">
-                    <button type="button" class="preview-toggle-btn" data-state="playing" data-tooltip="Pause Preview"></button>
-                </div>
-            </div>
-            <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div>
-            <h4>HTML Code</h4>
-            ${codeBlockHtml}
-        </div>`;
+        return `<div class="html-preview-container"><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div>${codeBlockHtml}</div>`;
     },
 
     _renderSvgPreview(block) {
@@ -257,7 +247,7 @@ export const MessageFormatter = {
         const codeBlockHtml = `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-xml"><code class="language-xml">${highlightedCode}</code></pre></div></div>`;
 
         const encodedSvg = btoa(block.content);
-        return `<div class="svg-preview-container"><h4>SVG Preview</h4><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div><h4>SVG Code</h4>${codeBlockHtml}`;
+        return `<div class="svg-preview-container"><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div>${codeBlockHtml}</div>`;
     },
     
     async _inlineExternalScripts(htmlContent) {

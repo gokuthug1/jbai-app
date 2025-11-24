@@ -410,7 +410,6 @@ const ChatApp = {
         },
         _addMessageInteractions(messageEl, rawText, messageId) {
             this._addMessageAndCodeActions(messageEl, rawText);
-            this._addPreviewControlActions(messageEl);
             let pressTimer = null;
             const startDeleteTimer = () => { pressTimer = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); ChatApp.Controller.deleteMessage(messageId); }, 800); };
             const clearDeleteTimer = () => clearTimeout(pressTimer);
@@ -419,50 +418,10 @@ const ChatApp = {
             messageEl.addEventListener('touchend', clearDeleteTimer);
             messageEl.addEventListener('touchmove', clearDeleteTimer);
         },
-        _addPreviewControlActions(messageEl) {
-            const { PLAY, PAUSE } = ChatApp.Config.ICONS;
-            
-            messageEl.querySelectorAll('.preview-toggle-btn').forEach(btn => {
-                // Set initial icon state (it renders automatically, so starts with Pause icon)
-                btn.innerHTML = PAUSE;
-                
-                btn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const container = btn.closest('.html-preview-container');
-                    if (!container) return;
-                    
-                    const iframe = container.querySelector('iframe');
-                    const isPaused = btn.getAttribute('data-state') === 'paused';
-                    
-                    if (!isPaused) {
-                        // Pause Logic
-                        const currentSrc = iframe.getAttribute('srcdoc');
-                        iframe.setAttribute('data-original-src', currentSrc);
-                        
-                        // Replace with a placeholder to stop scripts/animations
-                        const pausedHtml = `<!DOCTYPE html><html><body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background-color:transparent;color:#888;font-family:sans-serif;font-size:14px;">Preview Paused</body></html>`;
-                        iframe.setAttribute('srcdoc', pausedHtml);
-                        
-                        btn.innerHTML = PLAY;
-                        btn.setAttribute('data-state', 'paused');
-                        btn.setAttribute('data-tooltip', 'Resume Preview');
-                    } else {
-                        // Resume Logic
-                        const originalSrc = iframe.getAttribute('data-original-src');
-                        if (originalSrc) {
-                            iframe.setAttribute('srcdoc', originalSrc);
-                        }
-                        btn.innerHTML = PAUSE;
-                        btn.setAttribute('data-state', 'playing');
-                        btn.setAttribute('data-tooltip', 'Pause Preview');
-                    }
-                });
-            });
-        },
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
             if (!contentEl) return;
-            const { COPY, CHECK, OPEN_NEW_TAB, DOWNLOAD, CHEVRON_DOWN } = ChatApp.Config.ICONS;
+            const { COPY, CHECK, OPEN_NEW_TAB, DOWNLOAD, CHEVRON_DOWN, PLAY, PAUSE } = ChatApp.Config.ICONS;
             const isPreview = contentEl.querySelector('.html-preview-container, .svg-preview-container');
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
@@ -477,6 +436,50 @@ const ChatApp = {
                 const codeEl = pre.querySelector('code');
 
                 if (wrapper.dataset.rawContent) {
+                    // Preview Control (Play/Pause) for HTML
+                    if (wrapper.dataset.previewable === 'html') {
+                        const toggleBtn = document.createElement('button');
+                        toggleBtn.className = 'preview-toggle-btn';
+                        toggleBtn.type = 'button';
+                        toggleBtn.setAttribute('data-state', 'playing');
+                        toggleBtn.setAttribute('data-tooltip', 'Pause Preview');
+                        toggleBtn.innerHTML = PAUSE;
+
+                        toggleBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            // Navigate up to wrapper, then to parent container, then find sibling preview box
+                            const container = wrapper.closest('.html-preview-container');
+                            if (!container) return;
+                            
+                            const iframe = container.querySelector('iframe');
+                            if (!iframe) return;
+
+                            const isPaused = toggleBtn.getAttribute('data-state') === 'paused';
+                            
+                            if (!isPaused) {
+                                // Pause
+                                const currentSrc = iframe.getAttribute('srcdoc');
+                                iframe.setAttribute('data-original-src', currentSrc);
+                                const pausedHtml = `<!DOCTYPE html><html><body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background-color:transparent;color:#888;font-family:sans-serif;font-size:14px;">Preview Paused</body></html>`;
+                                iframe.setAttribute('srcdoc', pausedHtml);
+                                
+                                toggleBtn.innerHTML = PLAY;
+                                toggleBtn.setAttribute('data-state', 'paused');
+                                toggleBtn.setAttribute('data-tooltip', 'Resume Preview');
+                            } else {
+                                // Resume
+                                const originalSrc = iframe.getAttribute('data-original-src');
+                                if (originalSrc) {
+                                    iframe.setAttribute('srcdoc', originalSrc);
+                                }
+                                toggleBtn.innerHTML = PAUSE;
+                                toggleBtn.setAttribute('data-state', 'playing');
+                                toggleBtn.setAttribute('data-tooltip', 'Pause Preview');
+                            }
+                        });
+                        actionsContainer.appendChild(toggleBtn);
+                    }
+
                     const openBtn = document.createElement('button');
                     openBtn.className = 'open-new-tab-button';
                     openBtn.type = 'button';

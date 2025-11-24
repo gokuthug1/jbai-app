@@ -237,13 +237,14 @@
     --danger-color: #f92672;
     --danger-bg: rgba(249, 38, 114, 0.2);
     
-    --focus-color: #a6e22e;
+    /* REPLACED GREEN with Magenta for focus/ui */
+    --focus-color: #f92672; 
     --citation-color: #66d9ef;
     
     --terminal-header-bg: #171814;
     --terminal-body-bg: #1e1f1c;
 
-    /* Syntax Highlighting: Monokai */
+    /* Syntax Highlighting: Monokai (Green Kept Here) */
     --token-comment: #75715e;
     --token-punctuation: #f8f8f2;
     --token-property: #66d9ef;
@@ -439,30 +440,13 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 /* Preview Containers */
 .html-preview-container, .svg-preview-container { padding-top: 8px; }
 
-.preview-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 1.5em; margin-bottom: 0.5em;
-}
-
-.preview-header h4 {
-    margin: 0;
-    font-size: 0.9em;
-    color: var(--text-secondary); font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
-}
-.html-preview-container > h4, .svg-preview-container > h4 {
-    margin-top: 1.5em; margin-bottom: 0.5em; font-size: 0.9em;
-    color: var(--text-secondary); font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
-}
-
 .preview-toggle-btn {
     display: flex; align-items: center; justify-content: center;
     padding: 4px; border: none; background: transparent;
     color: var(--text-secondary); border-radius: 4px; cursor: pointer;
     transition: color 0.2s, background-color 0.2s;
 }
-.preview-toggle-btn:hover { color: var(--text-color); background-color: var(--sidebar-hover); }
+.preview-toggle-btn:hover { color: var(--text-color); background: rgba(128,128,128, 0.2); }
 .preview-toggle-btn svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
 
 .html-render-box {
