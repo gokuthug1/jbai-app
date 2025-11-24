@@ -7,7 +7,7 @@ app.use(cors());
 app.use(express.json());
 
 const { GOOGLE_API_KEY } = process.env;
-const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent`;
+const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
 
 app.post('/api/server', async (req, res) => {
   if (!GOOGLE_API_KEY) {
