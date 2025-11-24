@@ -438,10 +438,33 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 
 /* Preview Containers */
 .html-preview-container, .svg-preview-container { padding-top: 8px; }
-.html-preview-container h4, .svg-preview-container h4 {
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 1.5em; margin-bottom: 0.5em;
+}
+
+.preview-header h4 {
+    margin: 0;
+    font-size: 0.9em;
+    color: var(--text-secondary); font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.html-preview-container > h4, .svg-preview-container > h4 {
     margin-top: 1.5em; margin-bottom: 0.5em; font-size: 0.9em;
     color: var(--text-secondary); font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;
 }
+
+.preview-toggle-btn {
+    display: flex; align-items: center; justify-content: center;
+    padding: 4px; border: none; background: transparent;
+    color: var(--text-secondary); border-radius: 4px; cursor: pointer;
+    transition: color 0.2s, background-color 0.2s;
+}
+.preview-toggle-btn:hover { color: var(--text-color); background-color: var(--sidebar-hover); }
+.preview-toggle-btn svg { width: 16px; height: 16px; fill: currentColor; stroke: none; }
+
 .html-render-box {
     width: 100%; height: 400px; background-color: var(--chat-container-bg);
     border: 1px solid var(--border-color); border-radius: 8px;

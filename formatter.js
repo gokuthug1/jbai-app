@@ -239,7 +239,17 @@ export const MessageFormatter = {
         const inlinedHtml = await this._inlineExternalScripts(block.content);
         const safeHtmlForSrcdoc = this._escapeForSrcdoc(inlinedHtml);
 
-        return `<div class="html-preview-container"><h4>Live Preview</h4><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div><h4>HTML Code</h4>${codeBlockHtml}`
+        return `<div class="html-preview-container">
+            <div class="preview-header">
+                <h4>Live Preview</h4>
+                <div class="preview-actions">
+                    <button type="button" class="preview-toggle-btn" data-state="playing" data-tooltip="Pause Preview"></button>
+                </div>
+            </div>
+            <div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" loading="lazy" title="HTML Preview"></iframe></div>
+            <h4>HTML Code</h4>
+            ${codeBlockHtml}
+        </div>`;
     },
 
     _renderSvgPreview(block) {

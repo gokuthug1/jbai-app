@@ -32,7 +32,9 @@ const ChatApp = {
             JS: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18h2a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-2v12z"></path><path d="M8 12h2a2 2 0 1 0 0-4H8v4z"></path><path d="M6 18V6"></path></svg>`,
             SVG: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m14.31 8 5.74 9.94M9.69 8h11.48M12 2.25 2.25 18H21.75L12 2.25z"></path></svg>`,
             CHEVRON_DOWN: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
-            STOP: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"/></svg>`
+            STOP: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"/></svg>`,
+            PLAY: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
+            PAUSE: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`
         }
     },
 
@@ -408,6 +410,7 @@ const ChatApp = {
         },
         _addMessageInteractions(messageEl, rawText, messageId) {
             this._addMessageAndCodeActions(messageEl, rawText);
+            this._addPreviewControlActions(messageEl);
             let pressTimer = null;
             const startDeleteTimer = () => { pressTimer = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(50); ChatApp.Controller.deleteMessage(messageId); }, 800); };
             const clearDeleteTimer = () => clearTimeout(pressTimer);
@@ -415,6 +418,46 @@ const ChatApp = {
             messageEl.addEventListener('touchstart', startDeleteTimer, { passive: true });
             messageEl.addEventListener('touchend', clearDeleteTimer);
             messageEl.addEventListener('touchmove', clearDeleteTimer);
+        },
+        _addPreviewControlActions(messageEl) {
+            const { PLAY, PAUSE } = ChatApp.Config.ICONS;
+            
+            messageEl.querySelectorAll('.preview-toggle-btn').forEach(btn => {
+                // Set initial icon state (it renders automatically, so starts with Pause icon)
+                btn.innerHTML = PAUSE;
+                
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const container = btn.closest('.html-preview-container');
+                    if (!container) return;
+                    
+                    const iframe = container.querySelector('iframe');
+                    const isPaused = btn.getAttribute('data-state') === 'paused';
+                    
+                    if (!isPaused) {
+                        // Pause Logic
+                        const currentSrc = iframe.getAttribute('srcdoc');
+                        iframe.setAttribute('data-original-src', currentSrc);
+                        
+                        // Replace with a placeholder to stop scripts/animations
+                        const pausedHtml = `<!DOCTYPE html><html><body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background-color:transparent;color:#888;font-family:sans-serif;font-size:14px;">Preview Paused</body></html>`;
+                        iframe.setAttribute('srcdoc', pausedHtml);
+                        
+                        btn.innerHTML = PLAY;
+                        btn.setAttribute('data-state', 'paused');
+                        btn.setAttribute('data-tooltip', 'Resume Preview');
+                    } else {
+                        // Resume Logic
+                        const originalSrc = iframe.getAttribute('data-original-src');
+                        if (originalSrc) {
+                            iframe.setAttribute('srcdoc', originalSrc);
+                        }
+                        btn.innerHTML = PAUSE;
+                        btn.setAttribute('data-state', 'playing');
+                        btn.setAttribute('data-tooltip', 'Pause Preview');
+                    }
+                });
+            });
         },
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
