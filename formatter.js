@@ -52,10 +52,10 @@ export const MessageFormatter = {
                     textContent = this._processCitations(textContent, metadata.groundingChunks);
                 }
 
+                // Extract blocks (Code, SVG, Images) -> Process Markdown -> Reinsert Blocks
                 const { processedText, blocks } = this._extractAndReplaceBlocks(textContent);
                 let html = this._processMarkdown(processedText);
                 html = await this._reinsertBlocks(html, blocks);
-                html = this._processImageTags(html);
                 finalHtml += this._wrapInParagraphs(html);
             } 
             else if (part.executableCode) {
@@ -88,7 +88,7 @@ export const MessageFormatter = {
     },
 
     /**
-     * Finds all code, HTML, and SVG blocks in TEXT parts, replaces them with placeholders.
+     * Finds all code, HTML, SVG, and Image blocks in TEXT parts, replaces them with placeholders.
      */
     _extractAndReplaceBlocks(text) {
         let processedText = text;
@@ -99,11 +99,19 @@ export const MessageFormatter = {
             return `JBAIBLOCK${id}`;
         };
 
+        // Code Blocks
         processedText = processedText.replace(/```(\w+)?\s*\r?\n([\s\S]*?)\s*```/g, (match, lang, code) => {
             return generatePlaceholder({ type: 'code', lang: lang || 'plaintext', content: code.trim() });
         });
+
+        // SVG Blocks
         processedText = processedText.replace(/^(<svg[\s\S]*?<\/svg>)$/gm, (match, svgContent) => {
             return generatePlaceholder({ type: 'svg', content: svgContent.trim() });
+        });
+
+        // Image Blocks (Extracting these prevents Markdown from converting them to standard links)
+        processedText = processedText.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
+            return generatePlaceholder({ type: 'image', alt: alt, url: url });
         });
 
         return { processedText, blocks };
@@ -113,18 +121,9 @@ export const MessageFormatter = {
      * Applies standard Markdown-to-HTML conversions.
      */
     _processMarkdown(text) {
-        const escapedText = text; // Text is already partially escaped if citations were processed, else we escape later? 
-        // Actually, let's escape HTML entities that aren't our Citation tags or Block placeholders
-        // For simplicity in this implementation, we assume text is safe except for blocks.
-        // We need to escape raw HTML characters to prevent injection, excluding our specific markers.
-        
-        // Basic escape for the bulk text, but protecting our <a href...> citations if they exist
-        // Note: Ideally, markdown processing happens before citation injection, but regex makes it tricky.
-        // We will escape everything that isn't a JBAIBLOCK or a citation link.
-        
         let workingText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         
-        // Revert escaping for Citation Links (hacky but effective for simple needs)
+        // Revert escaping for Citation Links
         workingText = workingText.replace(/&lt;a href="([^"]+)" class="citation-ref"&gt;(\[\d+\])&lt;\/a&gt;/g, '<a href="$1" class="citation-ref">$2</a>');
 
         return workingText
@@ -200,6 +199,8 @@ export const MessageFormatter = {
                     return this._renderCodeBlock(block);
                 case 'svg':
                     return this._renderSvgPreview(block);
+                case 'image':
+                    return this._renderImageBlock(block);
                 default:
                     return '';
             }
@@ -215,7 +216,6 @@ export const MessageFormatter = {
         return `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="${lang}" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>${displayName}</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-${lang}"><code class="language-${lang}">${highlightedCode}</code></pre></div></div>`;
     },
 
-    // New render method for Executable Code (Terminal Style)
     _renderTerminalBlock(code, lang) {
         const highlightedCode = SyntaxHighlighter.highlight(code, lang);
         return `<div class="code-block-wrapper terminal-style" data-raw-content="${encodeURIComponent(code)}">
@@ -249,6 +249,15 @@ export const MessageFormatter = {
         const encodedSvg = btoa(block.content);
         return `<div class="svg-preview-container"><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div>${codeBlockHtml}</div>`;
     },
+
+    _renderImageBlock(block) {
+        const alt = block.alt;
+        const url = block.url;
+        const safeAlt = SyntaxHighlighter.escapeHtml(alt);
+        const safeFilename = (safeAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
+        
+        return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${safeAlt}</em></p><div class="image-container"><img src="${url}" alt="${safeAlt}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
+    },
     
     async _inlineExternalScripts(htmlContent) {
         const parser = new DOMParser();
@@ -272,14 +281,6 @@ export const MessageFormatter = {
         });
         await Promise.all(fetchPromises);
         return doc.documentElement.outerHTML;
-    },
-
-    _processImageTags(html) {
-        return html.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
-            const safeAlt = SyntaxHighlighter.escapeHtml(alt);
-            const safeFilename = (safeAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
-            return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${safeAlt}</em></p><div class="image-container"><img src="${url}" alt="${safeAlt}" class="generated-image"><a href="${url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
-        });
     },
 
     _wrapInParagraphs(html) {

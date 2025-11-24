@@ -392,7 +392,7 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
     position: relative; max-width: 800px; padding: 10px 16px;
     line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;
     cursor: default; background-color: var(--message-bot-bg); border-radius: 12px; min-width: 0;
-    border: 1px solid var(--border-color);
+    border: 1px solid transparent; /* Removed visible border to fix unusual outline */
 }
 .message.user .message-content { background-color: var(--message-user-bg); border-color: transparent; }
 .message-content p, .message-content h1, .message-content h2, .message-content h3, .message-content li { cursor: text; }
