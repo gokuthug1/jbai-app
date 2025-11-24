@@ -19,7 +19,7 @@ export const SyntaxHighlighter = {
             'jbai-keyword': /\b(ChatApp|Config|State|Utils|Store|UI|Api|Controller)\b/,
             'keyword': /\b(?:const|let|var|if|else|for|while|do|async|await|function|return|new|import|export|from|class|extends|super|this|switch|case|default|break|continue|try|catch|finally|throw|delete|typeof|instanceof|void)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
-            'number': /\b-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/i,
+            'number': /\b-?\d+(?:\.\d+)?\b/,
             'boolean': /\b(?:true|false|null|undefined)\b/,
             'operator': /=>|\.\.\.|[|&^!~*\/%<>=+-]=?|&&|\|\||\?/,
             'punctuation': /[{}[\]();,.:]/,
@@ -69,19 +69,43 @@ export const SyntaxHighlighter = {
              'operator': /&&|\|\||;;|\||&|>|<|!/,
              'number': /\b\d+\b/
         },
-        batch: {
-            'comment': /(@?rem\b.*)|(::.*)/i,
-            'variable': /%[^%]+%|%~?[a-z0-9]+/i,
-            'label': /^:\w+/m,
-            'string': /"[^"]*"/,
-            'keyword': /\b(?:echo|goto|if|else|set|setlocal|endlocal|call|exit|pause|cls|cd|md|rd|copy|del|start|shift|for|in|do)\b/i,
-            'operator': /\b(?:equ|neq|lss|leq|gtr|geq)\b|[=<>|&]/,
-            'number': /\b\d+\b/
+        sql: {
+            'comment': /--.*|\/\*[\s\S]*?\*\//,
+            'string': /'(?:''|[^'])*'/,
+            'keyword': /\b(?:SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|JOIN|INNER|OUTER|LEFT|RIGHT|ON|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|AS|DISTINCT|CASE|WHEN|THEN|ELSE|END|IS|NULL|AND|OR|NOT|IN|EXISTS|LIKE|VALUES|SET|PRIMARY|KEY|FOREIGN|REFERENCES)\b/i,
+            'function': /\b(?:COUNT|SUM|AVG|MIN|MAX|NOW|DATE|CONCAT)\b/i,
+            'number': /\b-?\d+(?:\.\d+)?\b/,
+            'operator': /[=<>!]+/,
+            'punctuation': /[();,.]/
+        },
+        cpp: {
+             'comment': /(\/\/.*)|(\/\*[\s\S]*?\*\/)/,
+             'string': /"(?:\\"|[^"])*"/,
+             'keyword': /\b(?:int|float|double|char|void|if|else|for|while|do|switch|case|default|break|continue|return|struct|class|public|private|protected|static|const|virtual|override|new|delete|using|namespace|include|template|typename|bool|auto)\b/,
+             'number': /\b-?\d+(?:\.\d+)?\b/,
+             'boolean': /\b(?:true|false)\b/,
+             'operator': /[+\-*\/%&|^!~=<>]+/,
+             'punctuation': /[{}[\]();,.:]/
+        },
+        markdown: {
+            'comment': /<!--[\s\S]*?-->/,
+            'keyword': /^#{1,6}.*$/m, // Headers
+            'string': /`[^`]+`/, // Inline code
+            'variable': /\[.*?\]\(.*?\)|!\[.*?\]\(.*?\)/, // Links/Images
+            'function': /\*\*.*?\*\*|__.*?__/, // Bold
+            'operator': /\*.*?\*|_.*?_/, // Italic
+            'punctuation': /^[*\-+]\s|\d+\.\s/m // Lists
         }
     },
 
     highlight(code, lang) {
-        const alias = { 'xml': 'html', 'svg': 'html', 'sh': 'bash', 'shell': 'bash', 'js': 'javascript', 'bat': 'batch', 'cmd': 'batch', 'batch': 'batch' };
+        // Alias Mapping
+        const alias = { 
+            'xml': 'html', 'svg': 'html', 'sh': 'bash', 'shell': 'bash', 'js': 'javascript', 'ts': 'javascript', 'typescript': 'javascript',
+            'c': 'cpp', 'h': 'cpp', 'hpp': 'cpp', 'cc': 'cpp', 'c++': 'cpp', 'cs': 'cpp', 'csharp': 'cpp', // Basic C-style fallback
+            'md': 'markdown', 'yml': 'json', 'yaml': 'json', // JSON is close enough for simple YAML highlighting
+            'bat': 'bash', 'cmd': 'bash' // close enough for basic
+        };
         const effectiveLang = alias[lang] || lang;
 
         if (effectiveLang === 'html') {
