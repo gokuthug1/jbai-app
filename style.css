@@ -378,6 +378,8 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .message-area {
     display: flex; flex-direction: column; flex-grow: 1; gap: 10px;
     width: 100%; padding: 20px; overflow-y: auto; scrollbar-width: none;
+    /* Performance optimization for long chats */
+    content-visibility: auto; 
 }
 .message-area::-webkit-scrollbar { display: none; }
 .message { display: flex; align-items: flex-start; max-width: 100%; }
@@ -414,6 +416,29 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .message-content a:not(.citation-ref):not(.source-item) { color: var(--focus-color); text-decoration: underline; font-weight: 500; }
 .message-content a:not(.citation-ref):not(.source-item):hover { text-decoration: none; }
 .message-content s { text-decoration: line-through; color: var(--text-secondary); }
+
+/* Table Styles */
+.message-content table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 0.9em;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+}
+.message-content th, .message-content td {
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    text-align: left;
+}
+.message-content th {
+    background-color: var(--sidebar-hover);
+    font-weight: 600;
+}
+.message-content tr:nth-child(even) {
+    background-color: rgba(0,0,0,0.02);
+}
 
 /* Grounding Citations and Sources */
 .citation-ref {
