@@ -41,8 +41,9 @@
     --button-hover-bg: #333333;
     --button-text: #ffffff;
 
-    --message-user-bg: #f2f2f2;
-    --message-bot-bg: #ffffff;
+    /* Message Bubbles - Light Theme */
+    --message-user-bg: #e0e0e0; /* Slightly Darker Gray for User */
+    --message-bot-bg: #f2f2f2;  /* Light Gray for Bot (Visible Bubble) */
     
     --code-bg: #f4f4f4;
     --code-text: #000000;
@@ -101,8 +102,9 @@
     --button-hover-bg: #e0e0e0;
     --button-text: #000000;
     
-    --message-user-bg: #2d2d2d;
-    --message-bot-bg: #252526;
+    /* Message Bubbles - Dark Theme */
+    --message-user-bg: #3a3a3a; /* Lighter Gray for User */
+    --message-bot-bg: #2d2d2d;  /* Dark Gray for Bot (Distinct from BG) */
     
     --code-bg: #1e1e1e;
     --code-text: #d4d4d4;
@@ -161,8 +163,9 @@
     --button-hover-bg: #d6acff;
     --button-text: #282a36;
     
-    --message-user-bg: #44475a;
-    --message-bot-bg: #282a36;
+    /* Message Bubbles - Dracula */
+    --message-user-bg: #6272a4; /* Purple-Gray */
+    --message-bot-bg: #44475a;  /* Dark Blue-Gray */
     
     --code-bg: #21222c;
     --code-text: #f8f8f2;
@@ -221,8 +224,9 @@
     --button-hover-bg: #ff4d8d;
     --button-text: #f8f8f2;
     
-    --message-user-bg: #3e3d32;
-    --message-bot-bg: #272822;
+    /* Message Bubbles - Monokai */
+    --message-user-bg: #49483e;
+    --message-bot-bg: #3e3d32;
     
     --code-bg: #1e1f1c;
     --code-text: #f8f8f2;
@@ -392,7 +396,7 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
     position: relative; max-width: 800px; padding: 10px 16px;
     line-height: 1.5; white-space: pre-wrap; word-wrap: break-word;
     cursor: default; background-color: var(--message-bot-bg); border-radius: 12px; min-width: 0;
-    border: 1px solid transparent; /* Removed visible border to fix unusual outline */
+    border: 1px solid transparent; 
 }
 .message.user .message-content { background-color: var(--message-user-bg); border-color: transparent; }
 .message-content p, .message-content h1, .message-content h2, .message-content h3, .message-content li { cursor: text; }
