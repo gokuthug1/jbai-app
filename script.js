@@ -495,6 +495,9 @@ const ChatApp = {
             });
         },
         renderSettingsModal() {
+            // Prevent duplicate modals
+            if (document.querySelector('.modal-overlay')) return;
+
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
             const tools = ChatApp.Store.getToolsConfig();
