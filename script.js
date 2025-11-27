@@ -89,7 +89,15 @@ const ChatApp = {
                       .replace(/"/g, '&quot;')
                       .replace(/'/g, '&#039;');
         },
-        generateUUID() { return crypto.randomUUID(); }
+        generateUUID() { return crypto.randomUUID(); },
+        blobToBase64(blob) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+        }
     },
 
     Store: {
@@ -308,6 +316,7 @@ const ChatApp = {
                 let contentHTML = '';
                 
                 if (file.data) {
+                    // file.data should be a base64 string or a URL
                     if (file.type.startsWith('image/')) {
                         contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`;
                     } else if (file.type.startsWith('video/')) {
@@ -544,6 +553,13 @@ const ChatApp = {
                         <option value="monokai">MonoKai</option>
                     </select>
                 </div>
+                <div class="settings-row">
+                    <label for="toggle-fullscreen">Full Screen Mode</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-fullscreen" ${document.fullscreenElement ? 'checked' : ''}>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
                 <hr>
                 <h3>AI Capabilities</h3>
                 <div class="settings-row">
@@ -576,6 +592,10 @@ const ChatApp = {
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
+
+            overlay.querySelector('#toggle-fullscreen').addEventListener('change', (e) => {
+                ChatApp.Controller.toggleFullScreen(e.target.checked);
+            });
 
             const updateTools = () => {
                 const config = {
@@ -686,9 +706,7 @@ const ChatApp = {
             const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodeURIComponent(prompt)}?${queryParams.toString()}`;
             const response = await fetch(fullUrl);
             if (!response.ok) throw new Error(`Image error: ${response.status}`);
-            const imageBlob = await response.blob();
-            if (imageBlob.type.startsWith('text/')) throw new Error("Image generation failed.");
-            return URL.createObjectURL(imageBlob);
+            return response.blob(); // Return Blob here to be converted to Base64 later
         }
     },
     
@@ -749,6 +767,17 @@ const ChatApp = {
                 if (thinkingMsg) thinkingMsg.remove();
             }
         },
+        toggleFullScreen(enable) {
+            if (enable) {
+                if (document.documentElement.requestFullscreen) {
+                    document.documentElement.requestFullscreen();
+                }
+            } else {
+                if (document.exitFullscreen && document.fullscreenElement) {
+                    document.exitFullscreen();
+                }
+            }
+        },
         async handleChatSubmission() {
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = [...ChatApp.State.attachedFiles];
@@ -761,6 +790,7 @@ const ChatApp = {
             ChatApp.State.setGenerating(true);
             this.clearAttachedFiles();
 
+            // Prepare API data (base64 without prefix for API)
             const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = e => resolve({ mimeType: file.type, data: e.target.result.split(',')[1] });
@@ -772,11 +802,12 @@ const ChatApp = {
             const messageParts = fileApiData.map(p => ({ inlineData: p }));
             if (userInput) { messageParts.push({ text: userInput }); }
 
+            // Prepare Attachment data for Local Storage (Must be Full Base64 Data URL)
             const userMessageAttachments = await Promise.all(files.map(file => new Promise((resolve) => {
                 if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-                    const reader = new FileReader();
-                    reader.onload = (e) => resolve({ name: file.name, type: file.type, data: e.target.result });
-                    reader.readAsDataURL(file);
+                    ChatApp.Utils.blobToBase64(file).then(base64 => {
+                        resolve({ name: file.name, type: file.type, data: base64 });
+                    });
                 } else {
                     resolve({ name: file.name, type: file.type, data: null });
                 }
@@ -885,8 +916,12 @@ const ChatApp = {
                 const [originalTag, jsonString] = match;
                 try {
                     const params = JSON.parse(jsonString);
-                    const imageUrl = await ChatApp.Api.fetchImageResponse(params);
-                    return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${imageUrl})` };
+                    // Fetch blob from API
+                    const imageBlob = await ChatApp.Api.fetchImageResponse(params);
+                    // Convert blob to Base64 so it can be stored in JSON/LocalStorage
+                    const base64Url = await ChatApp.Utils.blobToBase64(imageBlob);
+                    
+                    return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${base64Url})` };
                 } catch (error) {
                     return { original: originalTag, replacement: `[Error: ${error.message}]` };
                 }

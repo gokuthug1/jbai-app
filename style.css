@@ -351,14 +351,18 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 }
 .message.user .message-content blockquote { background-color: color-mix(in srgb, var(--message-user-bg) 80%, var(--bg-color)); }
 
-/* --- Tables --- */
+/* --- Tables (Enhanced for Mobile) --- */
 .message-content table {
-    width: 100%; border-collapse: collapse; margin: 10px 0;
-    font-size: 0.9em; border-radius: 6px; overflow: hidden;
-    border: 1px solid var(--border-color); display: block; overflow-x: auto;
+    display: block; width: 100%; overflow-x: auto; 
+    border-collapse: collapse; margin: 10px 0;
+    font-size: 0.9em; border-radius: 6px; 
+    border: 1px solid var(--border-color);
+    -webkit-overflow-scrolling: touch;
 }
 .message-content th, .message-content td {
     padding: 8px 12px; border: 1px solid var(--border-color); text-align: left;
+    min-width: 100px; /* Prevents squishing on mobile */
+    white-space: normal;
 }
 .message-content th { background-color: var(--sidebar-hover); font-weight: 600; }
 .message-content tr:nth-child(even) { background-color: rgba(0,0,0,0.02); }
@@ -705,6 +709,14 @@ input:checked + .slider:before { transform: translateX(20px); }
     .chat-input-wrapper { gap: 2px; }
     .sidebar-header { padding-top: 60px; }
     .settings-card { width: 95%; max-height: 80vh; padding: 15px; }
+    
+    /* Stronger mobile table enforcement */
+    .message-content table {
+        display: block;
+        width: 100%;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
 }
 @media (min-width: 769px) {
     .sidebar { position: relative; left: auto; margin-left: -281px; box-shadow: none; transition: margin-left 0.35s ease-in-out; }
