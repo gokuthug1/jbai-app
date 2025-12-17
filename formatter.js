@@ -94,7 +94,7 @@ export const MessageFormatter = {
             return generatePlaceholder({ type: 'svg', content: svgContent.trim() });
         });
 
-        // 6. Custom Image Syntax
+        // 6. Custom Image Syntax [IMAGE: prompt](url)
         processedText = processedText.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
             return generatePlaceholder({ type: 'image', alt: alt, url: url });
         });
@@ -292,6 +292,11 @@ export const MessageFormatter = {
 
     _renderImageBlock(block) {
         const safeAlt = SyntaxHighlighter.escapeHtml(block.alt);
+        // If the URL is just placeholder text (e.g. "Image Expired"), render text instead of an image
+        if (!block.url.startsWith('http') && !block.url.startsWith('data:')) {
+             return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>[${safeAlt}]</em></p><div class="image-container" style="padding: 20px; border: 1px dashed #666; color: #888;">${block.url}</div></div>`;
+        }
+        
         const safeFilename = (safeAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
         return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${safeAlt}</em></p><div class="image-container"><img src="${block.url}" alt="${safeAlt}" class="generated-image"><a href="${block.url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
     },

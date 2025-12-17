@@ -1,3 +1,5 @@
+--- START OF FILE script.js ---
+
 import { MessageFormatter } from './formatter.js';
 import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
@@ -17,7 +19,6 @@ const ChatApp = {
             googleSearch: false,
             codeExecution: false
         },
-        // Faster typing: 0ms
         TYPING_SPEED_MS: 0,
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
         ICONS: {
@@ -97,11 +98,57 @@ const ChatApp = {
                 reader.onerror = reject;
                 reader.readAsDataURL(blob);
             });
+        },
+        // IMPORTANT: Strip Base64 images to avoid sending them back to the API (Fixes 413)
+        sanitizeTextForApi(text) {
+            if (!text) return "";
+            // Regex to find [IMAGE: prompt](data:image/...) and replace the data part
+            return text.replace(
+                /\[IMAGE: (.*?)\]\((data:image\/[^)]+)\)/g, 
+                '[Generated Image: $1]' 
+            );
         }
     },
 
     Store: {
-        saveAllConversations() { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(ChatApp.State.allConversations)); },
+        // IMPORTANT: Strip huge data before saving to LocalStorage to fix Quota errors
+        saveAllConversations() { 
+            const leanConversations = ChatApp.State.allConversations.map(chat => ({
+                ...chat,
+                history: chat.history.map(msg => {
+                    const cleanMsg = JSON.parse(JSON.stringify(msg)); // Deep clone
+                    
+                    // 1. Clean Text Parts (remove generated image base64)
+                    if (cleanMsg.content && cleanMsg.content.parts) {
+                        cleanMsg.content.parts.forEach(part => {
+                            if (part.text) {
+                                part.text = part.text.replace(
+                                    /\[IMAGE: (.*?)\]\((data:image\/[^)]+)\)/g,
+                                    '[IMAGE: $1 - (Image Expired)]'
+                                );
+                            }
+                        });
+                    }
+
+                    // 2. Clean Attachments (remove heavy media uploads from storage)
+                    if (cleanMsg.attachments) {
+                        cleanMsg.attachments = cleanMsg.attachments.map(att => ({
+                            name: att.name,
+                            type: att.type,
+                            data: att.type.startsWith('text/') ? att.data : null // Only save text files
+                        }));
+                    }
+                    return cleanMsg;
+                })
+            }));
+
+            try {
+                localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(leanConversations));
+            } catch (e) {
+                console.error("Storage limit reached", e);
+                ChatApp.UI.showToast("History full. Old chats may not save.", "error");
+            }
+        },
         loadAllConversations() {
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
@@ -265,7 +312,7 @@ const ChatApp = {
             messageEl.dataset.messageId = message.id;
             const contentEl = document.createElement('div');
             contentEl.className = 'message-content';
-            let rawContent = ''; // Can be string or array
+            let rawContent = ''; 
             let groundingMetadata = null;
 
             if (isTyping) {
@@ -383,7 +430,6 @@ const ChatApp = {
             const fullText = Array.isArray(contentParts) ? contentParts.map(p => p.text || '').join('\n') : contentParts;
             const groundingMetadata = botMessageForState.content.groundingMetadata || null;
 
-            // Skip animation if config says 0 or content is complex (to show code blocks immediately)
             if (ChatApp.Config.TYPING_SPEED_MS === 0 || isComplex) {
                  contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
                  this._addMessageInteractions(messageEl, fullText, messageId);
@@ -392,12 +438,10 @@ const ChatApp = {
                  return;
             }
             
-            // Simple text typewriter with chunking for speed
             contentEl.innerHTML = '';
             let i = 0;
             ChatApp.State.typingInterval = setInterval(async () => {
                 if (i < fullText.length) {
-                    // Type multiple characters at once to keep it snappy
                     const chunk = fullText.slice(i, i + 3); 
                     contentEl.textContent += chunk;
                     i += 3;
@@ -405,7 +449,6 @@ const ChatApp = {
                 } else {
                     clearInterval(ChatApp.State.typingInterval);
                     ChatApp.State.typingInterval = null;
-                    // Final pass to render Markdown
                     contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
                     this._addMessageInteractions(messageEl, fullText, messageId);
                     this.scrollToBottom();
@@ -671,8 +714,19 @@ const ChatApp = {
             }
         },
         async fetchTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
+            // Fix Error 413: Sanitize the history to remove large Base64 strings from context
+            const sanitizedContents = apiContents.map(content => ({
+                role: content.role,
+                parts: content.parts.map(part => {
+                    if (part.text) {
+                        return { text: ChatApp.Utils.sanitizeTextForApi(part.text) };
+                    }
+                    return part;
+                })
+            }));
+
             const payload = {
-                contents: apiContents,
+                contents: sanitizedContents,
                 systemInstruction: systemInstruction,
                 toolsConfig: toolsConfig
             };
