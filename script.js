@@ -1,5 +1,3 @@
---- START OF FILE script.js ---
-
 import { MessageFormatter } from './formatter.js';
 import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
