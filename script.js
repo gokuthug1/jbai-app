@@ -5,6 +5,7 @@ const ChatApp = {
     Config: {
         API_URLS: {
             TEXT: '/api/server',
+            TITLE: '/api/title',
             IMAGE: 'https://image.pollinations.ai/prompt/'
         },
         STORAGE_KEYS: {
@@ -283,16 +284,37 @@ const ChatApp = {
             document.documentElement.setAttribute('data-theme', themeName);
             ChatApp.Store.saveTheme(themeName);
         },
-        showToast(message, type = 'info') {
+        /**
+         * Shows a toast notification
+         * @param {string} message - Message to display
+         * @param {string} type - Toast type: 'info', 'error', 'success'
+         * @param {number} duration - Duration in milliseconds
+         */
+        showToast(message, type = 'info', duration = 3000) {
+            if (!message || typeof message !== 'string') return;
+            
             const toast = document.createElement('div');
             toast.className = `toast-message ${type}`;
+            toast.setAttribute('role', 'alert');
+            toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
             toast.textContent = message;
+            
             this.elements.toastContainer.appendChild(toast);
-            setTimeout(() => toast.classList.add('show'), 10);
+            
+            // Trigger animation
+            requestAnimationFrame(() => {
+                toast.classList.add('show');
+            });
+            
+            // Auto-remove after duration
             setTimeout(() => {
                 toast.classList.remove('show');
-                toast.addEventListener('transitionend', () => toast.remove());
-            }, 3000);
+                toast.addEventListener('transitionend', () => {
+                    if (toast.parentNode) {
+                        toast.remove();
+                    }
+                }, { once: true });
+            }, duration);
         },
         /**
          * Scrolls to bottom if user is near the bottom (within threshold)
@@ -795,32 +817,73 @@ const ChatApp = {
 - Current Date/Time: ${new Date().toLocaleString()}
 - HTML must be self-contained in a single markdown block.`;
         },
+        /**
+         * Fetches a title for a conversation using gemini-2.5-pro
+         * @param {Array} chatHistory - Conversation history
+         * @returns {Promise<string>} Generated title
+         */
         async fetchTitle(chatHistory) {
-            const safeHistory = chatHistory.filter(h => h.content?.parts?.[0]?.text && !h.content.parts[0].text.startsWith('[IMAGE:'));
-            if (safeHistory.length < 2) return "New Chat";
-            const prompt = `Based on this conversation, create a short, concise title (4 words max). Output only the title, no quotes or markdown.\nUser: ${safeHistory[0].content.parts[0].text}\nAI: ${safeHistory[1].content.parts[0].text}`;
+            if (!Array.isArray(chatHistory) || chatHistory.length === 0) {
+                return "New Chat";
+            }
+            
+            // Filter out image messages and get text content
+            const safeHistory = chatHistory.filter(h => {
+                const text = h?.content?.parts?.[0]?.text;
+                return text && typeof text === 'string' && !text.startsWith('[IMAGE:');
+            });
+            
+            if (safeHistory.length < 2) {
+                return "New Chat";
+            }
+            
+            // Get first user and AI messages, limit length to avoid token limits
+            const userText = safeHistory[0].content.parts[0].text.substring(0, 200);
+            const aiText = safeHistory[1].content.parts[0].text.substring(0, 200);
+            
+            const prompt = `Based on this conversation, create a short, concise title (4 words max). Output only the title, no quotes, no markdown, no punctuation at the end.\n\nUser: ${userText}\nAI: ${aiText}`;
+            
             try {
-                const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
+                const response = await fetch(ChatApp.Config.API_URLS.TITLE, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
+                    body: JSON.stringify({ 
+                        contents: [{ 
+                            role: "user", 
+                            parts: [{ text: prompt }] 
+                        }] 
+                    }),
                 });
-                if (!response.ok) throw new Error("API error");
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.message || `API error: ${response.status}`);
+                }
+                
                 const data = await response.json();
-                return data?.candidates?.[0]?.content?.parts?.[0]?.text.trim().replace(/["*]/g, '') || "Chat";
+                const title = data?.candidates?.[0]?.content?.parts?.[0]?.text
+                    ?.trim()
+                    .replace(/^["'`]|["'`]$/g, '') // Remove quotes
+                    .replace(/^\*+|\*+$/g, '') // Remove markdown bold
+                    .replace(/\.$/, '') // Remove trailing period
+                    .substring(0, 50) || "Chat"; // Limit length
+                
+                return title || "Chat";
             } catch (error) {
+                console.warn('Title generation failed:', error);
                 return "Titled Chat";
             }
         },
         /**
-         * Fetches text response from the API
+         * Fetches text response from the API with retry logic
          * @param {Array} apiContents - Conversation contents
          * @param {Object} systemInstruction - System instruction
          * @param {AbortSignal} signal - Abort signal for cancellation
          * @param {Object} toolsConfig - Tools configuration
+         * @param {number} retries - Number of retry attempts remaining
          * @returns {Promise<Object>} Response with parts and grounding metadata
          */
-        async fetchTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
+        async fetchTextResponse(apiContents, systemInstruction, signal, toolsConfig, retries = 2) {
             if (!Array.isArray(apiContents)) {
                 throw new Error('Invalid apiContents: must be an array');
             }
@@ -876,6 +939,21 @@ const ChatApp = {
                 if (error.name === 'AbortError') {
                     throw new Error("Generation stopped by user.");
                 }
+                
+                // Retry logic for network errors and 5xx errors
+                const shouldRetry = retries > 0 && (
+                    (error instanceof TypeError && error.message.includes('fetch')) ||
+                    (error.message.includes('Network error')) ||
+                    (error.message.includes('500') || error.message.includes('503'))
+                );
+                
+                if (shouldRetry) {
+                    // Wait before retrying (exponential backoff)
+                    const delay = Math.pow(2, 2 - retries) * 1000; // 1s, 2s
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    return this.fetchTextResponse(apiContents, systemInstruction, signal, toolsConfig, retries - 1);
+                }
+                
                 if (error instanceof TypeError && error.message.includes('fetch')) {
                     throw new Error("Network error: Please check your connection.");
                 }
@@ -939,6 +1017,9 @@ const ChatApp = {
             ChatApp.UI.initTooltips();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
+            
+            // Add offline detection
+            this.initOfflineDetection();
             
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
@@ -1018,8 +1099,15 @@ const ChatApp = {
             }
         },
         async handleChatSubmission() {
+            // Check if offline
+            if (!navigator.onLine) {
+                ChatApp.UI.showToast('Cannot send message while offline. Please check your connection.', 'error');
+                return;
+            }
+            
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = [...ChatApp.State.attachedFiles];
+            
             if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
 
             ChatApp.UI.elements.chatInput.value = "";
@@ -1072,17 +1160,39 @@ const ChatApp = {
                 return;
             }
             
+            // Allowed file types
+            const ALLOWED_TYPES = [
+                'image/', 'video/', 'audio/', 'text/',
+                'application/json', 'application/javascript',
+                'text/javascript', 'text/css', 'text/html'
+            ];
+            
+            const ALLOWED_EXTENSIONS = ['.js', '.lua', '.css', '.html', '.json', '.txt', '.md'];
+            
             const validFiles = newFiles.filter(file => {
                 if (!(file instanceof File)) {
                     console.warn('Invalid file object:', file);
                     return false;
                 }
                 
+                // Check file size
                 if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) {
                     const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
                     const maxMB = (ChatApp.Config.MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(2);
                     ChatApp.UI.showToast(
                         `File "${ChatApp.Utils.escapeHTML(file.name)}" is too large (${sizeMB}MB). Maximum: ${maxMB}MB.`, 
+                        'error'
+                    );
+                    return false;
+                }
+                
+                // Check file type
+                const isValidType = ALLOWED_TYPES.some(type => file.type.startsWith(type)) ||
+                    ALLOWED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
+                
+                if (!isValidType) {
+                    ChatApp.UI.showToast(
+                        `File "${ChatApp.Utils.escapeHTML(file.name)}" type not supported.`, 
                         'error'
                     );
                     return false;
@@ -1170,10 +1280,27 @@ const ChatApp = {
                 thinkingMessageEl.remove();
                 if (error.message !== "Generation stopped by user.") {
                     console.error("Gen failed:", error);
-                    const msg = error.message.includes("500") ? "Server error." : `Error: ${error.message}`;
-                    const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: msg }] } };
+                    
+                    // Provide more helpful error messages
+                    let errorMsg = "An error occurred while generating a response.";
+                    if (error.message.includes("Network error")) {
+                        errorMsg = "Network error: Please check your internet connection and try again.";
+                    } else if (error.message.includes("429") || error.message.includes("Rate limit")) {
+                        errorMsg = "Rate limit exceeded. Please wait a moment and try again.";
+                    } else if (error.message.includes("500") || error.message.includes("503")) {
+                        errorMsg = "Service temporarily unavailable. Please try again in a moment.";
+                    } else if (error.message.includes("401") || error.message.includes("Authentication")) {
+                        errorMsg = "Authentication error. Please check your API configuration.";
+                    } else if (error.message) {
+                        errorMsg = `Error: ${error.message}`;
+                    }
+                    
+                    const errorBotMessage = { 
+                        id: ChatApp.Utils.generateUUID(), 
+                        content: { role: 'model', parts: [{ text: errorMsg }] } 
+                    };
                     await ChatApp.UI.renderMessage(errorBotMessage);
-                    ChatApp.UI.showToast(msg, 'error');
+                    ChatApp.UI.showToast(errorMsg, 'error', 5000);
                 }
                 ChatApp.State.setGenerating(false);
             }
@@ -1240,21 +1367,54 @@ const ChatApp = {
             this.saveCurrentChat();
             ChatApp.State.setGenerating(false);
         },
+        /**
+         * Saves the current chat to storage
+         */
         async saveCurrentChat() {
             if (ChatApp.State.currentConversation.length === 0) return;
-            if (ChatApp.State.currentChatId) {
-                const chat = ChatApp.State.allConversations.find(c => c.id === ChatApp.State.currentChatId);
-                if (chat) { chat.history = ChatApp.State.currentConversation; }
-            } else {
-                 const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
-                 if (userMessages > 0) {
-                    const newTitle = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation);
-                    ChatApp.State.currentChatId = Date.now();
-                    ChatApp.State.allConversations.push({ id: ChatApp.State.currentChatId, title: newTitle, history: ChatApp.State.currentConversation });
+            
+            try {
+                if (ChatApp.State.currentChatId) {
+                    // Update existing chat
+                    const chat = ChatApp.State.allConversations.find(c => c.id === ChatApp.State.currentChatId);
+                    if (chat) { 
+                        chat.history = ChatApp.State.currentConversation;
+                        // Update title if it's still "New Chat" or "Titled Chat"
+                        const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
+                        if (userMessages >= 2 && (chat.title === 'New Chat' || chat.title === 'Titled Chat' || chat.title === 'Chat')) {
+                            try {
+                                chat.title = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation);
+                            } catch (error) {
+                                console.warn('Failed to update title:', error);
+                            }
+                        }
+                    }
+                } else {
+                    // Create new chat
+                    const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
+                    if (userMessages > 0) {
+                        let newTitle = "New Chat";
+                        try {
+                            newTitle = await ChatApp.Api.fetchTitle(ChatApp.State.currentConversation);
+                        } catch (error) {
+                            console.warn('Title generation failed, using default:', error);
+                        }
+                        
+                        ChatApp.State.currentChatId = Date.now();
+                        ChatApp.State.allConversations.push({ 
+                            id: ChatApp.State.currentChatId, 
+                            title: newTitle, 
+                            history: ChatApp.State.currentConversation 
+                        });
+                    }
                 }
+                
+                ChatApp.Store.saveAllConversations();
+                ChatApp.UI.renderSidebar();
+            } catch (error) {
+                console.error('Failed to save chat:', error);
+                ChatApp.UI.showToast('Failed to save conversation. Please try again.', 'error');
             }
-            ChatApp.Store.saveAllConversations();
-            ChatApp.UI.renderSidebar();
         },
         loadChat(chatId) {
             if (ChatApp.State.currentChatId === chatId) return;
@@ -1413,6 +1573,32 @@ const ChatApp = {
             fullscreenOverlay.style.display = 'none';
             fullscreenContent.innerHTML = '';
             body.classList.remove('modal-open');
+        },
+        /**
+         * Initializes offline detection and network status monitoring
+         */
+        initOfflineDetection() {
+            const updateOnlineStatus = () => {
+                if (!navigator.onLine) {
+                    ChatApp.UI.showToast('You are offline. Some features may not work.', 'error');
+                    document.body.classList.add('offline');
+                } else {
+                    document.body.classList.remove('offline');
+                }
+            };
+            
+            window.addEventListener('online', () => {
+                ChatApp.UI.showToast('Connection restored.', 'info');
+                updateOnlineStatus();
+            });
+            
+            window.addEventListener('offline', () => {
+                ChatApp.UI.showToast('Connection lost. Please check your internet.', 'error');
+                updateOnlineStatus();
+            });
+            
+            // Initial check
+            updateOnlineStatus();
         },
     }
 };

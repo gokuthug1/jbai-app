@@ -4,7 +4,7 @@ A modern, feature-rich AI chat application built with vanilla JavaScript, featur
 
 ## Features
 
-- 🤖 **AI Chat Interface** - Powered by Google Gemini 3 Flash Preview
+- 🤖 **AI Chat Interface** - Powered by Google Gemini 3 Flash Preview (with Gemini 2.5 Pro for title generation)
 - 💬 **Conversation History** - Persistent chat history with localStorage
 - 📎 **File Attachments** - Support for images, videos, audio, and text files
 - 🎨 **Multiple Themes** - Light, Dark, Dracula, and MonoKai themes

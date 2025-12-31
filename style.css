@@ -225,6 +225,21 @@ body {
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 body.modal-open { overflow: hidden; }
+body.offline::before {
+    content: 'Offline';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10000;
+    background-color: var(--danger-color);
+    color: white;
+    text-align: center;
+    padding: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
 
 /* ==========================================================================
    3. Sidebar
@@ -699,6 +714,8 @@ input:checked + .slider:before { transform: translateX(20px); }
 }
 .toast-message.show { opacity: 1; transform: translateY(0); }
 .toast-message.error { background-color: var(--danger-color); color: #fff; }
+.toast-message.success { background-color: #4caf50; color: #fff; }
+.toast-message.info { background-color: var(--button-bg); color: var(--button-text); }
 
 /* ==========================================================================
    9. Accessibility & Screen Reader Support
