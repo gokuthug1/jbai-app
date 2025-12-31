@@ -14,51 +14,135 @@ const { GOOGLE_API_KEY } = process.env;
 const MODEL_NAME = 'gemini-2.5-flash'; 
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 
+/**
+ * POST /api/server - Main API endpoint for chat requests
+ * Validates input and forwards requests to Google Gemini API
+ */
 app.post('/api/server', async (req, res) => {
-  if (!GOOGLE_API_KEY) {
-    console.error("Server configuration error: GOOGLE_API_KEY is missing.");
-    return res.status(500).json({ message: "Server configuration error: API Key is missing." });
+  // Validate API key
+  if (!GOOGLE_API_KEY || typeof GOOGLE_API_KEY !== 'string') {
+    console.error("Server configuration error: GOOGLE_API_KEY is missing or invalid.");
+    return res.status(500).json({ 
+      message: "Server configuration error: API Key is missing.",
+      error: "CONFIG_ERROR"
+    });
   }
 
   try {
     const { contents, systemInstruction, toolsConfig } = req.body;
 
+    // Validate required fields
     if (!contents) {
-        return res.status(400).json({ message: "Bad Request: 'contents' field is missing." });
+      return res.status(400).json({ 
+        message: "Bad Request: 'contents' field is required.",
+        error: "MISSING_CONTENTS"
+      });
     }
 
+    if (!Array.isArray(contents)) {
+      return res.status(400).json({ 
+        message: "Bad Request: 'contents' must be an array.",
+        error: "INVALID_CONTENTS_TYPE"
+      });
+    }
+
+    // Validate contents structure
+    const isValidContent = contents.every(content => 
+      content && 
+      typeof content === 'object' &&
+      typeof content.role === 'string' &&
+      Array.isArray(content.parts)
+    );
+
+    if (!isValidContent) {
+      return res.status(400).json({ 
+        message: "Bad Request: Invalid contents structure. Each content must have 'role' and 'parts'.",
+        error: "INVALID_CONTENTS_STRUCTURE"
+      });
+    }
+
+    // Build tools array
     const tools = [];
-    if (toolsConfig?.googleSearch) {
+    if (toolsConfig && typeof toolsConfig === 'object') {
+      if (toolsConfig.googleSearch === true) {
         tools.push({ googleSearch: {} });
-    }
-    if (toolsConfig?.codeExecution) {
+      }
+      if (toolsConfig.codeExecution === true) {
         tools.push({ codeExecution: {} });
+      }
     }
 
+    // Build payload
     const payload = {
-        contents,
-        systemInstruction,
-        // Only attach tools property if the array is not empty
-        ...(tools.length > 0 && { tools })
+      contents,
+      ...(systemInstruction && { systemInstruction }),
+      ...(tools.length > 0 && { tools })
     };
 
+    // Make request to Google API
     const response = await axios.post(
       `${GOOGLE_API_URL}?key=${GOOGLE_API_KEY}`,
       payload,
-      { headers: { 'Content-Type': 'application/json' } }
+      { 
+        headers: { 'Content-Type': 'application/json' },
+        timeout: 60000 // 60 second timeout
+      }
     );
+
+    // Validate response
+    if (!response.data) {
+      throw new Error('Empty response from Google API');
+    }
 
     res.json(response.data);
 
   } catch (error) {
-    // Enhanced error logging
-    const status = error.response?.status || 500;
-    const details = error.response?.data || error.message;
-    console.error(`Error calling Google API (${status}):`, JSON.stringify(details, null, 2));
+    // Enhanced error handling
+    let status = 500;
+    let message = "Failed to fetch from the AI model.";
+    let errorCode = "UNKNOWN_ERROR";
+    let details = null;
+
+    if (error.response) {
+      // API responded with error status
+      status = error.response.status || 500;
+      details = error.response.data;
+      
+      if (status === 400) {
+        message = "Invalid request to AI model.";
+        errorCode = "BAD_REQUEST";
+      } else if (status === 401) {
+        message = "Authentication failed. Please check API key.";
+        errorCode = "AUTH_ERROR";
+      } else if (status === 429) {
+        message = "Rate limit exceeded. Please try again later.";
+        errorCode = "RATE_LIMIT";
+      } else if (status === 500 || status === 503) {
+        message = "AI service is temporarily unavailable.";
+        errorCode = "SERVICE_UNAVAILABLE";
+      }
+    } else if (error.request) {
+      // Request made but no response
+      message = "Network error: Could not reach AI service.";
+      errorCode = "NETWORK_ERROR";
+    } else if (error.code === 'ECONNABORTED') {
+      message = "Request timeout. The request took too long to complete.";
+      errorCode = "TIMEOUT";
+    } else {
+      // Error setting up request
+      message = error.message || message;
+    }
+
+    console.error(`Error calling Google API (${status}):`, {
+      errorCode,
+      message: error.message,
+      details: details ? JSON.stringify(details, null, 2) : null
+    });
     
     res.status(status).json({ 
-        message: "Failed to fetch from the AI model.",
-        details: details
+      message,
+      error: errorCode,
+      ...(details && { details })
     });
   }
 });

@@ -701,7 +701,54 @@ input:checked + .slider:before { transform: translateX(20px); }
 .toast-message.error { background-color: var(--danger-color); color: #fff; }
 
 /* ==========================================================================
-   9. Media Queries
+   9. Accessibility & Screen Reader Support
+   ========================================================================== */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* Focus visible improvements */
+*:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--focus-color);
+    outline-offset: 2px;
+    border-radius: 4px;
+}
+
+/* Skip to main content link */
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--button-bg);
+    color: var(--button-text);
+    padding: 8px;
+    text-decoration: none;
+    z-index: 10000;
+}
+
+.skip-link:focus {
+    top: 0;
+}
+
+/* ==========================================================================
+   10. Media Queries
    ========================================================================== */
 @media (max-width: 768px) {
     .message-content { max-width: 92%; }
@@ -717,6 +764,12 @@ input:checked + .slider:before { transform: translateX(20px); }
         overflow-x: auto;
         white-space: nowrap;
     }
+    
+    /* Improve touch targets on mobile */
+    button, a, input, textarea {
+        min-height: 44px;
+        min-width: 44px;
+    }
 }
 @media (min-width: 769px) {
     .sidebar { position: relative; left: auto; margin-left: -281px; box-shadow: none; transition: margin-left 0.35s ease-in-out; }
@@ -726,7 +779,7 @@ input:checked + .slider:before { transform: translateX(20px); }
 }
 
 /* ==========================================================================
-   10. Syntax Highlighting Token Maps
+   11. Syntax Highlighting Token Maps
    ========================================================================== */
 .token.comment { color: var(--token-comment); font-style: italic; }
 .token.prolog, .token.cdata { color: var(--token-comment); font-style: italic; }

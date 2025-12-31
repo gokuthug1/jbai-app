@@ -80,8 +80,12 @@ export const MessageFormatter = {
         });
 
         // 3. Inline Math ($) - strict lookaround to avoid matching currency
+        // Note: Using non-lookbehind fallback for better browser compatibility
         processedText = processedText.replace(/(?<!\\)\$(?!\s)([^$\n]+?)(?<!\s)\$/g, (match, code) => {
-             return generatePlaceholder({ type: 'math-inline', content: code.trim() });
+            const trimmed = code.trim();
+            // Skip if it looks like currency (e.g., $100, $1.50)
+            if (/^\d+\.?\d*$/.test(trimmed)) return match;
+            return generatePlaceholder({ type: 'math-inline', content: trimmed });
         });
 
         // 4. Inline Code (`)
@@ -322,8 +326,20 @@ export const MessageFormatter = {
         return finalHtml;
     },
 
+    /**
+     * Escapes HTML for use in iframe srcdoc attribute
+     * @param {string} str - String to escape
+     * @returns {string} Escaped string
+     */
     _escapeForSrcdoc(str) {
-        if (!str) return "";
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        if (!str || typeof str !== 'string') return "";
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
     }
 };

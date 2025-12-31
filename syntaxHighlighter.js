@@ -98,15 +98,31 @@ export const SyntaxHighlighter = {
         }
     },
 
+    /**
+     * Highlights code with syntax highlighting
+     * @param {string} code - Code to highlight
+     * @param {string} lang - Language identifier
+     * @returns {string} HTML with syntax highlighting
+     */
     highlight(code, lang) {
+        if (!code || typeof code !== 'string') {
+            return this.escapeHtml(String(code || ''));
+        }
+        
+        if (!lang || typeof lang !== 'string') {
+            return this.escapeHtml(code);
+        }
+        
         // Alias Mapping
         const alias = { 
-            'xml': 'html', 'svg': 'html', 'sh': 'bash', 'shell': 'bash', 'js': 'javascript', 'ts': 'javascript', 'typescript': 'javascript',
-            'c': 'cpp', 'h': 'cpp', 'hpp': 'cpp', 'cc': 'cpp', 'c++': 'cpp', 'cs': 'cpp', 'csharp': 'cpp', // Basic C-style fallback
+            'xml': 'html', 'svg': 'html', 'sh': 'bash', 'shell': 'bash', 
+            'js': 'javascript', 'ts': 'javascript', 'typescript': 'javascript',
+            'c': 'cpp', 'h': 'cpp', 'hpp': 'cpp', 'cc': 'cpp', 'c++': 'cpp', 
+            'cs': 'cpp', 'csharp': 'cpp', // Basic C-style fallback
             'md': 'markdown', 'yml': 'json', 'yaml': 'json', // JSON is close enough for simple YAML highlighting
             'bat': 'bash', 'cmd': 'bash' // close enough for basic
         };
-        const effectiveLang = alias[lang] || lang;
+        const effectiveLang = (alias[lang.toLowerCase()] || lang).toLowerCase();
 
         if (effectiveLang === 'html') {
             return this.highlightHtml(code);
@@ -149,7 +165,18 @@ export const SyntaxHighlighter = {
         return result;
     },
 
+    /**
+     * Basic syntax highlighting using regex patterns
+     * @param {string} code - Code to highlight
+     * @param {string} lang - Language identifier
+     * @returns {string} HTML with syntax highlighting
+     * @private
+     */
     _highlightBasic(code, lang) {
+        if (!code || typeof code !== 'string') {
+            return this.escapeHtml(String(code || ''));
+        }
+        
         const grammar = this.GRAMMAR[lang];
         if (!grammar) {
             return this.escapeHtml(code);
@@ -157,24 +184,40 @@ export const SyntaxHighlighter = {
 
         let tokenStream = [code];
 
+        // Process each token type in order
         for (const tokenName in grammar) {
+            if (!grammar.hasOwnProperty(tokenName)) continue;
+            
             const pattern = grammar[tokenName];
             const newStream = [];
 
             tokenStream.forEach(token => {
                 if (typeof token === 'string') {
-                    const regex = new RegExp(pattern, 'g');
-                    let lastIndex = 0;
-                    let match;
-                    while ((match = regex.exec(token))) {
-                        const prevText = token.slice(lastIndex, match.index);
-                        if (prevText) newStream.push(prevText);
+                    try {
+                        const regex = new RegExp(pattern, 'g');
+                        let lastIndex = 0;
+                        let match;
                         
-                        newStream.push({ type: tokenName, content: match[0] });
-                        lastIndex = regex.lastIndex;
+                        while ((match = regex.exec(token)) !== null) {
+                            const prevText = token.slice(lastIndex, match.index);
+                            if (prevText) newStream.push(prevText);
+                            
+                            newStream.push({ type: tokenName, content: match[0] });
+                            lastIndex = regex.lastIndex;
+                            
+                            // Prevent infinite loops on zero-length matches
+                            if (match[0].length === 0) {
+                                regex.lastIndex++;
+                            }
+                        }
+                        
+                        const remainingText = token.slice(lastIndex);
+                        if (remainingText) newStream.push(remainingText);
+                    } catch (error) {
+                        // If regex fails, just push the token as-is
+                        console.warn(`Regex error for token ${tokenName}:`, error);
+                        newStream.push(token);
                     }
-                    const remainingText = token.slice(lastIndex);
-                    if (remainingText) newStream.push(remainingText);
                 } else {
                     newStream.push(token);
                 }
@@ -186,12 +229,22 @@ export const SyntaxHighlighter = {
             if (typeof token === 'string') {
                 return this.escapeHtml(token);
             }
-            return `<span class="token ${token.type}">${this.escapeHtml(token.content)}</span>`;
+            return `<span class="token ${this.escapeHtml(token.type)}">${this.escapeHtml(token.content)}</span>`;
         }).join('');
     },
 
+    /**
+     * Escapes HTML special characters
+     * @param {string} str - String to escape
+     * @returns {string} Escaped string
+     */
     escapeHtml(str) {
-        if (!str) return '';
-        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        if (!str && str !== 0) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;'
+        };
+        return String(str).replace(/[&<>]/g, m => map[m]);
     }
 };

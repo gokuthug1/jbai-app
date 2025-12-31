@@ -80,31 +80,75 @@ const ChatApp = {
     },
 
     Utils: {
+        /**
+         * Escapes HTML special characters to prevent XSS attacks
+         * @param {string} str - String to escape
+         * @returns {string} Escaped string
+         */
         escapeHTML(str) {
             if (!str) return '';
-            return str.replace(/&/g, '&amp;')
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;')
-                      .replace(/"/g, '&quot;')
-                      .replace(/'/g, '&#039;');
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return str.replace(/[&<>"']/g, m => map[m]);
         },
-        generateUUID() { return crypto.randomUUID(); },
+        /**
+         * Generates a UUID v4
+         * @returns {string} UUID
+         */
+        generateUUID() { 
+            return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        },
+        /**
+         * Converts a Blob to Base64 data URL
+         * @param {Blob} blob - Blob to convert
+         * @returns {Promise<string>} Base64 data URL
+         */
         blobToBase64(blob) {
             return new Promise((resolve, reject) => {
+                if (!(blob instanceof Blob)) {
+                    reject(new Error('Invalid blob provided'));
+                    return;
+                }
                 const reader = new FileReader();
                 reader.onloadend = () => resolve(reader.result);
-                reader.onerror = reject;
+                reader.onerror = () => reject(new Error('Failed to read blob'));
                 reader.readAsDataURL(blob);
             });
         },
-        // IMPORTANT: Strip Base64 images to avoid sending them back to the API (Fixes 413)
+        /**
+         * Sanitizes text by removing Base64 image data to avoid 413 errors
+         * @param {string} text - Text to sanitize
+         * @returns {string} Sanitized text
+         */
         sanitizeTextForApi(text) {
-            if (!text) return "";
+            if (!text || typeof text !== 'string') return "";
             // Regex to find [IMAGE: prompt](data:image/...) and replace the data part
             return text.replace(
                 /\[IMAGE: (.*?)\]\((data:image\/[^)]+)\)/g, 
                 '[Generated Image: $1]' 
             );
+        },
+        /**
+         * Debounces a function call
+         * @param {Function} func - Function to debounce
+         * @param {number} wait - Wait time in milliseconds
+         * @returns {Function} Debounced function
+         */
+        debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
         }
     },
 
@@ -250,17 +294,33 @@ const ChatApp = {
                 toast.addEventListener('transitionend', () => toast.remove());
             }, 3000);
         },
+        /**
+         * Scrolls to bottom if user is near the bottom (within threshold)
+         */
         scrollToBottom() {
             const area = this.elements.messageArea;
             if (!area) return;
+            
             const threshold = 100;
             const isNearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < threshold;
+            
             if (isNearBottom) {
-                area.scrollTop = area.scrollHeight;
+                // Use requestAnimationFrame for smoother scrolling
+                requestAnimationFrame(() => {
+                    area.scrollTop = area.scrollHeight;
+                });
             }
         },
+        /**
+         * Forces scroll to bottom regardless of current position
+         */
         forceScrollToBottom() {
-            this.elements.messageArea.scrollTop = this.elements.messageArea.scrollHeight;
+            const area = this.elements.messageArea;
+            if (!area) return;
+            
+            requestAnimationFrame(() => {
+                area.scrollTop = area.scrollHeight;
+            });
         },
         clearChatArea() {
             this.elements.messageArea.innerHTML = '';
@@ -278,31 +338,72 @@ const ChatApp = {
         toggleStopButton(isGenerating) {
             this.elements.stopButton.style.display = isGenerating ? 'flex' : 'none';
         },
+        /**
+         * Renders the sidebar with conversation history
+         */
         renderSidebar() {
-            this.elements.conversationList.innerHTML = '';
-            const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => b.id - a.id);
-            sortedConversations.forEach(chat => {
+            const list = this.elements.conversationList;
+            if (!list) return;
+            
+            list.innerHTML = '';
+            
+            if (ChatApp.State.allConversations.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'conversation-empty';
+                emptyState.textContent = 'No conversations yet';
+                emptyState.setAttribute('role', 'status');
+                emptyState.setAttribute('aria-live', 'polite');
+                list.appendChild(emptyState);
+                return;
+            }
+            
+            const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => (b.id || 0) - (a.id || 0));
+            
+            sortedConversations.forEach((chat, index) => {
                 const item = document.createElement('div');
                 item.className = 'conversation-item';
                 item.dataset.chatId = chat.id;
-                if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); }
+                
+                if (chat.id === ChatApp.State.currentChatId) {
+                    item.classList.add('active');
+                    item.setAttribute('aria-current', 'true');
+                }
+                
                 const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
                 
                 item.setAttribute('role', 'button');
                 item.setAttribute('tabindex', '0');
+                item.setAttribute('aria-label', `Load conversation: ${title}`);
 
                 item.innerHTML = `
                     <span class="conversation-title" data-tooltip="${title}">${title}</span>
-                    <button type="button" class="delete-btn" data-tooltip="Delete Chat">${ChatApp.Config.ICONS.DELETE}</button>`;
+                    <button type="button" class="delete-btn" data-tooltip="Delete Chat" aria-label="Delete conversation: ${title}">${ChatApp.Config.ICONS.DELETE}</button>`;
                 
-                item.addEventListener('click', () => ChatApp.Controller.loadChat(chat.id));
-                item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ChatApp.Controller.loadChat(chat.id); } });
-
-                item.querySelector('.delete-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    ChatApp.Controller.deleteConversation(chat.id);
+                // Click handler
+                item.addEventListener('click', (e) => {
+                    if (!e.target.closest('.delete-btn')) {
+                        ChatApp.Controller.loadChat(chat.id);
+                    }
                 });
-                this.elements.conversationList.appendChild(item);
+                
+                // Keyboard handler
+                item.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        ChatApp.Controller.loadChat(chat.id);
+                    }
+                });
+
+                // Delete button handler
+                const deleteBtn = item.querySelector('.delete-btn');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        ChatApp.Controller.deleteConversation(chat.id);
+                    });
+                }
+                
+                list.appendChild(item);
             });
         },
         async renderMessage(message, isTyping = false) {
@@ -711,23 +812,42 @@ const ChatApp = {
                 return "Titled Chat";
             }
         },
+        /**
+         * Fetches text response from the API
+         * @param {Array} apiContents - Conversation contents
+         * @param {Object} systemInstruction - System instruction
+         * @param {AbortSignal} signal - Abort signal for cancellation
+         * @param {Object} toolsConfig - Tools configuration
+         * @returns {Promise<Object>} Response with parts and grounding metadata
+         */
         async fetchTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
+            if (!Array.isArray(apiContents)) {
+                throw new Error('Invalid apiContents: must be an array');
+            }
+            
             // Fix Error 413: Sanitize the history to remove large Base64 strings from context
-            const sanitizedContents = apiContents.map(content => ({
-                role: content.role,
-                parts: content.parts.map(part => {
-                    if (part.text) {
-                        return { text: ChatApp.Utils.sanitizeTextForApi(part.text) };
-                    }
-                    return part;
-                })
-            }));
+            const sanitizedContents = apiContents.map(content => {
+                if (!content?.role || !Array.isArray(content.parts)) {
+                    console.warn('Invalid content structure:', content);
+                    return content;
+                }
+                return {
+                    role: content.role,
+                    parts: content.parts.map(part => {
+                        if (part?.text) {
+                            return { text: ChatApp.Utils.sanitizeTextForApi(part.text) };
+                        }
+                        return part;
+                    })
+                };
+            });
 
             const payload = {
                 contents: sanitizedContents,
                 systemInstruction: systemInstruction,
                 toolsConfig: toolsConfig
             };
+            
             try {
                 const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
                     method: "POST",
@@ -735,30 +855,76 @@ const ChatApp = {
                     body: JSON.stringify(payload),
                     signal: signal 
                 });
-                if (response.ok) {
-                    const data = await response.json();
-                    const candidate = data?.candidates?.[0];
-                    if (candidate?.content?.parts) {
-                        return { parts: candidate.content.parts, groundingMetadata: candidate.groundingMetadata };
-                    }
-                    throw new Error("Invalid response.");
+                
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => 'Unknown error');
+                    throw new Error(`API Error: ${response.status} - ${errorText}`);
                 }
-                throw new Error(`API Error: ${response.status}`);
+                
+                const data = await response.json();
+                const candidate = data?.candidates?.[0];
+                
+                if (!candidate?.content?.parts) {
+                    throw new Error("Invalid response: missing candidate content");
+                }
+                
+                return { 
+                    parts: candidate.content.parts, 
+                    groundingMetadata: candidate.groundingMetadata || null 
+                };
             } catch (error) {
-                if (error.name === 'AbortError') throw new Error("Generation stopped by user.");
+                if (error.name === 'AbortError') {
+                    throw new Error("Generation stopped by user.");
+                }
+                if (error instanceof TypeError && error.message.includes('fetch')) {
+                    throw new Error("Network error: Please check your connection.");
+                }
                 throw error;
             }
         },
+        /**
+         * Fetches an image from the image generation API
+         * @param {Object} params - Image generation parameters
+         * @param {string} params.prompt - Image prompt
+         * @param {number} [params.height] - Image height
+         * @param {number} [params.seed] - Random seed
+         * @param {string} [params.model] - Model name
+         * @returns {Promise<Blob>} Image blob
+         */
         async fetchImageResponse(params) {
-            const { prompt, height, seed, model } = params;
-            if (!prompt) throw new Error("Prompt required.");
-            const queryParams = new URLSearchParams({ model: model || 'flux', enhance: 'true', nologo: 'true' });
-            if (height) queryParams.set('height', height);
-            if (seed) queryParams.set('seed', seed);
-            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodeURIComponent(prompt)}?${queryParams.toString()}`;
-            const response = await fetch(fullUrl);
-            if (!response.ok) throw new Error(`Image error: ${response.status}`);
-            return response.blob(); // Return Blob here to be converted to Base64 later
+            const { prompt, height, seed, model } = params || {};
+            
+            if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) {
+                throw new Error("Prompt required and must be a non-empty string.");
+            }
+            
+            const queryParams = new URLSearchParams({ 
+                model: model || 'flux', 
+                enhance: 'true', 
+                nologo: 'true' 
+            });
+            
+            if (height && Number.isInteger(height) && height > 0) {
+                queryParams.set('height', height.toString());
+            }
+            if (seed && Number.isInteger(seed)) {
+                queryParams.set('seed', seed.toString());
+            }
+            
+            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodeURIComponent(prompt.trim())}?${queryParams.toString()}`;
+            
+            try {
+                const response = await fetch(fullUrl);
+                if (!response.ok) {
+                    throw new Error(`Image error: ${response.status} ${response.statusText}`);
+                }
+                return await response.blob();
+            } catch (error) {
+                if (error instanceof TypeError && error.message.includes('fetch')) {
+                    throw new Error("Network error: Failed to fetch image.");
+                }
+                throw error;
+            }
         }
     },
     
@@ -790,19 +956,40 @@ const ChatApp = {
             elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
             elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
-            elements.sidebarToggle.addEventListener('click', () => elements.body.classList.toggle('sidebar-open'));
+            elements.sidebarToggle.addEventListener('click', () => {
+                const isOpen = elements.body.classList.toggle('sidebar-open');
+                elements.sidebarToggle.setAttribute('aria-expanded', isOpen.toString());
+            });
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
             elements.messageArea.addEventListener('click', Controller.handleMessageAreaClick.bind(Controller));
             elements.fullscreenCloseBtn.addEventListener('click', Controller.closeFullscreenPreview.bind(Controller));
             elements.fullscreenOverlay.addEventListener('click', (e) => { if (e.target === elements.fullscreenOverlay) { Controller.closeFullscreenPreview(); } });
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) { Controller.closeFullscreenPreview(); } });
 
-            elements.body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.add('drag-over'); });
-            elements.body.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) { elements.body.classList.remove('drag-over'); } });
+            // Drag and drop handlers
+            elements.body.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                elements.body.classList.add('drag-over');
+            });
+            
+            elements.body.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Only remove drag-over if we're actually leaving the body
+                if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) {
+                    elements.body.classList.remove('drag-over');
+                }
+            });
+            
             elements.body.addEventListener('drop', (e) => {
-                e.preventDefault(); e.stopPropagation();
+                e.preventDefault();
+                e.stopPropagation();
                 elements.body.classList.remove('drag-over');
-                if (e.dataTransfer?.files?.length > 0) { Controller.addFilesToState(e.dataTransfer.files); }
+                
+                if (e.dataTransfer?.files?.length > 0) {
+                    Controller.addFilesToState(e.dataTransfer.files);
+                }
             });
         },
         startNewChat() {
@@ -870,22 +1057,54 @@ const ChatApp = {
             await ChatApp.UI.renderMessage(userMessage);
             await this._generateText();
         },
+        /**
+         * Adds files to the attached files state
+         * @param {FileList|Array<File>} files - Files to add
+         */
         addFilesToState(files) {
+            if (!files || files.length === 0) return;
+            
             const newFiles = Array.from(files);
-            if (ChatApp.State.attachedFiles.length + newFiles.length > 5) {
-                ChatApp.UI.showToast('Max 5 files.', 'error');
+            const MAX_FILES = 5;
+            
+            if (ChatApp.State.attachedFiles.length + newFiles.length > MAX_FILES) {
+                ChatApp.UI.showToast(`Maximum ${MAX_FILES} files allowed.`, 'error');
                 return;
             }
+            
             const validFiles = newFiles.filter(file => {
-                if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) {
-                    ChatApp.UI.showToast(`File "${file.name}" too large.`, 'error');
+                if (!(file instanceof File)) {
+                    console.warn('Invalid file object:', file);
                     return false;
                 }
+                
+                if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) {
+                    const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+                    const maxMB = (ChatApp.Config.MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(2);
+                    ChatApp.UI.showToast(
+                        `File "${ChatApp.Utils.escapeHTML(file.name)}" is too large (${sizeMB}MB). Maximum: ${maxMB}MB.`, 
+                        'error'
+                    );
+                    return false;
+                }
+                
+                // Check for duplicate files by name and size
+                const isDuplicate = ChatApp.State.attachedFiles.some(
+                    existing => existing.name === file.name && existing.size === file.size
+                );
+                
+                if (isDuplicate) {
+                    ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" is already attached.`, 'error');
+                    return false;
+                }
+                
                 return true;
             });
+            
             if (validFiles.length > 0) {
                 ChatApp.State.attachedFiles.push(...validFiles);
                 ChatApp.UI.renderFilePreviews();
+                ChatApp.UI.showToast(`${validFiles.length} file(s) attached.`);
             }
         },
         handleFileSelection(event) {
@@ -959,28 +1178,61 @@ const ChatApp = {
                 ChatApp.State.setGenerating(false);
             }
         },
+        /**
+         * Processes text to replace image generation tags with actual images
+         * @param {string} rawText - Text containing image generation tags
+         * @returns {Promise<string>} Processed text with image URLs
+         */
         async processResponseForImages(rawText) {
+            if (!rawText || typeof rawText !== 'string') return rawText;
+            
             const imageRegex = /\[IMAGE: (\{[\s\S]*?\})\]/g;
             const matches = Array.from(rawText.matchAll(imageRegex));
+            
             if (matches.length === 0) return rawText;
         
             const replacementPromises = matches.map(async (match) => {
                 const [originalTag, jsonString] = match;
                 try {
                     const params = JSON.parse(jsonString);
+                    
+                    if (!params.prompt) {
+                        throw new Error('Missing prompt in image parameters');
+                    }
+                    
                     // Fetch blob from API
                     const imageBlob = await ChatApp.Api.fetchImageResponse(params);
+                    
+                    // Validate blob
+                    if (!(imageBlob instanceof Blob) || imageBlob.size === 0) {
+                        throw new Error('Invalid image blob received');
+                    }
+                    
                     // Convert blob to Base64 so it can be stored in JSON/LocalStorage
                     const base64Url = await ChatApp.Utils.blobToBase64(imageBlob);
                     
-                    return { original: originalTag, replacement: `[IMAGE: ${ChatApp.Utils.escapeHTML(params.prompt)}](${base64Url})` };
+                    const safePrompt = ChatApp.Utils.escapeHTML(params.prompt);
+                    return { 
+                        original: originalTag, 
+                        replacement: `[IMAGE: ${safePrompt}](${base64Url})` 
+                    };
                 } catch (error) {
-                    return { original: originalTag, replacement: `[Error: ${error.message}]` };
+                    console.error('Image generation error:', error);
+                    const errorMsg = error.message || 'Unknown error';
+                    return { 
+                        original: originalTag, 
+                        replacement: `[Image Error: ${ChatApp.Utils.escapeHTML(errorMsg)}]` 
+                    };
                 }
             });
+            
             const replacements = await Promise.all(replacementPromises);
             let processedText = rawText;
-            replacements.forEach(({ original, replacement }) => { processedText = processedText.replace(original, replacement); });
+            
+            replacements.forEach(({ original, replacement }) => {
+                processedText = processedText.replace(original, replacement);
+            });
+            
             return processedText;
         },
         completeGeneration(botMessage) {
@@ -1022,18 +1274,48 @@ const ChatApp = {
                 setTimeout(() => ChatApp.UI.forceScrollToBottom(), 0);
             })();
         },
+        /**
+         * Deletes a message from the current conversation
+         * @param {string} messageId - ID of the message to delete
+         */
         async deleteMessage(messageId) {
-            if (!confirm('Delete message?')) return;
+            if (!messageId) return;
+            
+            if (!confirm('Delete this message?')) return;
+            
             ChatApp.State.removeMessage(messageId);
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
-            if (messageEl) { messageEl.classList.add('fade-out'); setTimeout(() => messageEl.remove(), 400); }
-            this.saveCurrentChat();
+            
+            if (messageEl) {
+                messageEl.classList.add('fade-out');
+                setTimeout(() => {
+                    messageEl.remove();
+                    ChatApp.UI.scrollToBottom();
+                }, 400);
+            }
+            
+            await this.saveCurrentChat();
+            ChatApp.UI.showToast('Message deleted.');
         },
+        /**
+         * Deletes a conversation from history
+         * @param {number} chatId - ID of the chat to delete
+         */
         deleteConversation(chatId) {
-            if (!confirm('Delete chat?')) return;
+            if (!chatId) return;
+            
+            if (!confirm('Delete this conversation? This action cannot be undone.')) return;
+            
             ChatApp.State.allConversations = ChatApp.State.allConversations.filter(c => c.id !== chatId);
             ChatApp.Store.saveAllConversations();
-            if (ChatApp.State.currentChatId === chatId) { this.startNewChat(); } else { ChatApp.UI.renderSidebar(); }
+            
+            if (ChatApp.State.currentChatId === chatId) {
+                this.startNewChat();
+            } else {
+                ChatApp.UI.renderSidebar();
+            }
+            
+            ChatApp.UI.showToast('Conversation deleted.');
         },
         downloadAllData() {
             const dataStr = JSON.stringify(ChatApp.State.allConversations, null, 2);
