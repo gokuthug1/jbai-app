@@ -11,7 +11,7 @@ app.use(express.json());
 
 const { GOOGLE_API_KEY } = process.env;
 
-const MODEL_NAME = 'gemini-2.5-flash'; 
+const MODEL_NAME = 'gemini-3-flash-preview'; 
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 
 /**
