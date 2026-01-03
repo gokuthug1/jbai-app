@@ -12,7 +12,7 @@ app.use(express.json());
 const { GOOGLE_API_KEY } = process.env;
 
 const MODEL_NAME = 'gemini-3-flash-preview'; 
-const TITLE_MODEL_NAME = 'gemini-2.5-pro';
+const TITLE_MODEL_NAME = 'gemini-3-flash-preview';
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 const TITLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${TITLE_MODEL_NAME}:generateContent`;
 
@@ -151,7 +151,7 @@ app.post('/api/server', async (req, res) => {
 
 /**
  * POST /api/title - Endpoint for generating conversation titles
- * Uses gemini-2.5-pro for better title generation quality
+ * Uses gemini-3-flash-preview (same as main model to avoid rate limits)
  */
 app.post('/api/title', async (req, res) => {
   // Validate API key

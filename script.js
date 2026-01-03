@@ -828,7 +828,7 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
 - For single-file HTML responses (without file requests), HTML must be self-contained in one markdown block. When using [FILES: {...}], you can include multiple files.`;
         },
         /**
-         * Fetches a title for a conversation using gemini-2.5-pro
+         * Fetches a title for a conversation using gemini-3-flash-preview
          * @param {Array} chatHistory - Conversation history
          * @returns {Promise<string>} Generated title
          */
