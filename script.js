@@ -1264,6 +1264,7 @@ const ChatApp = {
                 for (let i = 0; i < processedParts.length; i++) {
                     if (processedParts[i].text) {
                         processedParts[i].text = await this.processResponseForImages(processedParts[i].text);
+                        processedParts[i].text = await this.processResponseForFiles(processedParts[i].text);
                     }
                 }
 
@@ -1349,6 +1350,84 @@ const ChatApp = {
                     return { 
                         original: originalTag, 
                         replacement: `[Image Error: ${ChatApp.Utils.escapeHTML(errorMsg)}]` 
+                    };
+                }
+            });
+            
+            const replacements = await Promise.all(replacementPromises);
+            let processedText = rawText;
+            
+            replacements.forEach(({ original, replacement }) => {
+                processedText = processedText.replace(original, replacement);
+            });
+            
+            return processedText;
+        },
+        /**
+         * Processes text to replace file creation tags with download links
+         * @param {string} rawText - Text containing file creation tags
+         * @returns {Promise<string>} Processed text with file download blocks
+         */
+        async processResponseForFiles(rawText) {
+            if (!rawText || typeof rawText !== 'string') return rawText;
+            if (typeof JSZip === 'undefined') {
+                console.warn('JSZip library not loaded. File creation feature unavailable.');
+                return rawText;
+            }
+            
+            const filesRegex = /\[FILES: (\{[\s\S]*?\})\]/g;
+            const matches = Array.from(rawText.matchAll(filesRegex));
+            
+            if (matches.length === 0) return rawText;
+        
+            const replacementPromises = matches.map(async (match) => {
+                const [originalTag, jsonString] = match;
+                try {
+                    const params = JSON.parse(jsonString);
+                    
+                    if (!params.files || !Array.isArray(params.files) || params.files.length === 0) {
+                        throw new Error('Missing or invalid files array in file parameters');
+                    }
+                    
+                    // Validate files structure
+                    for (const file of params.files) {
+                        if (!file.name || file.content === undefined) {
+                            throw new Error('Each file must have a name and content property');
+                        }
+                    }
+                    
+                    // Create zip file
+                    const zip = new JSZip();
+                    for (const file of params.files) {
+                        zip.file(file.name, file.content);
+                    }
+                    
+                    // Generate zip blob
+                    const zipBlob = await zip.generateAsync({ type: 'blob' });
+                    
+                    // Create blob URL for download
+                    const blobUrl = URL.createObjectURL(zipBlob);
+                    
+                    // Create a unique ID for this file block
+                    const blockId = `files-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    
+                    // Store the blob URL and file info in a way that can be retrieved later
+                    // We'll use a data attribute approach
+                    const fileList = params.files.map(f => f.name).join(', ');
+                    const safeFileList = ChatApp.Utils.escapeHTML(fileList);
+                    const fileCount = params.files.length;
+                    
+                    // Return a placeholder that will be processed by the formatter
+                    return { 
+                        original: originalTag, 
+                        replacement: `[FILES: ${blockId}](${blobUrl}|${safeFileList}|${fileCount})` 
+                    };
+                } catch (error) {
+                    console.error('File creation error:', error);
+                    const errorMsg = error.message || 'Unknown error';
+                    return { 
+                        original: originalTag, 
+                        replacement: `[File Creation Error: ${ChatApp.Utils.escapeHTML(errorMsg)}]` 
                     };
                 }
             });

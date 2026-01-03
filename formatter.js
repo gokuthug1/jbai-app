@@ -103,6 +103,11 @@ export const MessageFormatter = {
             return generatePlaceholder({ type: 'image', alt: alt, url: url });
         });
 
+        // 7. Custom Files Syntax [FILES: blockId](blobUrl|fileList|fileCount)
+        processedText = processedText.replace(/\[FILES: ([^\]]+?)\]\(([^|]+)\|([^|]+)\|(\d+)\)/g, (match, blockId, blobUrl, fileList, fileCount) => {
+            return generatePlaceholder({ type: 'files', blockId: blockId, blobUrl: blobUrl, fileList: fileList, fileCount: parseInt(fileCount, 10) });
+        });
+
         return { processedText, blocks };
     },
 
@@ -264,6 +269,7 @@ export const MessageFormatter = {
             if (block.type === 'math-inline') return `<span class="math-inline">${SyntaxHighlighter.escapeHtml(block.content)}</span>`;
             if (block.type === 'svg') return this._renderSvgPreview(block);
             if (block.type === 'image') return this._renderImageBlock(block);
+            if (block.type === 'files') return this._renderFilesBlock(block);
             return '';
         }));
         return processedParts.join('');
@@ -303,6 +309,37 @@ export const MessageFormatter = {
         
         const safeFilename = (safeAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
         return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${safeAlt}</em></p><div class="image-container"><img src="${block.url}" alt="${safeAlt}" class="generated-image"><a href="${block.url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
+    },
+
+    _renderFilesBlock(block) {
+        const safeFileList = block.fileList;
+        const fileCount = block.fileCount;
+        const blobUrl = block.blobUrl;
+        const safeFilename = `files-${Date.now()}.zip`;
+        
+        return `<div class="files-download-wrapper">
+            <div class="files-download-container">
+                <div class="files-download-info">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="files-icon">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    <div class="files-download-details">
+                        <div class="files-download-title">${fileCount} file${fileCount !== 1 ? 's' : ''} ready for download</div>
+                        <div class="files-download-list">${safeFileList}</div>
+                    </div>
+                </div>
+                <a href="${blobUrl}" download="${safeFilename}" class="download-files-button" data-tooltip="Download all files as ZIP">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                    </svg>
+                    Download ZIP
+                </a>
+            </div>
+        </div>`;
     },
 
     _wrapInParagraphs(html) {
