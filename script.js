@@ -814,9 +814,18 @@ const ChatApp = {
 --- General Rules ---
 - Use standard Markdown in your responses (including tables).
 - To generate an image, use: \`[IMAGE: { "prompt": "...", "height": number, "seed": number }]\`.
-- To create multiple files with a download link, use: \`[FILES: { "files": [{"name": "filename.ext", "content": "file content"}, ...] }]\`. This will create a ZIP file that users can download. Always use this format when the user requests multiple files or a download link for files.
+
+--- MULTIPLE FILES & DOWNLOAD (CRITICAL) ---
+When users ask for multiple files, separate files, or a download link, you MUST use this format:
+\`[FILES: { "files": [{"name": "file1.ext", "content": "content here"}, {"name": "file2.ext", "content": "content here"}] }]\`
+
+EXAMPLE:
+\`[FILES: { "files": [{"name": "index.html", "content": "<!DOCTYPE html>\\n<html>...</html>"}, {"name": "style.css", "content": "body { margin: 0; }"}, {"name": "script.js", "content": "console.log('hello');"}] }]\`
+
+This creates an automatic ZIP download button. JSZip is integrated. DO NOT say you cannot create download links - use this format instead.
+
 - Current Date/Time: ${new Date().toLocaleString()}
-- HTML must be self-contained in a single markdown block.`;
+- For single-file HTML responses (without file requests), HTML must be self-contained in one markdown block. When using [FILES: {...}], you can include multiple files.`;
         },
         /**
          * Fetches a title for a conversation using gemini-2.5-pro
