@@ -822,6 +822,13 @@ When users ask for multiple files, separate files, or a download link, you MUST 
 EXAMPLE:
 \`[FILES: { "files": [{"name": "index.html", "content": "<!DOCTYPE html>\\n<html>...</html>"}, {"name": "style.css", "content": "body { margin: 0; }"}, {"name": "script.js", "content": "console.log('hello');"}] }]\`
 
+CRITICAL: In JSON "content" fields, you MUST escape special characters:
+- Newlines: use \\n (not actual newlines)
+- Quotes: use \\" (not just ")
+- Backslashes: use \\\\ (not just \\)
+- Tabs: use \\t
+The content is a JSON string, so ALL special characters must be properly escaped!
+
 This creates an automatic ZIP download button. JSZip is integrated. DO NOT say you cannot create download links - use this format instead.
 
 - Current Date/Time: ${new Date().toLocaleString()}
@@ -1385,13 +1392,71 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
                 return rawText;
             }
             
-            const filesRegex = /\[FILES: (\{[\s\S]*?\})\]/g;
-            const matches = Array.from(rawText.matchAll(filesRegex));
+            // Find all [FILES: {...}] blocks by matching balanced braces
+            const matches = [];
+            let searchIndex = 0;
+            
+            while ((searchIndex = rawText.indexOf('[FILES:', searchIndex)) !== -1) {
+                const jsonStart = rawText.indexOf('{', searchIndex);
+                if (jsonStart === -1) {
+                    searchIndex++;
+                    continue;
+                }
+                
+                // Count braces to find matching closing brace (handles nested objects)
+                let braceCount = 0;
+                let inString = false;
+                let escapeNext = false;
+                let jsonEnd = -1;
+                
+                for (let i = jsonStart; i < rawText.length; i++) {
+                    const char = rawText[i];
+                    
+                    if (escapeNext) {
+                        escapeNext = false;
+                        continue;
+                    }
+                    
+                    if (char === '\\') {
+                        escapeNext = true;
+                        continue;
+                    }
+                    
+                    if (char === '"') {
+                        inString = !inString;
+                        continue;
+                    }
+                    
+                    if (!inString) {
+                        if (char === '{') braceCount++;
+                        if (char === '}') {
+                            braceCount--;
+                            if (braceCount === 0) {
+                                jsonEnd = i;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (jsonEnd !== -1) {
+                    const endIndex = rawText.indexOf(']', jsonEnd);
+                    if (endIndex !== -1) {
+                        const fullMatch = rawText.substring(searchIndex, endIndex + 1);
+                        const jsonString = rawText.substring(jsonStart, jsonEnd + 1);
+                        matches.push([fullMatch, jsonString]);
+                        searchIndex = endIndex + 1;
+                        continue;
+                    }
+                }
+                searchIndex++;
+            }
             
             if (matches.length === 0) return rawText;
         
             const replacementPromises = matches.map(async (match) => {
-                const [originalTag, jsonString] = match;
+                const originalTag = match[0];
+                const jsonString = match[1];
                 try {
                     const params = JSON.parse(jsonString);
                     
