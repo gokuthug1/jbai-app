@@ -1,7 +1,10 @@
+--- START OF FILE image.js ---
+
 import axios from "axios";
 
+// Updated to use the correct Imagen model and predict endpoint
 const IMAGE_MODEL_NAME = "gemini-2.5-flash-image";
-const IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL_NAME}:generateContent`;
+const IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL_NAME}:predict`;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -26,11 +29,15 @@ export default async function handler(req, res) {
       });
     }
 
+    // Correct payload for Imagen
     const payload = {
-      contents: [{
-        role: "user",
-        parts: [{ text: prompt.trim() }]
-      }]
+      instances: [
+        { prompt: prompt.trim() }
+      ],
+      parameters: {
+        sampleCount: 1,
+        aspectRatio: "1:1"
+      }
     };
 
     const response = await axios.post(
@@ -39,23 +46,25 @@ export default async function handler(req, res) {
       { headers: { "Content-Type": "application/json" }, timeout: 60000 }
     );
 
-    const parts = response.data?.candidates?.[0]?.content?.parts;
-    const imagePart = parts?.find(p => p.inlineData);
-
-    if (!imagePart) {
-      throw new Error("No image data returned");
+    // Correct response parsing for Imagen
+    const predictions = response.data?.predictions;
+    if (!predictions || predictions.length === 0) {
+      throw new Error("No predictions returned");
     }
 
-    const buffer = Buffer.from(imagePart.inlineData.data, "base64");
+    const imageObj = predictions[0];
+    const buffer = Buffer.from(imageObj.bytesBase64Encoded, "base64");
+    const mimeType = imageObj.mimeType || "image/png";
 
-    res.setHeader("Content-Type", imagePart.inlineData.mimeType || "image/png");
+    res.setHeader("Content-Type", mimeType);
     res.send(buffer);
 
   } catch (error) {
     console.error("Image API error:", error.response?.data || error.message);
     res.status(500).json({
       error: "IMAGE_GENERATION_FAILED",
-      message: "Failed to generate image"
+      message: "Failed to generate image",
+      details: error.response?.data
     });
   }
 }
