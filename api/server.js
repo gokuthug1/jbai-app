@@ -12,11 +12,11 @@ app.use(express.json());
 const { GOOGLE_API_KEY } = process.env;
 
 // Text Generation Models
-const MODEL_NAME = 'gemini-2.5-flash'; 
+const MODEL_NAME = 'gemini-2.5-flash''; 
 const TITLE_MODEL_NAME = 'gemini-2.5-flash-lite';
 
 // Image Generation Model (MUST use Imagen, not Gemini)
-const IMAGE_MODEL_NAME = 'imagen-4.0-generate-001e';
+const IMAGE_MODEL_NAME = 'imagen-4.0-fast-generate-001';
 
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 const TITLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${TITLE_MODEL_NAME}:generateContent`;
@@ -48,8 +48,15 @@ app.post('/api/server', async (req, res) => {
     // Build tools array
     const tools = [];
     if (toolsConfig && typeof toolsConfig === 'object') {
-      if (toolsConfig.googleSearch === true) tools.push({ googleSearch: {} });
-      if (toolsConfig.codeExecution === true) tools.push({ codeExecution: {} });
+      // If Agent Mode is active, FORCE specific tools to be enabled to allow autonomy
+      const isAgent = toolsConfig.agentMode === true;
+      
+      if (toolsConfig.googleSearch === true || isAgent) {
+        tools.push({ googleSearch: {} });
+      }
+      if (toolsConfig.codeExecution === true || isAgent) {
+        tools.push({ codeExecution: {} });
+      }
     }
 
     const payload = {
