@@ -17,7 +17,7 @@ const ChatApp = {
         DEFAULT_TOOLS: {
             googleSearch: false,
             codeExecution: false,
-            agentMode: false // New Agent Mode toggle
+            agentMode: false
         },
         TYPING_SPEED_MS: 0,
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
@@ -35,7 +35,8 @@ const ChatApp = {
             CHEVRON_DOWN: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
             STOP: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"/></svg>`,
             PLAY: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
-            PAUSE: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`
+            PAUSE: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`,
+            AGENT_ACTIVITY: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"></path><path d="M12 6v6l4 2"></path></svg>`
         }
     },
 
@@ -175,7 +176,6 @@ const ChatApp = {
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.TOOLS);
                 const config = stored ? JSON.parse(stored) : ChatApp.Config.DEFAULT_TOOLS;
-                // Ensure default structure matches current version
                 const finalConfig = { ...ChatApp.Config.DEFAULT_TOOLS, ...config };
                 ChatApp.State.toolsConfig = finalConfig;
                 return finalConfig;
@@ -710,15 +710,17 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
 3. **REFLECT**: Look at the results of your actions. Did you get what you needed? If not, adjust your plan.
 4. **SYNTHESIZE**: Only provide the final answer once you have sufficient information.
 
---- REASONING FORMAT ---
-You MUST structure your thinking process clearly using the following format before your final answer:
+--- FORMATTING RULES (CRITICAL) ---
+You MUST wrap your internal thought process, planning, tool usage, and observations inside \`<agent_process>\` and \`</agent_process>\` tags.
+Your final answer to the user must be OUTSIDE these tags.
 
-**Plan:** [Step-by-step breakdown of what you will do]
-**Thought:** [Your internal monologue about the current state]
-**Action:** [I will search for X / I will run code to Y]
-... (Tool usage happens here) ...
-**Observation:** [What you learned from the tool]
-**Conclusion:** [Your final answer based on the evidence]
+Example:
+<agent_process>
+**Plan:** I need to find the latest stock price for Apple.
+**Action:** Google Search for "Apple stock price today".
+**Observation:** Found price: $150.
+</agent_process>
+The current stock price for Apple is $150.
 
 --- CAPABILITIES ---
 - **Search**: Use Google Search to find real-time info, docs, or news.
@@ -913,7 +915,6 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const toolsConfig = ChatApp.State.toolsConfig;
                 const isAgentMode = toolsConfig.agentMode === true;
                 
-                // Switch system prompt based on Agent Mode
                 const systemText = await ChatApp.Api.getSystemContext(isAgentMode);
                 const systemInstruction = { parts: [{ text: systemText }] };
                 
@@ -1168,6 +1169,15 @@ You are a digital professional. Be concise, accurate, and effective.`;
         handleMessageAreaClick(event) {
             const toggleBtn = event.target.closest('.collapse-toggle-button');
             if (toggleBtn) { const wrapper = toggleBtn.closest('.code-block-wrapper'); if (wrapper) wrapper.classList.toggle('is-collapsed'); return; }
+            
+            // Handle Agent Process Toggle
+            const agentHeader = event.target.closest('.agent-process-header');
+            if (agentHeader) {
+                const wrapper = agentHeader.closest('.agent-process-container');
+                if (wrapper) wrapper.classList.toggle('collapsed');
+                return;
+            }
+
             const mediaTarget = event.target.closest('.generated-image, .attachment-media, .svg-render-box img');
             const htmlBox = event.target.closest('.html-render-box');
             if (mediaTarget) { event.preventDefault(); if (mediaTarget.tagName === 'IMG') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'image'); else if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); } 

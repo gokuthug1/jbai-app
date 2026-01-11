@@ -5,6 +5,7 @@
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes thinking-dot { 0%, 100% { transform: scale(0.5); opacity: 0.5; } 50% { transform: scale(1); opacity: 1; } }
+@keyframes pulse { 0% { opacity: 0.6; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0.6; transform: scale(0.95); } }
 
 :root { 
     /* --- LIGHT THEME (White & Black) --- */
@@ -46,6 +47,13 @@
     
     --terminal-header-bg: #e0e0e0;
     --terminal-body-bg: #f4f4f4;
+
+    /* Agent Process Colors */
+    --agent-bg: #f0f7ff;
+    --agent-border: #cce5ff;
+    --agent-header-bg: #e6f2ff;
+    --agent-text: #004085;
+    --agent-spinner: #007bff;
 
     /* Callout Colors (GitHub Light) */
     --callout-note-bg: #f3f5f8; --callout-note-border: #0969da;
@@ -104,6 +112,13 @@
     --terminal-header-bg: #2d2d2d;
     --terminal-body-bg: #1e1e1e;
 
+    /* Agent Process Colors */
+    --agent-bg: #1b2636;
+    --agent-border: #2a3b55;
+    --agent-header-bg: #223042;
+    --agent-text: #99c2ff;
+    --agent-spinner: #58a6ff;
+
     /* Callout Colors (GitHub Dark) */
     --callout-note-bg: rgba(56,139,253,0.15); --callout-note-border: #2f81f7;
     --callout-tip-bg: rgba(46,160,67,0.15); --callout-tip-border: #3fb950;
@@ -152,6 +167,12 @@
     --terminal-header-bg: #191a21;
     --terminal-body-bg: #21222c;
     
+    --agent-bg: #2b2d3d;
+    --agent-border: #6272a4;
+    --agent-header-bg: #343746;
+    --agent-text: #bd93f9;
+    --agent-spinner: #ff79c6;
+    
     --callout-note-bg: rgba(139,233,253,0.15); --callout-note-border: #8be9fd;
     --callout-tip-bg: rgba(80,250,123,0.15); --callout-tip-border: #50fa7b;
     --callout-important-bg: rgba(189,147,249,0.15); --callout-important-border: #bd93f9;
@@ -197,6 +218,12 @@
     --citation-color: #66d9ef;
     --terminal-header-bg: #171814;
     --terminal-body-bg: #1e1f1c;
+
+    --agent-bg: #32332a;
+    --agent-border: #75715e;
+    --agent-header-bg: #3e3d32;
+    --agent-text: #a6e22e;
+    --agent-spinner: #f92672;
 
     --callout-note-bg: rgba(102,217,239,0.15); --callout-note-border: #66d9ef;
     --callout-tip-bg: rgba(166,226,46,0.15); --callout-tip-border: #a6e22e;
@@ -344,6 +371,70 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .message.user .message-content { background-color: var(--message-user-bg); border-color: transparent; }
 .message-content *:first-child { margin-top: 0; }
 .message-content *:last-child { margin-bottom: 0; }
+
+/* --- Agent Process Block --- */
+.agent-process-container {
+    margin: 12px 0;
+    background-color: var(--agent-bg);
+    border: 1px solid var(--agent-border);
+    border-radius: 8px;
+    overflow: hidden;
+    font-size: 0.9em;
+}
+
+.agent-process-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: var(--agent-header-bg);
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.2s;
+}
+
+.agent-process-header:hover {
+    background-color: color-mix(in srgb, var(--agent-header-bg) 95%, #000);
+}
+
+.agent-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--agent-text);
+    font-weight: 600;
+}
+
+.status-spinner {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--agent-spinner);
+    animation: pulse 1.5s infinite ease-in-out;
+}
+
+.agent-toggle-icon {
+    color: var(--agent-text);
+    display: flex;
+    align-items: center;
+    transition: transform 0.3s ease;
+}
+
+.agent-process-container.collapsed .agent-toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.agent-process-body {
+    padding: 12px;
+    border-top: 1px solid var(--agent-border);
+    background-color: var(--agent-bg);
+    display: block;
+}
+
+.agent-process-container.collapsed .agent-process-body {
+    display: none;
+}
 
 /* --- Markdown Typography --- */
 .message-content h1, .message-content h2, .message-content h3, .message-content h4, .message-content h5, .message-content h6 {

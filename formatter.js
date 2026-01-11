@@ -24,7 +24,7 @@ export const MessageFormatter = {
                     textContent = this._processCitations(textContent, metadata.groundingChunks);
                 }
                 
-                // 1. EXTRACT BLOCKS (Protect Code, Math, Images from Markdown parsing)
+                // 1. EXTRACT BLOCKS (Protect Code, Math, Images, and Agent Activities from Markdown parsing)
                 const { processedText, blocks } = this._extractAndReplaceBlocks(textContent);
                 
                 // 2. PROCESS MARKDOWN
@@ -68,6 +68,12 @@ export const MessageFormatter = {
             blocks.push(block);
             return `JBAIBLOCK${id}END`; 
         };
+
+        // 0. Agent Process Blocks (High priority)
+        // Detects <agent_process> ... </agent_process>
+        processedText = processedText.replace(/<agent_process>([\s\S]*?)<\/agent_process>/g, (match, content) => {
+            return generatePlaceholder({ type: 'agent-process', content: content.trim() });
+        });
 
         // 1. Code Blocks (```)
         processedText = processedText.replace(/```(\w+)?\s*\r?\n([\s\S]*?)\s*```/g, (match, lang, code) => {
@@ -260,6 +266,7 @@ export const MessageFormatter = {
             if (!match) return part;
             const block = blocks[parseInt(match[1], 10)];
             
+            if (block.type === 'agent-process') return this._renderAgentBlock(block);
             if (block.type === 'code') {
                 if (block.lang.toLowerCase() === 'html') return this._renderHtmlPreview(block);
                 return this._renderCodeBlock(block);
@@ -273,6 +280,57 @@ export const MessageFormatter = {
             return '';
         }));
         return processedParts.join('');
+    },
+
+    _renderAgentBlock(block) {
+        const content = block.content;
+        let statusText = "Processing...";
+        
+        // Simple logic to derive status from content
+        const lowerContent = content.toLowerCase();
+        if (lowerContent.includes("google search") || lowerContent.includes("searching")) statusText = "Searching the web...";
+        else if (lowerContent.includes("python") || lowerContent.includes("code execution")) statusText = "Running code...";
+        else if (lowerContent.includes("plan:")) statusText = "Planning approach...";
+        else if (lowerContent.includes("error") || lowerContent.includes("correcting")) statusText = "Self-correcting...";
+        else if (lowerContent.includes("thought:")) statusText = "Thinking...";
+
+        // Important: Recurse into markdown processing for the content of the agent block!
+        // We create a temporary map just for this block to handle internal footnotes if needed, though rare
+        const internalFootnoteMap = new Map();
+        const { processedText, blocks } = this._extractAndReplaceBlocks(content); // Handle code blocks inside thoughts
+        let internalHtml = this._processMarkdown(processedText, internalFootnoteMap);
+        
+        // We can't await here easily in synchronous flow if _reinsertBlocks wasn't async, 
+        // but _reinsertBlocks IS async. However, we are calling this from map.
+        // We need a way to process the blocks inside the agent block.
+        // For simplicity in this structure, we'll do a synchronous pass or simple escape if complexity is too high,
+        // BUT ideally we just render text. 
+        // Let's do a basic render without async block re-insertion for nested complex blocks to avoid deadlock/complexity,
+        // OR we just use SyntaxHighlighter.escapeHtml if we want to be safe.
+        // BETTER: Just format it as basic markdown.
+        
+        // *Improvement*: To fully support code blocks inside agent thought, we'd need to await.
+        // Since `_reinsertBlocks` calls this, and `_reinsertBlocks` is async, we can't easily await inside this synchronous helper 
+        // unless we change the architecture. 
+        // Compromise: We will treat content as mostly text/markdown but escape HTML tags.
+        
+        internalHtml = this._processMarkdown(content, new Map()); // Simple markdown pass
+
+        return `
+        <div class="agent-process-container collapsed">
+            <div class="agent-process-header">
+                <div class="agent-status">
+                    <span class="status-spinner"></span>
+                    <span class="status-text">${statusText}</span>
+                </div>
+                <div class="agent-toggle-icon">
+                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </div>
+            </div>
+            <div class="agent-process-body">
+                ${internalHtml}
+            </div>
+        </div>`;
     },
 
     _renderCodeBlock(block) {
@@ -345,8 +403,8 @@ export const MessageFormatter = {
     _wrapInParagraphs(html) {
         let finalHtml = '';
         // Match block-level elements. If text is NOT inside one of these, wrap it in <p>.
-        // Added: callout, math-block, hr, dl
-        const blockRegex = /(<(?:div|blockquote|ul|ol|table|h[1-6]|pre|hr|dl)[\s\S]*?<\/(?:div|blockquote|ul|ol|table|h[1-6]|pre|dl)>|<hr>|<div class="callout[\s\S]*?<\/div>|<div class="math-block"[\s\S]*?<\/div>)/;
+        // Added: callout, math-block, hr, dl, agent-process-container
+        const blockRegex = /(<(?:div|blockquote|ul|ol|table|h[1-6]|pre|hr|dl)[\s\S]*?<\/(?:div|blockquote|ul|ol|table|h[1-6]|pre|dl)>|<hr>|<div class="callout[\s\S]*?<\/div>|<div class="math-block"[\s\S]*?<\/div>|<div class="agent-process-container[\s\S]*?<\/div>)/;
         const parts = html.split(blockRegex);
         
         for (const part of parts) {
