@@ -1,5 +1,3 @@
---- START OF FILE server.js ---
-
 import express from 'express';
 import axios from 'axios';
 import cors from 'cors';
@@ -18,7 +16,7 @@ const MODEL_NAME = 'gemini-2.5-pro';
 const TITLE_MODEL_NAME = 'gemini-2.0-flash-lite';
 
 // Image Generation Model (MUST use Imagen, not Gemini)
-const IMAGE_MODEL_NAME = 'imagen-3.0-generate-001';
+const IMAGE_MODEL_NAME = 'gemini-2.5-flash-image';
 
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 const TITLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${TITLE_MODEL_NAME}:generateContent`;

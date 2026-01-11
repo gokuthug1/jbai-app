@@ -1,5 +1,3 @@
---- START OF FILE image.js ---
-
 import axios from "axios";
 
 // Updated to use the correct Imagen model and predict endpoint
