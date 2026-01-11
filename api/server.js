@@ -12,7 +12,7 @@ app.use(express.json());
 const { GOOGLE_API_KEY } = process.env;
 
 // Text Generation Models
-const MODEL_NAME = 'gemini-2.5-pro'; 
+const MODEL_NAME = 'gemini-2.5-flash'; 
 const TITLE_MODEL_NAME = 'gemini-2.0-flash-lite';
 
 // Image Generation Model (MUST use Imagen, not Gemini)
