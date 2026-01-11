@@ -16,7 +16,7 @@ const MODEL_NAME = 'gemini-2.5-flash';
 const TITLE_MODEL_NAME = 'gemini-2.5-flash-lite';
 
 // Image Generation Model (MUST use Imagen, not Gemini)
-const IMAGE_MODEL_NAME = 'gemini-2.5-flash-image';
+const IMAGE_MODEL_NAME = 'imagen-4.0-generate-001e';
 
 const GOOGLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
 const TITLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${TITLE_MODEL_NAME}:generateContent`;

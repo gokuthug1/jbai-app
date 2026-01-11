@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // Updated to use the correct Imagen model and predict endpoint
-const IMAGE_MODEL_NAME = "gemini-2.5-flash-image";
+const IMAGE_MODEL_NAME = "imagen-4.0-generate-001";
 const IMAGE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL_NAME}:predict`;
 
 export default async function handler(req, res) {
