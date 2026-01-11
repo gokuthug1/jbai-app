@@ -6,7 +6,7 @@ const ChatApp = {
         API_URLS: {
             TEXT: '/api/server',
             TITLE: '/api/title',
-            IMAGE: 'https://image.pollinations.ai/prompt/'
+            IMAGE: '/api/image'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
@@ -978,12 +978,12 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
             }
         },
         /**
-         * Fetches an image from the image generation API
+         * Fetches an image from the image generation API using Google Gemini
          * @param {Object} params - Image generation parameters
          * @param {string} params.prompt - Image prompt
-         * @param {number} [params.height] - Image height
-         * @param {number} [params.seed] - Random seed
-         * @param {string} [params.model] - Model name
+         * @param {number} [params.height] - Image height (not used by Gemini, kept for compatibility)
+         * @param {number} [params.seed] - Random seed (not used by Gemini, kept for compatibility)
+         * @param {string} [params.model] - Model name (not used, Gemini uses gemini-2.5-flash-image)
          * @returns {Promise<Blob>} Image blob
          */
         async fetchImageResponse(params) {
@@ -993,26 +993,24 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
                 throw new Error("Prompt required and must be a non-empty string.");
             }
             
-            const queryParams = new URLSearchParams({ 
-                model: model || 'flux', 
-                enhance: 'true', 
-                nologo: 'true' 
-            });
-            
-            if (height && Number.isInteger(height) && height > 0) {
-                queryParams.set('height', height.toString());
-            }
-            if (seed && Number.isInteger(seed)) {
-                queryParams.set('seed', seed.toString());
-            }
-            
-            const fullUrl = `${ChatApp.Config.API_URLS.IMAGE}${encodeURIComponent(prompt.trim())}?${queryParams.toString()}`;
-            
             try {
-                const response = await fetch(fullUrl);
+                const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        prompt: prompt.trim(),
+                        ...(height && Number.isInteger(height) && height > 0 && { height }),
+                        ...(seed && Number.isInteger(seed) && { seed })
+                    })
+                });
+                
                 if (!response.ok) {
-                    throw new Error(`Image error: ${response.status} ${response.statusText}`);
+                    const errorData = await response.json().catch(() => ({ message: response.statusText }));
+                    throw new Error(`Image error: ${response.status} ${errorData.message || response.statusText}`);
                 }
+                
                 return await response.blob();
             } catch (error) {
                 if (error instanceof TypeError && error.message.includes('fetch')) {
