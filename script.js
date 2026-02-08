@@ -1,5 +1,4 @@
 import { MessageFormatter } from './formatter.js';
-import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
 const ChatApp = {
     Config: {
@@ -83,11 +82,6 @@ const ChatApp = {
     },
 
     Utils: {
-        escapeHTML(str) {
-            if (!str) return '';
-            const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-            return str.replace(/[&<>"']/g, m => map[m]);
-        },
         generateUUID() { 
             return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         },
@@ -311,7 +305,7 @@ const ChatApp = {
                 item.className = 'conversation-item';
                 item.dataset.chatId = chat.id;
                 if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); item.setAttribute('aria-current', 'true'); }
-                const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
+                const title = (chat.title || 'Untitled Chat');
                 item.setAttribute('role', 'button'); item.setAttribute('tabindex', '0'); item.setAttribute('aria-label', `Load conversation: ${title}`);
                 item.innerHTML = `<span class="conversation-title" data-tooltip="${title}">${title}</span><button type="button" class="delete-btn" data-tooltip="Delete Chat" aria-label="Delete conversation: ${title}">${ChatApp.Config.ICONS.DELETE}</button>`;
                 item.addEventListener('click', (e) => { if (!e.target.closest('.delete-btn')) ChatApp.Controller.loadChat(chat.id); });
@@ -366,13 +360,13 @@ const ChatApp = {
                 item.className = 'attachment-item';
                 let contentHTML = '';
                 if (file.data) {
-                    if (file.type.startsWith('image/')) { contentHTML = `<img src="${file.data}" alt="${ChatApp.Utils.escapeHTML(file.name)}" class="attachment-media">`; } 
-                    else if (file.type.startsWith('video/')) { contentHTML = `<video src="${file.data}" class="attachment-media" controls data-tooltip="${ChatApp.Utils.escapeHTML(file.name)}"></video>`; }
+                    if (file.type.startsWith('image/')) { contentHTML = `<img src="${file.data}" alt="${(file.name)}" class="attachment-media">`; } 
+                    else if (file.type.startsWith('video/')) { contentHTML = `<video src="${file.data}" class="attachment-media" controls data-tooltip="${(file.name)}"></video>`; }
                 } else {
                     const extension = file.name.split('.').pop()?.toLowerCase() || '';
                     const iconMap = { 'html': ChatApp.Config.ICONS.HTML, 'css': ChatApp.Config.ICONS.CSS, 'js': ChatApp.Config.ICONS.JS, 'svg': ChatApp.Config.ICONS.SVG, };
                     const icon = iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT;
-                    contentHTML = `<div class="attachment-generic">${icon}<span class="attachment-filename">${ChatApp.Utils.escapeHTML(file.name)}</span></div>`;
+                    contentHTML = `<div class="attachment-generic">${icon}<span class="attachment-filename">${(file.name)}</span></div>`;
                 }
                 item.innerHTML = contentHTML;
                 container.appendChild(item);
@@ -388,13 +382,13 @@ const ChatApp = {
                 previewItem.className = 'file-preview-item';
                 const objectURL = URL.createObjectURL(file);
                 let previewContent = '';
-                if (file.type.startsWith('image/')) { previewContent = `<img src="${objectURL}" alt="Preview of ${ChatApp.Utils.escapeHTML(file.name)}">`; } 
-                else if (file.type.startsWith('video/')) { previewContent = `<video src="${objectURL}" autoplay muted loop playsinline data-tooltip="Preview of ${ChatApp.Utils.escapeHTML(file.name)}"></video>`; } 
+                if (file.type.startsWith('image/')) { previewContent = `<img src="${objectURL}" alt="Preview of ${(file.name)}">`; } 
+                else if (file.type.startsWith('video/')) { previewContent = `<video src="${objectURL}" autoplay muted loop playsinline data-tooltip="Preview of ${(file.name)}"></video>`; } 
                 else {
                     previewItem.classList.add('generic');
                     const extension = file.name.split('.').pop()?.toLowerCase() || 'file';
                     const iconMap = { 'html': ChatApp.Config.ICONS.HTML, 'css': ChatApp.Config.ICONS.CSS, 'js': ChatApp.Config.ICONS.JS, 'svg': ChatApp.Config.ICONS.SVG, };
-                    previewContent = `${iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT}<span class="file-preview-extension">${ChatApp.Utils.escapeHTML(extension.substring(0, 4))}</span>`;
+                    previewContent = `${iconMap[extension] || ChatApp.Config.ICONS.DOCUMENT}<span class="file-preview-extension">${(extension.substring(0, 4))}</span>`;
                 }
                 previewItem.innerHTML = `${previewContent}<button class="remove-preview-btn" data-tooltip="Remove file" type="button">&times;</button>`;
                 previewItem.querySelector('.remove-preview-btn').addEventListener('click', () => { ChatApp.Controller.removeAttachedFile(index); });
@@ -445,6 +439,7 @@ const ChatApp = {
             messageEl.addEventListener('touchstart', startDeleteTimer, { passive: true });
             messageEl.addEventListener('touchend', clearDeleteTimer);
             messageEl.addEventListener('touchmove', clearDeleteTimer);
+            Prism.highlightAll();
         },
         _addMessageAndCodeActions(messageEl, rawText) {
             const contentEl = messageEl.querySelector('.message-content');
@@ -510,7 +505,7 @@ const ChatApp = {
                         const newWindow = window.open('about:blank', '_blank');
                         if (!newWindow) { this.showToast('Enable popups to open in a new tab.', 'error'); return; }
                         if (previewType === 'html' || previewType === 'svg') { newWindow.document.write(rawContent); newWindow.document.close(); } 
-                        else { newWindow.document.write('<pre>' + ChatApp.Utils.escapeHTML(rawContent) + '</pre>'); newWindow.document.close(); }
+                        else { newWindow.document.write('<pre>' + (rawContent) + '</pre>'); newWindow.document.close(); }
                     });
                     actionsContainer.appendChild(openBtn);
                 }
@@ -798,6 +793,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
     },
     
     Controller: {
+        /**
+         * Initializes the chat application.
+         * This function is the main entry point for the application's UI and logic.
+         * It applies the theme, loads conversations, sets up event listeners, and more.
+         */
         init() {
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
@@ -848,6 +848,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
             if (enable) { if (document.documentElement.requestFullscreen) { document.documentElement.requestFullscreen(); } } 
             else { if (document.exitFullscreen && document.fullscreenElement) { document.exitFullscreen(); } }
         },
+        /**
+         * Handles the submission of a new chat message.
+         * This function is called when the user sends a message. It captures the user's
+         * input and any attached files, then kicks off the process of generating a response from the AI.
+         */
         async handleChatSubmission() {
             if (!navigator.onLine) { ChatApp.UI.showToast('Cannot send message while offline. Please check your connection.', 'error'); return; }
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
@@ -891,11 +896,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
             const ALLOWED_EXTENSIONS = ['.js', '.lua', '.css', '.html', '.json', '.txt', '.md'];
             const validFiles = newFiles.filter(file => {
                 if (!(file instanceof File)) { console.warn('Invalid file object:', file); return false; }
-                if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) { const sizeMB = (file.size / (1024 * 1024)).toFixed(2); const maxMB = (ChatApp.Config.MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(2); ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" is too large (${sizeMB}MB). Maximum: ${maxMB}MB.`, 'error'); return false; }
+                if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) { const sizeMB = (file.size / (1024 * 1024)).toFixed(2); const maxMB = (ChatApp.Config.MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(2); ChatApp.UI.showToast(`File "${(file.name)}" is too large (${sizeMB}MB). Maximum: ${maxMB}MB.`, 'error'); return false; }
                 const isValidType = ALLOWED_TYPES.some(type => file.type.startsWith(type)) || ALLOWED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
-                if (!isValidType) { ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" type not supported.`, 'error'); return false; }
+                if (!isValidType) { ChatApp.UI.showToast(`File "${(file.name)}" type not supported.`, 'error'); return false; }
                 const isDuplicate = ChatApp.State.attachedFiles.some(existing => existing.name === file.name && existing.size === file.size);
-                if (isDuplicate) { ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" is already attached.`, 'error'); return false; }
+                if (isDuplicate) { ChatApp.UI.showToast(`File "${(file.name)}" is already attached.`, 'error'); return false; }
                 return true;
             });
             if (validFiles.length > 0) { ChatApp.State.attachedFiles.push(...validFiles); ChatApp.UI.renderFilePreviews(); ChatApp.UI.showToast(`${validFiles.length} file(s) attached.`); }
@@ -909,6 +914,13 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         removeAttachedFile(index) { ChatApp.State.attachedFiles.splice(index, 1); ChatApp.UI.renderFilePreviews(); ChatApp.UI.hideTooltip(); },
         clearAttachedFiles() { ChatApp.State.attachedFiles = []; ChatApp.UI.renderFilePreviews(); },
+        /**
+         * Generates a response from the AI based on the current conversation history.
+         * This function constructs the API request, sends it to the backend,
+         * and then processes the response, including handling any special
+         * syntax for images or files.
+         * @private
+         */
         async _generateText() {
             const thinkingMessageEl = await ChatApp.UI.renderMessage({ id: null }, true);
             try {
@@ -964,12 +976,12 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     const imageBlob = await ChatApp.Api.fetchImageResponse(params);
                     if (!(imageBlob instanceof Blob) || imageBlob.size === 0) { throw new Error('Invalid image blob received'); }
                     const base64Url = await ChatApp.Utils.blobToBase64(imageBlob);
-                    const safePrompt = ChatApp.Utils.escapeHTML(params.prompt);
+                    const safePrompt = (params.prompt);
                     return { original: originalTag, replacement: `[IMAGE: ${safePrompt}](${base64Url})` };
                 } catch (error) {
                     console.error('Image generation error:', error);
                     const errorMsg = error.message || 'Unknown error';
-                    return { original: originalTag, replacement: `[Image Error: ${ChatApp.Utils.escapeHTML(errorMsg)}]` };
+                    return { original: originalTag, replacement: `[Image Error: ${(errorMsg)}]` };
                 }
             });
             const replacements = await Promise.all(replacementPromises);
@@ -1025,13 +1037,13 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     const blobUrl = URL.createObjectURL(zipBlob);
                     const blockId = `files-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                     const fileList = params.files.map(f => f.name).join(', ');
-                    const safeFileList = ChatApp.Utils.escapeHTML(fileList);
+                    const safeFileList = (fileList);
                     const fileCount = params.files.length;
                     return { original: originalTag, replacement: `[FILES: ${blockId}](${blobUrl}|${safeFileList}|${fileCount})` };
                 } catch (error) {
                     console.error('File creation error:', error);
                     const errorMsg = error.message || 'Unknown error';
-                    return { original: originalTag, replacement: `[File Creation Error: ${ChatApp.Utils.escapeHTML(errorMsg)}]` };
+                    return { original: originalTag, replacement: `[File Creation Error: ${(errorMsg)}]` };
                 }
             });
             const replacements = await Promise.all(replacementPromises);

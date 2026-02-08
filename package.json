@@ -1,0 +1,27 @@
+{
+  "name": "jbai-app-cloned",
+  "version": "1.0.0",
+  "description": "A modern, feature-rich AI chat application built with vanilla JavaScript, featuring Google Gemini integration, file attachments, code syntax highlighting, and more.",
+  "main": "formatter.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gokuthug1/jbai-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/gokuthug1/jbai-app/issues"
+  },
+  "homepage": "https://github.com/gokuthug1/jbai-app#readme",
+  "dependencies": {
+    "dompurify": "^3.3.1",
+    "jszip": "^3.10.1",
+    "marked": "^17.0.1",
+    "prismjs": "^1.30.0"
+  }
+}
