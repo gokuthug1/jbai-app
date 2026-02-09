@@ -1,4 +1,4 @@
-# J.B.A.I - AI Chat App
+# J.B.A.I - AI Chat Application
 
 A modern, feature-rich AI chat application built with vanilla JavaScript, featuring Google Gemini integration, file attachments, code syntax highlighting, and more.
 
@@ -155,4 +155,3 @@ Created by Jeremiah (gokuthug1)
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
-
