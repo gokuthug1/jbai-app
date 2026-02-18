@@ -24,7 +24,7 @@ export const MessageFormatter = {
                     textContent = this._processCitations(textContent, metadata.groundingChunks);
                 }
                 
-                // 1. EXTRACT BLOCKS (Protect Code, Math, Images, and Agent Activities from Markdown parsing)
+                // 1. EXTRACT BLOCKS (Protect Code, Math, and Agent Activities from Markdown parsing)
                 const { processedText, blocks } = this._extractAndReplaceBlocks(textContent);
                 
                 // 2. PROCESS MARKDOWN
@@ -104,12 +104,7 @@ export const MessageFormatter = {
             return generatePlaceholder({ type: 'svg', content: svgContent.trim() });
         });
 
-        // 6. Custom Image Syntax [IMAGE: prompt](url)
-        processedText = processedText.replace(/\[IMAGE: (.*?)\]\((.*?)\)/g, (match, alt, url) => {
-            return generatePlaceholder({ type: 'image', alt: alt, url: url });
-        });
-
-        // 7. Custom Files Syntax [FILES: blockId](blobUrl|fileList|fileCount)
+        // 6. Custom Files Syntax [FILES: blockId](blobUrl|fileList|fileCount)
         processedText = processedText.replace(/\[FILES: ([^\]]+?)\]\(([^|]+)\|([^|]+)\|(\d+)\)/g, (match, blockId, blobUrl, fileList, fileCount) => {
             return generatePlaceholder({ type: 'files', blockId: blockId, blobUrl: blobUrl, fileList: fileList, fileCount: parseInt(fileCount, 10) });
         });
@@ -277,7 +272,6 @@ export const MessageFormatter = {
             if (block.type === 'math-block') return `<div class="math-block">${SyntaxHighlighter.escapeHtml(block.content)}</div>`;
             if (block.type === 'math-inline') return `<span class="math-inline">${SyntaxHighlighter.escapeHtml(block.content)}</span>`;
             if (block.type === 'svg') return this._renderSvgPreview(block);
-            if (block.type === 'image') return this._renderImageBlock(block);
             if (block.type === 'files') return this._renderFilesBlock(block);
             return '';
         }));
@@ -338,17 +332,6 @@ export const MessageFormatter = {
         const codeBlockHtml = `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-xml"><code class="language-xml">${highlightedCode}</code></pre></div></div>`;
         const encodedSvg = btoa(block.content);
         return `<div class="svg-preview-container"><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div>${codeBlockHtml}</div>`;
-    },
-
-    _renderImageBlock(block) {
-        const safeAlt = SyntaxHighlighter.escapeHtml(block.alt);
-        // If the URL is just placeholder text (e.g. "Image Expired"), render text instead of an image
-        if (!block.url.startsWith('http') && !block.url.startsWith('data:')) {
-             return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>[${safeAlt}]</em></p><div class="image-container" style="padding: 20px; border: 1px dashed #666; color: #888;">${block.url}</div></div>`;
-        }
-        
-        const safeFilename = (safeAlt.replace(/[^a-z0-9_.-]/gi, ' ').trim().replace(/\s+/g, '_') || 'generated-image').substring(0, 50);
-        return `<div class="generated-image-wrapper"><p class="image-prompt-text"><em>Image Prompt: ${safeAlt}</em></p><div class="image-container"><img src="${block.url}" alt="${safeAlt}" class="generated-image"><a href="${block.url}" download="${safeFilename}.png" class="download-image-button" data-tooltip="Download Image"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg></a></div></div>`;
     },
 
     _renderFilesBlock(block) {

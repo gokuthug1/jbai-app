@@ -5,8 +5,7 @@ const ChatApp = {
     Config: {
         API_URLS: {
             TEXT: '/api/server',
-            TITLE: '/api/title',
-            IMAGE: '/api/image'
+            TITLE: '/api/title'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
@@ -19,7 +18,7 @@ const ChatApp = {
             codeExecution: false,
             agentMode: false
         },
-        TYPING_SPEED_MS: 15, // Used for JSON fallback
+        TYPING_SPEED_MS: 15,
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -105,10 +104,7 @@ const ChatApp = {
         },
         sanitizeTextForApi(text) {
             if (!text || typeof text !== 'string') return "";
-            return text.replace(
-                /\[IMAGE: (.*?)\]\((data:image\/[^)]+)\)/g, 
-                '[Generated Image: $1]' 
-            );
+            return text;
         },
         debounce(func, wait) {
             let timeout;
@@ -129,16 +125,6 @@ const ChatApp = {
                 ...chat,
                 history: chat.history.map(msg => {
                     const cleanMsg = JSON.parse(JSON.stringify(msg)); 
-                    if (cleanMsg.content && cleanMsg.content.parts) {
-                        cleanMsg.content.parts.forEach(part => {
-                            if (part.text) {
-                                part.text = part.text.replace(
-                                    /\[IMAGE: (.*?)\]\((data:image\/[^)]+)\)/g,
-                                    '[IMAGE: $1 - (Image Expired)]'
-                                );
-                            }
-                        });
-                    }
                     if (cleanMsg.attachments) {
                         cleanMsg.attachments = cleanMsg.attachments.map(att => ({
                             name: att.name,
@@ -267,9 +253,8 @@ const ChatApp = {
         scrollToBottom() {
             const area = this.elements.messageArea;
             if (!area) return;
-            const threshold = 100;
-            const isNearBottom = area.scrollHeight - area.scrollTop - area.clientHeight < threshold;
-            if (isNearBottom) { requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; }); }
+            // Always scroll to bottom during streaming
+            requestAnimationFrame(() => { area.scrollTop = area.scrollHeight; });
         },
         forceScrollToBottom() {
             const area = this.elements.messageArea;
@@ -402,54 +387,28 @@ const ChatApp = {
             });
             this.toggleSendButtonState();
         },
-        // Helper to update text during streaming without re-adding interactions constantly
         async updateStreamingMessage(messageEl, rawText) {
              const contentEl = messageEl.querySelector('.message-content');
              contentEl.innerHTML = await MessageFormatter.format(rawText);
-             // Ensure the container class is set correctly to show cursor
              if (!contentEl.classList.contains('result-streaming')) {
                  contentEl.classList.add('result-streaming');
              }
         },
-        async finalizeBotMessage(messageEl, contentParts, messageId, botMessageForState, skipTyping = false) {
+        async finalizeBotMessage(messageEl, contentParts, messageId, botMessageForState) {
             if (ChatApp.State.typingInterval) { clearInterval(ChatApp.State.typingInterval); ChatApp.State.typingInterval = null; }
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
             
-            // Remove streaming cursor effect
             contentEl.classList.remove('result-streaming');
 
-            const isComplex = Array.isArray(contentParts) && contentParts.length > 1;
             const fullText = Array.isArray(contentParts) ? contentParts.map(p => p.text || '').join('\n') : contentParts;
             const groundingMetadata = botMessageForState.content.groundingMetadata || null;
 
-            if (skipTyping || ChatApp.Config.TYPING_SPEED_MS === 0 || isComplex) {
-                 contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
-                 this._addMessageInteractions(messageEl, fullText, messageId);
-                 this.scrollToBottom();
-                 ChatApp.Controller.completeGeneration(botMessageForState);
-                 return;
-            }
-            
-            // Fallback: Simulate typing for non-streaming backends (like JSON blocks)
-            contentEl.innerHTML = '';
-            let i = 0;
-            ChatApp.State.typingInterval = setInterval(async () => {
-                if (i < fullText.length) {
-                    const chunk = fullText.slice(i, i + 3); 
-                    contentEl.textContent += chunk;
-                    i += 3;
-                    if (i % 30 === 0) this.scrollToBottom();
-                } else {
-                    clearInterval(ChatApp.State.typingInterval);
-                    ChatApp.State.typingInterval = null;
-                    contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
-                    this._addMessageInteractions(messageEl, fullText, messageId);
-                    this.scrollToBottom();
-                    ChatApp.Controller.completeGeneration(botMessageForState);
-                }
-            }, ChatApp.Config.TYPING_SPEED_MS);
+            contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
+            this._addMessageInteractions(messageEl, fullText, messageId);
+            this.scrollToBottom();
+            ChatApp.Controller.completeGeneration(botMessageForState);
         },
         _addMessageInteractions(messageEl, rawText, messageId) {
             this._addMessageAndCodeActions(messageEl, rawText);
@@ -658,7 +617,6 @@ const ChatApp = {
             const { fullscreenContent, fullscreenOverlay, body } = this.elements;
             fullscreenContent.innerHTML = '';
             switch(type) {
-                case 'image': const img = document.createElement('img'); img.src = content; fullscreenContent.appendChild(img); break;
                 case 'video': const vid = document.createElement('video'); vid.src = content; vid.controls = true; vid.autoplay = true; fullscreenContent.appendChild(vid); break;
                 case 'svg': fullscreenContent.innerHTML = content; break;
                 case 'html': 
@@ -694,7 +652,6 @@ const ChatApp = {
 
 --- General Rules ---
 - Use standard Markdown in your responses (including tables).
-- To generate an image, use: \`[IMAGE: { "prompt": "...", "height": number, "seed": number }]\`.
 
 --- MULTIPLE FILES & DOWNLOAD (CRITICAL) ---
 When users ask for multiple files, separate files, or a download link, you MUST use this format:
@@ -741,7 +698,6 @@ The current stock price for Apple is $150.
 - **Search**: Use Google Search to find real-time info, docs, or news.
 - **Code**: Use Python to calculate, process data, or solve logic puzzles.
 - **Files**: You can generate multiple files using the standard [FILES: {...}] format.
-- **Images**: You can generate images using the standard [IMAGE: ...] format.
 
 --- BEHAVIORAL RULES ---
 - Be autonomous. Do not ask the user for permission to use tools; just use them.
@@ -755,7 +711,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
             if (!Array.isArray(chatHistory) || chatHistory.length === 0) { return "New Chat"; }
             const safeHistory = chatHistory.filter(h => {
                 const text = h?.content?.parts?.[0]?.text;
-                return text && typeof text === 'string' && !text.startsWith('[IMAGE:');
+                return text && typeof text === 'string';
             });
             if (safeHistory.length < 2) { return "New Chat"; }
             const userText = safeHistory[0].content.parts[0].text.substring(0, 200);
@@ -774,7 +730,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         /**
          * Streams text response from server.
-         * Handles both raw text streaming and JSON fallback.
+         * The server now returns a raw text stream (via SSE or chunked transfer)
          */
         async *streamTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
             if (!Array.isArray(apiContents)) { throw new Error('Invalid apiContents: must be an array'); }
@@ -798,6 +754,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     const { done, value } = await reader.read();
                     if (done) break;
                     const chunk = decoder.decode(value, { stream: true });
+                    // The server now sends raw text chunks of the answer directly
                     yield chunk;
                 }
 
@@ -806,18 +763,6 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 if (error instanceof TypeError && error.message.includes('fetch')) { throw new Error("Network error: Please check your connection."); }
                 throw error;
             }
-        },
-        async fetchImageResponse(params) {
-            const { prompt, height, seed, model } = params || {};
-            if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) { throw new Error("Prompt required and must be a non-empty string."); }
-            try {
-                const response = await fetch(ChatApp.Config.API_URLS.IMAGE, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt.trim(), ...(height && Number.isInteger(height) && height > 0 && { height }), ...(seed && Number.isInteger(seed) && { seed }) })
-                });
-                if (!response.ok) { const errorData = await response.json().catch(() => ({ message: response.statusText })); throw new Error(`Image error: ${response.status} ${errorData.message || response.statusText}`); }
-                return await response.blob();
-            } catch (error) { if (error instanceof TypeError && error.message.includes('fetch')) { throw new Error("Network error: Failed to fetch image."); } throw error; }
         }
     },
     
@@ -942,7 +887,6 @@ You are a digital professional. Be concise, accurate, and effective.`;
             let fullTextAccumulator = "";
             let messageId = ChatApp.Utils.generateUUID();
             let hasRemovedThinking = false;
-            let isJsonMode = false;
 
             try {
                 const toolsConfig = ChatApp.State.toolsConfig;
@@ -964,55 +908,25 @@ You are a digital professional. Be concise, accurate, and effective.`;
                         messageEl.classList.remove('thinking');
                         messageEl.dataset.messageId = messageId;
                         hasRemovedThinking = true;
-                        // Heuristic: If first chunk starts with {, it's likely a JSON blob response, not raw text stream
-                        if (chunk.trimStart().startsWith('{')) {
-                            isJsonMode = true;
-                        }
                     }
 
                     fullTextAccumulator += chunk;
-
-                    // If it's JSON mode, we DON'T update the UI text yet (to avoid showing raw JSON)
-                    // If it's Text mode, we update the UI immediately
-                    if (!isJsonMode) {
-                        await ChatApp.UI.updateStreamingMessage(messageEl, fullTextAccumulator);
-                        ChatApp.UI.scrollToBottom();
-                    }
+                    await ChatApp.UI.updateStreamingMessage(messageEl, fullTextAccumulator);
+                    ChatApp.UI.scrollToBottom();
                 }
 
                 if (!fullTextAccumulator && !hasRemovedThinking) {
                      throw new Error("No response generated.");
                 }
 
-                // 4. Handle JSON Fallback (if backend returned a single JSON object instead of text stream)
-                if (isJsonMode) {
-                    try {
-                        const parsed = JSON.parse(fullTextAccumulator);
-                        const candidate = parsed.candidates?.[0];
-                        if (candidate?.content?.parts?.[0]?.text) {
-                            fullTextAccumulator = candidate.content.parts[0].text;
-                        } else {
-                            // Fallback if structure is unexpected
-                            console.warn("Parsed JSON but couldn't find text path", parsed);
-                        }
-                    } catch (e) {
-                        console.warn("Detected JSON start but failed to parse. Treating as raw text.", e);
-                    }
-                }
-
-                // 5. Post-processing (Files/Images) once full text is available
-                fullTextAccumulator = await this.processResponseForImages(fullTextAccumulator);
+                // 4. Post-processing (Files)
                 fullTextAccumulator = await this.processResponseForFiles(fullTextAccumulator);
 
-                // 6. Finalize
+                // 5. Finalize
                 const contentObj = { role: "model", parts: [{ text: fullTextAccumulator }] };
                 const botMessageForState = { id: messageId, content: contentObj };
                 
-                // If we were in JSON mode, we suppressed the stream, so we want the typing effect now.
-                // If we were in Text mode, we already streamed it, so skip typing effect.
-                const skipTyping = !isJsonMode; 
-                
-                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: fullTextAccumulator }], messageId, botMessageForState, skipTyping);
+                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: fullTextAccumulator }], messageId, botMessageForState);
 
             } catch (error) {
                 // If checking for abort
@@ -1036,32 +950,6 @@ You are a digital professional. Be concise, accurate, and effective.`;
             } finally {
                  ChatApp.State.setGenerating(false);
             }
-        },
-        async processResponseForImages(rawText) {
-            if (!rawText || typeof rawText !== 'string') return rawText;
-            const imageRegex = /\[IMAGE: (\{[\s\S]*?\})\]/g;
-            const matches = Array.from(rawText.matchAll(imageRegex));
-            if (matches.length === 0) return rawText;
-            const replacementPromises = matches.map(async (match) => {
-                const [originalTag, jsonString] = match;
-                try {
-                    const params = JSON.parse(jsonString);
-                    if (!params.prompt) { throw new Error('Missing prompt in image parameters'); }
-                    const imageBlob = await ChatApp.Api.fetchImageResponse(params);
-                    if (!(imageBlob instanceof Blob) || imageBlob.size === 0) { throw new Error('Invalid image blob received'); }
-                    const base64Url = await ChatApp.Utils.blobToBase64(imageBlob);
-                    const safePrompt = ChatApp.Utils.escapeHTML(params.prompt);
-                    return { original: originalTag, replacement: `[IMAGE: ${safePrompt}](${base64Url})` };
-                } catch (error) {
-                    console.error('Image generation error:', error);
-                    const errorMsg = error.message || 'Unknown error';
-                    return { original: originalTag, replacement: `[Image Error: ${ChatApp.Utils.escapeHTML(errorMsg)}]` };
-                }
-            });
-            const replacements = await Promise.all(replacementPromises);
-            let processedText = rawText;
-            replacements.forEach(({ original, replacement }) => { processedText = processedText.replace(original, replacement); });
-            return processedText;
         },
         async processResponseForFiles(rawText) {
             if (!rawText || typeof rawText !== 'string') return rawText;
@@ -1264,9 +1152,9 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 return;
             }
 
-            const mediaTarget = event.target.closest('.generated-image, .attachment-media, .svg-render-box img');
+            const mediaTarget = event.target.closest('.attachment-media, .svg-render-box img');
             const htmlBox = event.target.closest('.html-render-box');
-            if (mediaTarget) { event.preventDefault(); if (mediaTarget.tagName === 'IMG') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'image'); else if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); } 
+            if (mediaTarget) { event.preventDefault(); if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); } 
             else if (htmlBox) { const iframe = htmlBox.querySelector('iframe'); if (iframe) ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); }
             else { const svgWrapper = event.target.closest('.svg-preview-container'); if (svgWrapper) { const rawContent = svgWrapper.querySelector('.code-block-wrapper')?.dataset.rawContent; if (rawContent) ChatApp.UI.showFullscreenPreview(decodeURIComponent(rawContent), 'svg'); } }
         },
