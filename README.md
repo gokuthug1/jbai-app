@@ -48,7 +48,7 @@ jbai-app/
 ### Install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/gokuthug1/jbai-app
 cd jbai-app
 cd api
 npm install
