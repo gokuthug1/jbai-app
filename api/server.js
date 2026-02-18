@@ -74,19 +74,28 @@ app.post('/api/server', async (req, res) => {
 
     // Stream SSE from Google → raw text to client
     let sseBuffer = '';
+    let responseWritten = false;
 
     const processSseLine = (line) => {
       if (!line.startsWith('data: ')) return;
       const jsonStr = line.substring(6).trim();
-      if (!jsonStr || jsonStr === '[DONE]') return;
+      if (!jsonStr || jsonStr === '[DONE]') {
+        // Ensure we write at least something if nothing else was sent
+        if (!responseWritten && !clientGone) {
+          // This shouldn't happen, but just in case
+        }
+        return;
+      }
       try {
         const data = JSON.parse(jsonStr);
         const textPart = data?.candidates?.[0]?.content?.parts?.[0]?.text;
         if (textPart && !clientGone) {
           res.write(textPart);
+          responseWritten = true;
         }
-      } catch {
-        // Ignore malformed SSE events
+      } catch (err) {
+        // Log malformed SSE events for debugging
+        console.warn('Malformed SSE event:', line.substring(0, 100));
       }
     };
 
@@ -109,6 +118,11 @@ app.post('/api/server', async (req, res) => {
 
     // Flush any remaining buffer
     if (sseBuffer) processSseLine(sseBuffer);
+
+    // If no content was streamed, send a minimal response to prevent empty response error
+    if (!responseWritten && !clientGone) {
+      res.write(" ");
+    }
 
     res.end();
   } catch (error) {

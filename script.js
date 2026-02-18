@@ -948,8 +948,15 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     ChatApp.UI.scrollToBottom();
                 }
 
-                if (!fullTextAccumulator && !hasRemovedThinking) {
-                     throw new Error("No response generated.");
+                // If no text was accumulated and no chunks were received, handle gracefully
+                if (!fullTextAccumulator) {
+                    if (!hasRemovedThinking) {
+                        // No chunks were ever received
+                        throw new Error("No response generated. The API returned no content.");
+                    } else {
+                        // Chunks were received but all empty - treat as valid empty response
+                        fullTextAccumulator = "(No response text generated)";
+                    }
                 }
 
                 // 4. Post-processing (Files)
