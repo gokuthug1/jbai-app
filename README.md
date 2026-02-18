@@ -1,157 +1,110 @@
 # J.B.A.I - AI Chat Application
 
-A modern, feature-rich AI chat application built with vanilla JavaScript, featuring Google Gemini integration, file attachments, code syntax highlighting, and more.
+A feature-rich AI chat app built with vanilla JavaScript and an Express API proxy for Google Gemini.
 
 ## Features
 
-- 🤖 **AI Chat Interface** - Powered by Google Gemini 3 Flash Preview (with Gemini 2.5 Pro for title generation)
-- 💬 **Conversation History** - Persistent chat history with localStorage
-- 📎 **File Attachments** - Support for images, videos, audio, and text files
-- 🎨 **Multiple Themes** - Light, Dark, Dracula, and MonoKai themes
-- 💻 **Code Highlighting** - Syntax highlighting for multiple programming languages
-- 🖼️ **Image Generation** - Generate images using AI prompts
-- 📝 **Markdown Support** - Full markdown rendering with tables, code blocks, and more
-- 🔍 **Google Search Integration** - Optional grounding with Google Search
-- 🐍 **Code Execution** - Optional Python code execution
-- 📱 **Responsive Design** - Works on desktop and mobile devices
-- ♿ **Accessibility** - ARIA labels, keyboard navigation, and screen reader support
+- AI chat interface with streaming responses
+- Persistent conversation history (`localStorage`)
+- File attachments (image, video, audio, text, code files)
+- Markdown rendering with syntax highlighting
+- HTML/SVG preview support
+- Optional Google Search grounding
+- Optional Python code execution
+- Theme switching (Light, Dark, Dracula, MonoKai)
+- Import/export/delete local conversation data
+- Responsive layout with accessibility support
+
+## Tech Stack
+
+- Frontend: HTML, CSS, vanilla JavaScript
+- Backend: Node.js + Express (`api/server.js`)
+- LLM: Gemini (`gemini-2.5-flash`)
+- Title generation model: `gemini-2.5-flash-lite`
+
+## Project Structure
+
+```text
+jbai-app/
+|-- api/
+|   |-- server.js
+|   `-- package.json
+|-- index.html
+|-- script.js
+|-- style.css
+|-- formatter.js
+|-- syntaxHighlighter.js
+|-- vercel.json
+`-- README.md
+```
 
 ## Setup
 
 ### Prerequisites
 
-- Node.js 18+ and npm
-- Google Gemini API key
+- Node.js 18+
+- Google API key with Gemini access
 
-### Installation
+### Install
 
-1. Clone the repository:
 ```bash
 git clone <repository-url>
 cd jbai-app
-```
-
-2. Install dependencies:
-```bash
 cd api
 npm install
 ```
 
-3. Create a `.env` file in the `api` directory:
+### Environment Variables
+
+Create `api/.env`:
+
 ```env
 GOOGLE_API_KEY=your_api_key_here
 ```
 
-4. For local development, start the server:
+### Run Locally
+
+From `api/`:
+
 ```bash
-npm start
-# Server runs on http://localhost:3000
+node server.js
 ```
 
-5. Open `index.html` in your browser or deploy to a static hosting service.
+Server runs on `http://localhost:3000` by default.
 
-## Deployment
+Then open `index.html` in your browser (or serve the root folder with a static server).
 
-### Vercel
+## API Routes
 
-The project includes a `vercel.json` configuration for easy deployment on Vercel:
+- `POST /api/server` - chat completion (streamed text)
+- `POST /api/title` - conversation title generation
 
-1. Push your code to GitHub
-2. Import the project in Vercel
-3. Add your `GOOGLE_API_KEY` as an environment variable
-4. Deploy!
+## Deployment (Vercel)
 
-The Vercel configuration automatically routes `/api/server` to the serverless function.
+`vercel.json` rewrites:
 
-## Usage
+- `/api/server` -> `/api/server.js`
+- `/api/title` -> `/api/server.js`
 
-### Basic Chat
+Set `GOOGLE_API_KEY` in Vercel environment variables.
 
-1. Type your message in the input field
-2. Press Enter to send (Shift+Enter for new line)
-3. Wait for the AI response
+## Usage Notes
 
-### File Attachments
+- Press `Enter` to send, `Shift+Enter` for newline.
+- Max attachments: 5 files.
+- Max file size: 4 MB per file.
+- Settings menu controls tools, theme, fullscreen, and data management.
 
-- Click the paperclip icon to attach files
-- Drag and drop files onto the chat area
-- Paste images directly from clipboard
-- Maximum 5 files, 4MB per file
+## Security Notes
 
-### Custom Commands
-
-- `/html` - Get a random HTML code snippet
-- `/profile` - List all custom commands
-- `/concept` - Ask about creating a concept
-- `/song` - Get music recommendations
-- `/word` - Learn a new word
-- `/tip` - Get a useful lifehack
-- `/invention` - Generate a fictional invention idea
-- `/sp` - Correct spelling and grammar
-- `/art` - Get art project ideas
-- `/bdw` - Break down a word
-
-### Image Generation
-
-The AI can generate images using the format:
-```
-[IMAGE: { "prompt": "your prompt here", "height": 1024, "seed": 12345 }]
-```
-
-### Settings
-
-Click the settings icon to:
-- Change theme (Light, Dark, Dracula, MonoKai)
-- Toggle fullscreen mode
-- Enable/disable Google Search (Grounding)
-- Enable/disable Code Execution
-- Import/Export/Delete conversation data
-
-## Project Structure
-
-```
-jbai-app/
-├── api/
-│   ├── server.js          # Express server for API proxy
-│   └── package.json       # Server dependencies
-├── index.html             # Main HTML file
-├── script.js              # Main application logic
-├── style.css              # Styles and themes
-├── formatter.js           # Markdown and message formatting
-├── syntaxHighlighter.js   # Code syntax highlighting
-├── vercel.json            # Vercel deployment config
-└── README.md              # This file
-```
-
-## Browser Support
-
-- Chrome/Edge (latest)
-- Firefox (latest)
-- Safari (latest)
-- Mobile browsers (iOS Safari, Chrome Mobile)
-
-## Security
-
-- All user input is sanitized to prevent XSS attacks
-- Base64 image data is stripped from API requests to prevent 413 errors
-- File uploads are validated for size and type
-- API keys are stored server-side only
-
-## Performance
-
-- Lazy loading for images and iframes
-- Efficient rendering with requestAnimationFrame
-- Content visibility optimization
-- Debounced scroll handlers
+- API key is server-side only.
+- Link and URL rendering is sanitized before output.
+- File uploads are type/size validated.
 
 ## License
 
-MIT License - feel free to use this project for personal or commercial purposes.
+MIT
 
 ## Credits
 
-Created by Jeremiah (gokuthug1)
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+Created by Jeremiah (`gokuthug1`).

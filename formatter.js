@@ -42,7 +42,7 @@ export const MessageFormatter = {
             else if (part.codeExecutionResult) {
                 const { outcome, output } = part.codeExecutionResult;
                 const isError = outcome !== "OUTCOME_OK";
-                finalHtml += `<div class="execution-result ${isError ? 'error' : ''}"><div class="execution-header">${isError ? '⚠️ Execution Failed' : '✓ Standard Output'}</div><pre>${SyntaxHighlighter.escapeHtml(output)}</pre></div>`;
+                finalHtml += `<div class="execution-result ${isError ? 'error' : ''}"><div class="execution-header">${isError ? 'Execution Failed' : 'Standard Output'}</div><pre>${SyntaxHighlighter.escapeHtml(output)}</pre></div>`;
             }
         }
 
@@ -203,8 +203,16 @@ export const MessageFormatter = {
         workingText = workingText.replace(/&lt;a href="([^"]+)" class="citation-ref"&gt;(\[\d+\])&lt;\/a&gt;/g, '<a href="$1" class="citation-ref">$2</a>');
 
         // Images/Links
-        workingText = workingText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="markdown-image">');
-        workingText = workingText.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        workingText = workingText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, altText, rawUrl) => {
+            const safeUrl = this._sanitizeUrl(rawUrl, ['http:', 'https:', 'data:', 'blob:']);
+            if (!safeUrl) return '';
+            return `<img src="${this._escapeAttribute(safeUrl)}" alt="${this._escapeAttribute(altText)}" class="markdown-image">`;
+        });
+        workingText = workingText.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, (match, label, rawUrl) => {
+            const safeUrl = this._sanitizeUrl(rawUrl, ['http:', 'https:']);
+            if (!safeUrl) return label;
+            return `<a href="${this._escapeAttribute(safeUrl)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        });
 
         // Text Formatting
         workingText = workingText
@@ -225,8 +233,10 @@ export const MessageFormatter = {
     _processCitations(text, chunks) {
         return text.replace(/\[(\d+)\]/g, (match, index) => {
             const i = parseInt(index, 10) - 1;
-            if (chunks[i] && chunks[i].web) {
-                return `<a href="${chunks[i].web.uri}" class="citation-ref">[${index}]</a>`;
+            if (chunks[i] && chunks[i].web && chunks[i].web.uri) {
+                const safeUrl = this._sanitizeUrl(chunks[i].web.uri, ['http:', 'https:']);
+                if (!safeUrl) return match;
+                return `<a href="${this._escapeAttribute(safeUrl)}" class="citation-ref">[${index}]</a>`;
             }
             return match;
         });
@@ -236,7 +246,7 @@ export const MessageFormatter = {
         if (footnoteMap.size === 0) return '';
         let html = '<div class="footnotes"><hr><h4>Footnotes</h4><ol>';
         footnoteMap.forEach((num, id) => {
-             html += `<li id="fn-${id}">${id} <a href="#fnref-${id}">↩</a></li>`;
+             html += `<li id="fn-${id}">${id} <a href="#fnref-${id}">&#8617;</a></li>`;
         });
         html += '</ol></div>';
         return html;
@@ -249,7 +259,9 @@ export const MessageFormatter = {
         if (uniqueSources.length === 0) return '';
         let html = '<div class="sources-container"><h4>Sources</h4><div class="sources-list">';
         uniqueSources.forEach(source => {
-            html += `<a href="${source.uri}" target="_blank" class="source-item"><span class="source-index">${source.index}</span><span class="source-title">${SyntaxHighlighter.escapeHtml(source.title)}</span></a>`;
+            const safeUrl = this._sanitizeUrl(source.uri, ['http:', 'https:']);
+            if (!safeUrl) return;
+            html += `<a href="${this._escapeAttribute(safeUrl)}" target="_blank" rel="noopener noreferrer" class="source-item"><span class="source-index">${source.index}</span><span class="source-title">${SyntaxHighlighter.escapeHtml(source.title)}</span></a>`;
         });
         return html + '</div></div>';
     },
@@ -330,14 +342,14 @@ export const MessageFormatter = {
     _renderSvgPreview(block) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
         const codeBlockHtml = `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="svg" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>SVG</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-xml"><code class="language-xml">${highlightedCode}</code></pre></div></div>`;
-        const encodedSvg = btoa(block.content);
+        const encodedSvg = this._toBase64(block.content);
         return `<div class="svg-preview-container"><div class="svg-render-box"><img src="data:image/svg+xml;base64,${encodedSvg}" alt="SVG Preview"></div>${codeBlockHtml}</div>`;
     },
 
     _renderFilesBlock(block) {
-        const safeFileList = block.fileList;
+        const safeFileList = SyntaxHighlighter.escapeHtml(String(block.fileList || ''));
         const fileCount = block.fileCount;
-        const blobUrl = block.blobUrl;
+        const blobUrl = this._sanitizeUrl(block.blobUrl, ['blob:']) || '#';
         const safeFilename = `files-${Date.now()}.zip`;
         
         return `<div class="files-download-wrapper">
@@ -353,7 +365,7 @@ export const MessageFormatter = {
                         <div class="files-download-list">${safeFileList}</div>
                     </div>
                 </div>
-                <a href="${blobUrl}" download="${safeFilename}" class="download-files-button" data-tooltip="Download all files as ZIP">
+                <a href="${this._escapeAttribute(blobUrl)}" download="${safeFilename}" class="download-files-button" data-tooltip="Download all files as ZIP">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                         <polyline points="7 10 12 15 17 10"></polyline>
@@ -402,5 +414,40 @@ export const MessageFormatter = {
             "'": '&#39;'
         };
         return str.replace(/[&<>"']/g, m => map[m]);
+    },
+
+    _escapeAttribute(str) {
+        if (str === null || str === undefined) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        };
+        return String(str).replace(/[&<>"']/g, m => map[m]);
+    },
+
+    _sanitizeUrl(url, allowedProtocols = ['http:', 'https:']) {
+        if (!url || typeof url !== 'string') return null;
+        const trimmed = url.trim();
+        if (!trimmed) return null;
+        try {
+            const parsed = new URL(trimmed, window.location.origin);
+            if (!allowedProtocols.includes(parsed.protocol)) return null;
+            return parsed.href;
+        } catch {
+            return null;
+        }
+    },
+
+    _toBase64(str) {
+        const utf8 = new TextEncoder().encode(str);
+        let binary = '';
+        utf8.forEach((byte) => {
+            binary += String.fromCharCode(byte);
+        });
+        return btoa(binary);
     }
 };
+

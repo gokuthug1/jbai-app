@@ -46,6 +46,7 @@ const ChatApp = {
         isGenerating: false,
         typingInterval: null,
         attachedFiles: [],
+        previewObjectUrls: [],
         abortController: null,
         toolsConfig: {},
         setCurrentConversation(history) {
@@ -267,6 +268,16 @@ const ChatApp = {
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
         },
+        _revokeFilePreviewUrls() {
+            ChatApp.State.previewObjectUrls.forEach((url) => {
+                try {
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.warn('Failed to revoke object URL:', error);
+                }
+            });
+            ChatApp.State.previewObjectUrls = [];
+        },
         toggleSendButtonState() {
             const hasText = this.elements.chatInput.value.trim().length > 0;
             const hasFiles = ChatApp.State.attachedFiles.length > 0;
@@ -291,17 +302,32 @@ const ChatApp = {
             }
             
             const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => (b.id || 0) - (a.id || 0));
-            sortedConversations.forEach((chat, index) => {
+            sortedConversations.forEach((chat) => {
                 const item = document.createElement('div');
                 item.className = 'conversation-item';
                 item.dataset.chatId = chat.id;
                 if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); item.setAttribute('aria-current', 'true'); }
-                const title = ChatApp.Utils.escapeHTML(chat.title || 'Untitled Chat');
-                item.setAttribute('role', 'button'); item.setAttribute('tabindex', '0'); item.setAttribute('aria-label', `Load conversation: ${title}`);
-                item.innerHTML = `<span class="conversation-title" data-tooltip="${title}">${title}</span><button type="button" class="delete-btn" data-tooltip="Delete Chat" aria-label="Delete conversation: ${title}">${ChatApp.Config.ICONS.DELETE}</button>`;
+                const title = chat.title || 'Untitled Chat';
+                item.setAttribute('role', 'button');
+                item.setAttribute('tabindex', '0');
+                item.setAttribute('aria-label', `Load conversation: ${title}`);
+
+                const titleSpan = document.createElement('span');
+                titleSpan.className = 'conversation-title';
+                titleSpan.setAttribute('data-tooltip', title);
+                titleSpan.textContent = title;
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.setAttribute('data-tooltip', 'Delete Chat');
+                deleteBtn.setAttribute('aria-label', `Delete conversation: ${title}`);
+                deleteBtn.innerHTML = ChatApp.Config.ICONS.DELETE;
+
+                item.appendChild(titleSpan);
+                item.appendChild(deleteBtn);
                 item.addEventListener('click', (e) => { if (!e.target.closest('.delete-btn')) ChatApp.Controller.loadChat(chat.id); });
                 item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ChatApp.Controller.loadChat(chat.id); } });
-                const deleteBtn = item.querySelector('.delete-btn');
                 if (deleteBtn) { deleteBtn.addEventListener('click', (e) => { e.stopPropagation(); ChatApp.Controller.deleteConversation(chat.id); }); }
                 list.appendChild(item);
             });
@@ -365,6 +391,7 @@ const ChatApp = {
             return container;
         },
         renderFilePreviews() {
+            this._revokeFilePreviewUrls();
             this.elements.filePreviewsContainer.innerHTML = '';
             if (ChatApp.State.attachedFiles.length === 0) { this.elements.filePreviewsContainer.style.display = 'none'; return; }
             this.elements.filePreviewsContainer.style.display = 'flex';
@@ -372,6 +399,7 @@ const ChatApp = {
                 const previewItem = document.createElement('div');
                 previewItem.className = 'file-preview-item';
                 const objectURL = URL.createObjectURL(file);
+                ChatApp.State.previewObjectUrls.push(objectURL);
                 let previewContent = '';
                 if (file.type.startsWith('image/')) { previewContent = `<img src="${objectURL}" alt="Preview of ${ChatApp.Utils.escapeHTML(file.name)}">`; } 
                 else if (file.type.startsWith('video/')) { previewContent = `<video src="${objectURL}" autoplay muted loop playsinline data-tooltip="Preview of ${ChatApp.Utils.escapeHTML(file.name)}"></video>`; } 
@@ -618,11 +646,16 @@ const ChatApp = {
             fullscreenContent.innerHTML = '';
             switch(type) {
                 case 'video': const vid = document.createElement('video'); vid.src = content; vid.controls = true; vid.autoplay = true; fullscreenContent.appendChild(vid); break;
-                case 'svg': fullscreenContent.innerHTML = content; break;
+                case 'svg':
+                    const svgImg = document.createElement('img');
+                    svgImg.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(content)}`;
+                    svgImg.alt = 'SVG preview';
+                    fullscreenContent.appendChild(svgImg);
+                    break;
                 case 'html': 
                     const iframe = document.createElement('iframe'); 
                     iframe.srcdoc = content; 
-                    iframe.sandbox = "allow-scripts allow-same-origin";
+                    iframe.sandbox = "allow-scripts allow-forms allow-popups";
                     fullscreenContent.appendChild(iframe); 
                     break;
             }

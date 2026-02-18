@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const app = express();
+app.disable('x-powered-by');
 app.use(cors());
 app.use(express.json());
 
@@ -49,40 +50,57 @@ app.post('/api/server', async (req, res) => {
     // Initialize Server Response Stream
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Transfer-Encoding', 'chunked');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('X-Accel-Buffering', 'no');
+
+    const upstreamController = new AbortController();
+    req.on('close', () => {
+      upstreamController.abort();
+    });
 
     const response = await axios.post(
       `${GOOGLE_API_URL}&key=${GOOGLE_API_KEY}`,
       payload,
       { 
         headers: { 'Content-Type': 'application/json' },
-        responseType: 'stream' 
+        responseType: 'stream',
+        signal: upstreamController.signal,
+        timeout: 120000
       }
     );
 
+    let sseBuffer = '';
+    const processSseLine = (line) => {
+      if (!line.startsWith('data: ')) return;
+      const jsonStr = line.substring(6).trim();
+      if (!jsonStr || jsonStr === '[DONE]') return;
+
+      try {
+        const data = JSON.parse(jsonStr);
+        const textPart = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (textPart) {
+          res.write(textPart);
+        }
+      } catch {
+        // Ignore malformed or partial events.
+      }
+    };
+
     // Process the SSE stream from Google
     response.data.on('data', (chunk) => {
-      const lines = chunk.toString().split('\n');
+      sseBuffer += chunk.toString('utf8');
+      const lines = sseBuffer.split(/\r?\n/);
+      sseBuffer = lines.pop() || '';
+
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const jsonStr = line.substring(6).trim();
-            if (jsonStr === '[DONE]') continue;
-            
-            const data = JSON.parse(jsonStr);
-            const textPart = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            
-            // Send only the text delta to the client
-            if (textPart) {
-              res.write(textPart);
-            }
-          } catch (e) {
-            // Ignore parse errors for incomplete chunks
-          }
-        }
+        processSseLine(line);
       }
     });
 
     response.data.on('end', () => {
+      if (sseBuffer) {
+        processSseLine(sseBuffer);
+      }
       res.end();
     });
 
@@ -92,10 +110,12 @@ app.post('/api/server', async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Chat API Error:", error.message);
+    const upstreamStatus = error.response?.status;
+    const upstreamMessage = error.response?.data?.error?.message;
+    console.error("Chat API Error:", error.message, upstreamStatus || '', upstreamMessage || '');
     // If headers haven't been sent, send JSON error. Otherwise, just end stream.
     if (!res.headersSent) {
-      res.status(500).json({ error: "API_ERROR", message: error.message });
+      res.status(upstreamStatus || 500).json({ error: "API_ERROR", message: upstreamMessage || error.message });
     } else {
       res.end();
     }
