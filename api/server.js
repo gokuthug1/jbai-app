@@ -10,8 +10,8 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 const { GOOGLE_API_KEY } = process.env;
-const MODEL_NAME = 'gemini-2.5-pro';
-const TITLE_MODEL_NAME = 'gemini-2.0-flash-lite';
+const MODEL_NAME = process.env.MODEL_NAME || 'gemini-2.5-flash';
+const TITLE_MODEL_NAME = process.env.TITLE_MODEL_NAME || 'gemini-2.5-flash-lite';
 
 const GOOGLE_STREAM_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:streamGenerateContent?alt=sse`;
 const TITLE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${TITLE_MODEL_NAME}:generateContent`;
@@ -53,6 +53,10 @@ app.post('/api/server', async (req, res) => {
   // Track if client disconnected
   let clientGone = false;
   req.on('close', () => { clientGone = true; });
+  req.on('error', (err) => {
+    console.error('Request error:', err);
+    clientGone = true;
+  });
 
   try {
     const googleRes = await fetch(`${GOOGLE_STREAM_URL}&key=${GOOGLE_API_KEY}`, {
@@ -67,7 +71,7 @@ app.post('/api/server', async (req, res) => {
       try { errJson = JSON.parse(errBody); } catch { /* ignore */ }
       const message = errJson?.error?.message || errBody || `Upstream error ${googleRes.status}`;
       if (!res.headersSent) {
-        return res.status(googleRes.status).json({ error: 'API_ERROR', message });
+        return res.status(Math.min(googleRes.status, 500)).json({ error: 'API_ERROR', message: String(message).substring(0, 500) });
       }
       return res.end();
     }

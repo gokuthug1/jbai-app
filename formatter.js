@@ -83,7 +83,7 @@ export const MessageFormatter = {
 
         // 2. Math Blocks ($$)
         processedText = processedText.replace(/\$\$([\s\S]+?)\$\$/g, (match, code) => {
-            return generatePlaceholder({ type: 'math-block', content: code.trim() });
+            return generatePlaceholder({ type: 'math-block', content: code.trim(), latex: true });
         });
 
         // 3. Inline Math ($) - strict lookaround to avoid matching currency
@@ -91,7 +91,7 @@ export const MessageFormatter = {
             const trimmed = code.trim();
             // Skip if it looks like currency (e.g., $100, $1.50)
             if (/^\d+\.?\d*$/.test(trimmed)) return match;
-            return generatePlaceholder({ type: 'math-inline', content: trimmed });
+            return generatePlaceholder({ type: 'math-inline', content: trimmed, latex: true });
         });
 
         // 4. Inline Code (`)
@@ -281,8 +281,8 @@ export const MessageFormatter = {
                 return this._renderCodeBlock(block);
             }
             if (block.type === 'code-inline') return `<code>${SyntaxHighlighter.escapeHtml(block.content)}</code>`;
-            if (block.type === 'math-block') return `<div class="math-block">${SyntaxHighlighter.escapeHtml(block.content)}</div>`;
-            if (block.type === 'math-inline') return `<span class="math-inline">${SyntaxHighlighter.escapeHtml(block.content)}</span>`;
+            if (block.type === 'math-block') return `<div class="math-block" data-latex="true">${SyntaxHighlighter.escapeHtml(block.content)}</div>`;
+            if (block.type === 'math-inline') return `<span class="math-inline" data-latex="true">${SyntaxHighlighter.escapeHtml(block.content)}</span>`;
             if (block.type === 'svg') return this._renderSvgPreview(block);
             if (block.type === 'files') return this._renderFilesBlock(block);
             return '';

@@ -952,3 +952,221 @@ select:focus-visible {
 .token.tag { color: var(--token-tag); }
 .token.attr-name { color: var(--token-attr-name); }
 .token.label { color: var(--token-label); font-weight: bold; }
+
+/* ==========================================================================
+   12. Agent Process & Math Blocks
+   ========================================================================== */
+.agent-process-container {
+    background-color: var(--agent-bg);
+    border: 1px solid var(--agent-border);
+    border-radius: 6px;
+    margin: 12px 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.agent-process-header {
+    background-color: var(--agent-header-bg);
+    padding: 10px 12px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    user-select: none;
+    transition: background-color 0.2s ease;
+}
+
+.agent-process-header:hover {
+    background-color: var(--agent-border);
+}
+
+.agent-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--agent-text);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-spinner {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border: 2px solid transparent;
+    border-top-color: var(--agent-spinner);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.agent-toggle-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    color: var(--agent-text);
+    transition: transform 0.3s ease;
+}
+
+.agent-process-container.collapsed .agent-toggle-icon {
+    transform: rotate(-90deg);
+}
+
+.agent-process-body {
+    padding: 12px;
+    color: var(--agent-text);
+    font-size: 13px;
+    line-height: 1.5;
+    background-color: var(--agent-bg);
+    max-height: 400px;
+    overflow-y: auto;
+    display: block;
+}
+
+.agent-process-container.collapsed .agent-process-body {
+    display: none;
+}
+
+/* Math Block Rendering */
+.math-block {
+    display: block;
+    padding: 12px;
+    margin: 12px 0;
+    background-color: var(--code-bg);
+    border-left: 3px solid var(--focus-color);
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.math-inline {
+    display: inline;
+    padding: 0 2px;
+    font-style: italic;
+    color: var(--focus-color);
+}
+
+.katex-display {
+    margin: 12px 0;
+}
+
+.katex {
+    font-size: 1.1em;
+}
+
+/* Files Download Container */
+.files-download-wrapper {
+    margin: 12px 0;
+}
+
+.files-download-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background-color: var(--code-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    gap: 12px;
+}
+
+.files-download-info {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    flex-grow: 1;
+}
+
+.files-icon {
+    flex-shrink: 0;
+    color: var(--focus-color);
+    margin-top: 2px;
+}
+
+.files-download-details {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.files-download-title {
+    font-weight: 600;
+    color: var(--text-color);
+    font-size: 14px;
+}
+
+.files-download-list {
+    color: var(--text-secondary);
+    font-size: 12px;
+    word-break: break-word;
+}
+
+.download-files-button {
+    padding: 8px 12px;
+    background-color: var(--button-bg);
+    color: var(--button-text);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    transition: background-color 0.2s ease;
+}
+
+.download-files-button:hover {
+    background-color: var(--button-hover-bg);
+}
+
+.download-files-button svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Definition List Styling */
+dl {
+    display: block;
+    margin: 12px 0;
+}
+
+dt {
+    font-weight: bold;
+    color: var(--focus-color);
+    margin-top: 8px;
+}
+
+dd {
+    margin-left: 20px;
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+}
+
+/* Spoiler/Revelation */
+.spoiler {
+    background-color: var(--text-secondary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 0 2px;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+}
+
+.spoiler:hover {
+    background-color: var(--text-secondary);
+}
+
+.spoiler.revealed {
+    background-color: transparent;
+    color: var(--text-color);
+}

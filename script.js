@@ -97,15 +97,31 @@ const ChatApp = {
                     reject(new Error('Invalid blob provided'));
                     return;
                 }
+                if (blob.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) {
+                    reject(new Error(`File size exceeds maximum of ${ChatApp.Config.MAX_FILE_SIZE_BYTES / 1024 / 1024}MB`));
+                    return;
+                }
                 const reader = new FileReader();
                 reader.onloadend = () => resolve(reader.result);
                 reader.onerror = () => reject(new Error('Failed to read blob'));
+                reader.onabort = () => reject(new Error('Blob read was aborted'));
                 reader.readAsDataURL(blob);
             });
         },
         sanitizeTextForApi(text) {
             if (!text || typeof text !== 'string') return "";
-            return text;
+            // Remove excessive whitespace but preserve intentional formatting
+            return text.trim();
+        },
+        validateMessage(text, files) {
+            if (!text && files.length === 0) return { valid: false, error: 'Message cannot be empty' };
+            if (text && text.length > 10000) return { valid: false, error: 'Message is too long (max 10000 characters)' };
+            return { valid: true };
+        },
+        isValidFileType(file) {
+            const ALLOWED_TYPES = [ 'image/', 'video/', 'audio/', 'text/', 'application/json', 'application/javascript', 'text/javascript', 'text/css', 'text/html' ];
+            const ALLOWED_EXTENSIONS = ['.js', '.lua', '.css', '.html', '.json', '.txt', '.md', '.py', '.sh'];
+            return ALLOWED_TYPES.some(type => file.type.startsWith(type)) || ALLOWED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
         },
         debounce(func, wait) {
             let timeout;
@@ -198,6 +214,28 @@ const ChatApp = {
         },
         hideTooltip() {
             if(this.elements.customTooltip) this.elements.customTooltip.classList.remove('visible');
+        },
+        _renderMathInElement(element) {
+            if (typeof window.katex === 'undefined') {
+                console.warn('KaTeX library not loaded. Math rendering unavailable.');
+                return;
+            }
+            try {
+                // Render block math
+                element.querySelectorAll('[data-latex="true"]').forEach(el => {
+                    if (el.classList.contains('math-block') || el.classList.contains('math-inline')) {
+                        try {
+                            const content = el.textContent;
+                            const isBlock = el.classList.contains('math-block');
+                            window.katex.render(content, el, { displayMode: isBlock, throwOnError: false });
+                        } catch (error) {
+                            console.warn('KaTeX rendering error:', error);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.warn('Math rendering failed:', error);
+            }
         },
         initTooltips() {
             let tooltipTimeout;
@@ -296,20 +334,20 @@ const ChatApp = {
             if (ChatApp.State.allConversations.length === 0) {
                 const emptyState = document.createElement('div');
                 emptyState.className = 'conversation-empty';
+                emptyState.setAttribute('aria-label', 'No conversations yet');
                 emptyState.textContent = 'No conversations yet';
                 list.appendChild(emptyState);
                 return;
             }
             
             const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => (b.id || 0) - (a.id || 0));
-            sortedConversations.forEach((chat) => {
-                const item = document.createElement('div');
+            sortedConversations.forEach((chat, index) => {
+                const item = document.createElement('button');
                 item.className = 'conversation-item';
                 item.dataset.chatId = chat.id;
+                item.setAttribute('role', 'menuitem');
                 if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); item.setAttribute('aria-current', 'true'); }
                 const title = chat.title || 'Untitled Chat';
-                item.setAttribute('role', 'button');
-                item.setAttribute('tabindex', '0');
                 item.setAttribute('aria-label', `Load conversation: ${title}`);
 
                 const titleSpan = document.createElement('span');
@@ -421,6 +459,7 @@ const ChatApp = {
              if (!contentEl.classList.contains('result-streaming')) {
                  contentEl.classList.add('result-streaming');
              }
+             this._renderMathInElement(contentEl);
         },
         async finalizeBotMessage(messageEl, contentParts, messageId, botMessageForState) {
             if (ChatApp.State.typingInterval) { clearInterval(ChatApp.State.typingInterval); ChatApp.State.typingInterval = null; }
@@ -434,6 +473,7 @@ const ChatApp = {
             const groundingMetadata = botMessageForState.content.groundingMetadata || null;
 
             contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
+            this._renderMathInElement(contentEl);
             this._addMessageInteractions(messageEl, fullText, messageId);
             this.scrollToBottom();
             ChatApp.Controller.completeGeneration(botMessageForState);
@@ -778,7 +818,17 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: signal 
                 });
                 
-                if (!response.ok) { const errorText = await response.text().catch(() => 'Unknown error'); throw new Error(`API Error: ${response.status} - ${errorText}`); }
+                if (!response.ok) { 
+                    const errorText = await response.text().catch(() => 'Unknown error'); 
+                    let errorMsg = `API Error: ${response.status}`;
+                    try {
+                        const errorObj = JSON.parse(errorText);
+                        errorMsg = errorObj.message || errorObj.error || errorMsg;
+                    } catch (e) {
+                        errorMsg = errorText || errorMsg;
+                    }
+                    throw new Error(errorMsg);
+                }
                 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -857,7 +907,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
             if (!navigator.onLine) { ChatApp.UI.showToast('Cannot send message while offline. Please check your connection.', 'error'); return; }
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = [...ChatApp.State.attachedFiles];
-            if ((!userInput && files.length === 0) || ChatApp.State.isGenerating) return;
+            
+            const validation = ChatApp.Utils.validateMessage(userInput, files);
+            if (!validation.valid) { ChatApp.UI.showToast(validation.error, 'error'); return; }
+            
+            if (ChatApp.State.isGenerating) return;
 
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
@@ -870,34 +924,45 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const reader = new FileReader();
                 reader.onload = e => resolve({ mimeType: file.type, data: e.target.result.split(',')[1] });
                 reader.onerror = reject;
+                reader.onabort = () => reject(new Error('File read aborted'));
                 reader.readAsDataURL(file);
             }));
-            const fileApiData = await Promise.all(fileDataPromises);
-            const messageParts = fileApiData.map(p => ({ inlineData: p }));
-            if (userInput) { messageParts.push({ text: userInput }); }
+            
+            try {
+                const fileApiData = await Promise.all(fileDataPromises);
+                const messageParts = fileApiData.map(p => ({ inlineData: p }));
+                if (userInput) { messageParts.push({ text: userInput }); }
 
-            const userMessageAttachments = await Promise.all(files.map(file => new Promise((resolve) => {
-                if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-                    ChatApp.Utils.blobToBase64(file).then(base64 => { resolve({ name: file.name, type: file.type, data: base64 }); });
-                } else { resolve({ name: file.name, type: file.type, data: null }); }
-            })));
+                const userMessageAttachments = await Promise.all(files.map(file => new Promise((resolve) => {
+                    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
+                        ChatApp.Utils.blobToBase64(file).then(base64 => { resolve({ name: file.name, type: file.type, data: base64 }); });
+                    } else { resolve({ name: file.name, type: file.type, data: null }); }
+                })));
 
-            const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: userMessageAttachments };
-            ChatApp.State.addMessage(userMessage);
-            await ChatApp.UI.renderMessage(userMessage);
-            await this._generateText();
+                const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: userMessageAttachments };
+                ChatApp.State.addMessage(userMessage);
+                await ChatApp.UI.renderMessage(userMessage);
+                await this._generateText();
+            } catch (error) {
+                ChatApp.UI.showToast(`Error processing files: ${error.message}`, 'error');
+                ChatApp.State.setGenerating(false);
+            }
         },
         addFilesToState(files) {
             if (!files || files.length === 0) return;
             const newFiles = Array.from(files);
             const MAX_FILES = 5;
             if (ChatApp.State.attachedFiles.length + newFiles.length > MAX_FILES) { ChatApp.UI.showToast(`Maximum ${MAX_FILES} files allowed.`, 'error'); return; }
-            const ALLOWED_TYPES = [ 'image/', 'video/', 'audio/', 'text/', 'application/json', 'application/javascript', 'text/javascript', 'text/css', 'text/html' ];
-            const ALLOWED_EXTENSIONS = ['.js', '.lua', '.css', '.html', '.json', '.txt', '.md'];
+            
             const validFiles = newFiles.filter(file => {
                 if (!(file instanceof File)) { console.warn('Invalid file object:', file); return false; }
-                if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) { const sizeMB = (file.size / (1024 * 1024)).toFixed(2); const maxMB = (ChatApp.Config.MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(2); ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" is too large (${sizeMB}MB). Maximum: ${maxMB}MB.`, 'error'); return false; }
-                const isValidType = ALLOWED_TYPES.some(type => file.type.startsWith(type)) || ALLOWED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
+                if (file.size > ChatApp.Config.MAX_FILE_SIZE_BYTES) { 
+                    const sizeMB = (file.size / (1024 * 1024)).toFixed(2); 
+                    const maxMB = (ChatApp.Config.MAX_FILE_SIZE_BYTES / (1024 * 1024)).toFixed(2); 
+                    ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" is too large (${sizeMB}MB). Maximum: ${maxMB}MB.`, 'error'); 
+                    return false; 
+                }
+                const isValidType = ChatApp.Utils.isValidFileType(file);
                 if (!isValidType) { ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" type not supported.`, 'error'); return false; }
                 const isDuplicate = ChatApp.State.attachedFiles.some(existing => existing.name === file.name && existing.size === file.size);
                 if (isDuplicate) { ChatApp.UI.showToast(`File "${ChatApp.Utils.escapeHTML(file.name)}" is already attached.`, 'error'); return false; }
@@ -973,15 +1038,25 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 if (error.message === "Generation stopped by user.") {
                     ChatApp.UI.showToast(error.message);
                     if (!hasRemovedThinking) messageEl.remove(); // Clean up if stopped before first chunk
+                } else if (error instanceof TypeError) {
+                    console.error("Type error during generation:", error);
+                    let errorMsg = "Connection error. Please try again.";
+                    if (error.message.includes('NetworkError')) { errorMsg = "Network error: Unable to reach the API."; }
+                    if (!hasRemovedThinking) messageEl.remove();
+                    const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: errorMsg }] } };
+                    await ChatApp.UI.renderMessage(errorBotMessage);
+                    ChatApp.UI.showToast(errorMsg, 'error', 5000);
                 } else {
-                    console.error("Gen failed:", error);
+                    console.error("Generation error:", error);
                     let errorMsg = "An error occurred while generating a response.";
-                    if (error.message.includes("Network error")) { errorMsg = "Network error: Please check your internet connection and try again."; } 
-                    else if (error.message.includes("429")) { errorMsg = "Rate limit exceeded. Please wait a moment and try again."; } 
-                    else if (error.message) { errorMsg = `Error: ${error.message}`; }
+                    if (error.message && error.message.includes("Network")) { errorMsg = "Network error: Please check your internet connection and try again."; } 
+                    else if (error.message && error.message.includes("429")) { errorMsg = "Rate limit exceeded. Please wait a moment and try again."; } 
+                    else if (error.message && error.message.includes("401")) { errorMsg = "Authorization error: Please check your API key."; } 
+                    else if (error.message && error.message.includes("403")) { errorMsg = "Access denied: Your API key may not have permission for this operation."; }
+                    else if (error.message) { errorMsg = `Error: ${error.message.substring(0, 150)}`; }
 
                     // Replace/Append error message
-                    if (!hasRemovedThinking) messageEl.remove();
+                    if (!hasRemovedThinking && messageEl && messageEl.parentNode) messageEl.remove();
                     
                     const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: errorMsg }] } };
                     await ChatApp.UI.renderMessage(errorBotMessage);
