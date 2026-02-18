@@ -6,6 +6,7 @@
 @keyframes slideIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes thinking-dot { 0%, 100% { transform: scale(0.5); opacity: 0.5; } 50% { transform: scale(1); opacity: 1; } }
 @keyframes pulse { 0% { opacity: 0.6; transform: scale(0.95); } 50% { opacity: 1; transform: scale(1.05); } 100% { opacity: 0.6; transform: scale(0.95); } }
+@keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 :root { 
     /* --- LIGHT THEME (White & Black) --- */
@@ -371,6 +372,16 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .message.user .message-content { background-color: var(--message-user-bg); border-color: transparent; }
 .message-content *:first-child { margin-top: 0; }
 .message-content *:last-child { margin-bottom: 0; }
+
+/* Streaming Cursor Effect */
+.result-streaming::after {
+    content: "▋";
+    display: inline-block;
+    vertical-align: baseline;
+    animation: cursor-blink 1s step-start infinite;
+    color: var(--text-color);
+    margin-left: 2px;
+}
 
 /* --- Agent Process Block --- */
 .agent-process-container {

@@ -19,6 +19,7 @@ const ChatApp = {
             codeExecution: false,
             agentMode: false
         },
+        // Stream reading speed is determined by network, no artificial delay needed
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -34,7 +35,8 @@ const ChatApp = {
             CHEVRON_DOWN: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>`,
             STOP: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" ry="2"/></svg>`,
             PLAY: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`,
-            PAUSE: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`
+            PAUSE: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>`,
+            AGENT_ACTIVITY: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"></path><path d="M12 6v6l4 2"></path></svg>`
         }
     },
 
@@ -395,26 +397,26 @@ const ChatApp = {
             });
             this.toggleSendButtonState();
         },
-        
-        async updateStreamingMessage(messageEl, currentText) {
-            const contentEl = messageEl.querySelector('.message-content');
-            if (!contentEl) return;
-            
-            // Format text and append a blink cursor representation
-            const formattedHTML = await MessageFormatter.format(currentText);
-            contentEl.innerHTML = formattedHTML + '<span class="cursor-blink">▍</span>';
-            this.scrollToBottom();
+        // Helper to update text during streaming without re-adding interactions constantly
+        async updateStreamingMessage(messageEl, rawText) {
+             const contentEl = messageEl.querySelector('.message-content');
+             contentEl.innerHTML = await MessageFormatter.format(rawText);
+             // Ensure the container class is set correctly to show cursor
+             if (!contentEl.classList.contains('result-streaming')) {
+                 contentEl.classList.add('result-streaming');
+             }
         },
-
         async finalizeBotMessage(messageEl, contentParts, messageId, botMessageForState) {
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
             
+            // Remove streaming cursor effect
+            contentEl.classList.remove('result-streaming');
+
             const fullText = Array.isArray(contentParts) ? contentParts.map(p => p.text || '').join('\n') : contentParts;
             const groundingMetadata = botMessageForState.content.groundingMetadata || null;
 
-            // Final Render
             contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
             this._addMessageInteractions(messageEl, fullText, messageId);
             this.scrollToBottom();
@@ -694,15 +696,17 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
 3. **REFLECT**: Look at the results of your actions. Did you get what you needed? If not, adjust your plan.
 4. **SYNTHESIZE**: Only provide the final answer once you have sufficient information.
 
---- REASONING FORMAT ---
-You MUST structure your thinking process clearly using the following format before your final answer:
+--- FORMATTING RULES (CRITICAL) ---
+You MUST wrap your internal thought process, planning, tool usage, and observations inside \`<agent_process>\` and \`</agent_process>\` tags.
+Your final answer to the user must be OUTSIDE these tags.
 
-**Plan:** [Step-by-step breakdown of what you will do]
-**Thought:** [Your internal monologue about the current state]
-**Action:** [I will search for X / I will run code to Y]
-... (Tool usage happens here) ...
-**Observation:** [What you learned from the tool]
-**Conclusion:** [Your final answer based on the evidence]
+Example:
+<agent_process>
+**Plan:** I need to find the latest stock price for Apple.
+**Action:** Google Search for "Apple stock price today".
+**Observation:** Found price: $150.
+</agent_process>
+The current stock price for Apple is $150.
 
 --- CAPABILITIES ---
 - **Search**: Use Google Search to find real-time info, docs, or news.
@@ -739,8 +743,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 return title || "Chat";
             } catch (error) { console.warn('Title generation failed:', error); return "Titled Chat"; }
         },
-        
-        async streamTextResponse(apiContents, systemInstruction, signal, toolsConfig, onChunk) {
+        /**
+         * Streams text response from server.
+         * Assumes server returns a stream of text chunks.
+         */
+        async *streamTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
             if (!Array.isArray(apiContents)) { throw new Error('Invalid apiContents: must be an array'); }
             const sanitizedContents = apiContents.map(content => {
                 if (!content?.role || !Array.isArray(content.parts)) { console.warn('Invalid content structure:', content); return content; }
@@ -750,62 +757,29 @@ You are a digital professional. Be concise, accurate, and effective.`;
             
             try {
                 const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
-                    method: "POST", 
-                    headers: { "Content-Type": "application/json" }, 
-                    body: JSON.stringify(payload), 
-                    signal: signal 
+                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: signal 
                 });
-
-                if (!response.ok) { 
-                    const errorText = await response.text().catch(() => 'Unknown error'); 
-                    throw new Error(`API Error: ${response.status} - ${errorText}`); 
-                }
-
-                if (!response.body) throw new Error("ReadableStream not supported in this browser.");
-
+                
+                if (!response.ok) { const errorText = await response.text().catch(() => 'Unknown error'); throw new Error(`API Error: ${response.status} - ${errorText}`); }
+                
                 const reader = response.body.getReader();
-                const decoder = new TextDecoder("utf-8");
-                let groundingMetadata = null;
-
+                const decoder = new TextDecoder();
+                
                 while (true) {
                     const { done, value } = await reader.read();
                     if (done) break;
-                    
                     const chunk = decoder.decode(value, { stream: true });
-                    
-                    // Simple heuristic: try to find "text" fields if it looks like JSON chunks, or just return raw text
-                    // If the backend returns standard Google API style JSON chunks
-                    try {
-                        const jsonChunk = JSON.parse(chunk);
-                        if (jsonChunk.candidates?.[0]?.content?.parts?.[0]?.text) {
-                            onChunk(jsonChunk.candidates[0].content.parts[0].text);
-                        } else if (jsonChunk.text) {
-                            onChunk(jsonChunk.text);
-                        } else {
-                            // If it parses as JSON but isn't the specific format we expect, 
-                            // check if it's an array or just treat strictly as text
-                            onChunk(chunk);
-                        }
-                        
-                        if (jsonChunk.candidates?.[0]?.groundingMetadata) {
-                            groundingMetadata = jsonChunk.candidates[0].groundingMetadata;
-                        }
-                    } catch (e) {
-                        // Not valid JSON, likely raw text stream or partial JSON chunk
-                        // In a robust implementation, we would buffer partial JSON. 
-                        // For now, assuming raw text stream if JSON parse fails or backend streams raw tokens.
-                        onChunk(chunk);
-                    }
+                    // Note: If server sends JSON lines, we might need parsing here.
+                    // For now, assuming raw text/partial text stream as requested.
+                    yield chunk;
                 }
-                
-                return { groundingMetadata };
+
             } catch (error) {
                 if (error.name === 'AbortError') { throw new Error("Generation stopped by user."); }
                 if (error instanceof TypeError && error.message.includes('fetch')) { throw new Error("Network error: Please check your connection."); }
                 throw error;
             }
         },
-
         async fetchImageResponse(params) {
             const { prompt, height, seed, model } = params || {};
             if (!prompt || typeof prompt !== 'string' || prompt.trim().length === 0) { throw new Error("Prompt required and must be a non-empty string."); }
@@ -863,14 +837,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 ChatApp.State.abortController.abort();
                 ChatApp.State.setGenerating(false);
                 ChatApp.UI.showToast("Generation stopped.");
-                
-                // Finalize the partial message in UI
                 const thinkingMsg = document.querySelector('.message.thinking');
-                if (thinkingMsg) {
-                    thinkingMsg.classList.remove('thinking');
-                    const cursor = thinkingMsg.querySelector('.cursor-blink');
-                    if (cursor) cursor.remove();
-                }
+                if (thinkingMsg) thinkingMsg.remove();
+                // If a partial message exists, treat it as finished
+                const streamingMsg = document.querySelector('.result-streaming');
+                if (streamingMsg) streamingMsg.classList.remove('result-streaming');
             }
         },
         toggleFullScreen(enable) {
@@ -938,12 +909,13 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         removeAttachedFile(index) { ChatApp.State.attachedFiles.splice(index, 1); ChatApp.UI.renderFilePreviews(); ChatApp.UI.hideTooltip(); },
         clearAttachedFiles() { ChatApp.State.attachedFiles = []; ChatApp.UI.renderFilePreviews(); },
-        
         async _generateText() {
-            const thinkingMessageEl = await ChatApp.UI.renderMessage({ id: null }, true);
-            // Remove the thinking dots immediately for streaming
-            thinkingMessageEl.querySelector('.message-content').innerHTML = '';
-            
+            // 1. Initial Placeholder
+            const messageEl = await ChatApp.UI.renderMessage({ id: null }, true); // render as "thinking"
+            let fullTextAccumulator = "";
+            let messageId = ChatApp.Utils.generateUUID();
+            let hasRemovedThinking = false;
+
             try {
                 const toolsConfig = ChatApp.State.toolsConfig;
                 const isAgentMode = toolsConfig.agentMode === true;
@@ -953,52 +925,62 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 
                 const apiContents = ChatApp.State.currentConversation.map(msg => ({ role: msg.content.role, parts: msg.content.parts }));
 
-                let accumulatedText = "";
-
-                // Stream request
-                const responseResult = await ChatApp.Api.streamTextResponse(
-                    apiContents, 
-                    systemInstruction, 
-                    ChatApp.State.abortController.signal, 
-                    toolsConfig,
-                    (chunk) => {
-                        accumulatedText += chunk;
-                        ChatApp.UI.updateStreamingMessage(thinkingMessageEl, accumulatedText);
+                // 2. Start Stream
+                const stream = ChatApp.Api.streamTextResponse(apiContents, systemInstruction, ChatApp.State.abortController.signal, toolsConfig);
+                
+                // 3. Process Stream Chunks
+                for await (const chunk of stream) {
+                    if (!hasRemovedThinking) {
+                        messageEl.classList.remove('thinking');
+                        messageEl.dataset.messageId = messageId;
+                        hasRemovedThinking = true;
                     }
-                );
-                
-                const groundingMetadata = responseResult.groundingMetadata;
+                    if (chunk) {
+                        fullTextAccumulator += chunk;
+                        await ChatApp.UI.updateStreamingMessage(messageEl, fullTextAccumulator);
+                        ChatApp.UI.scrollToBottom();
+                    }
+                }
 
-                // Post-processing for Image and File tags
-                let finalText = accumulatedText;
-                finalText = await this.processResponseForImages(finalText);
-                finalText = await this.processResponseForFiles(finalText);
+                if (!fullTextAccumulator && !hasRemovedThinking) {
+                     // Empty response or error caught internally
+                     throw new Error("No response generated.");
+                }
 
-                const processedParts = [{ text: finalText }];
-                const messageId = ChatApp.Utils.generateUUID();
-                const contentObj = { role: "model", parts: processedParts, ...(groundingMetadata && { groundingMetadata }) };
+                // 4. Post-processing (Files/Images) once full text is available
+                // We do this at the end to prevent partial tags from rendering incorrectly during stream
+                fullTextAccumulator = await this.processResponseForImages(fullTextAccumulator);
+                fullTextAccumulator = await this.processResponseForFiles(fullTextAccumulator);
+
+                // 5. Finalize
+                const contentObj = { role: "model", parts: [{ text: fullTextAccumulator }] };
                 const botMessageForState = { id: messageId, content: contentObj };
-                
-                await ChatApp.UI.finalizeBotMessage(thinkingMessageEl, processedParts, messageId, botMessageForState);
+                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: fullTextAccumulator }], messageId, botMessageForState);
 
             } catch (error) {
-                if (thinkingMessageEl) thinkingMessageEl.remove();
-                if (error.message !== "Generation stopped by user.") {
+                // If checking for abort
+                if (error.message === "Generation stopped by user.") {
+                    ChatApp.UI.showToast(error.message);
+                    if (!hasRemovedThinking) messageEl.remove(); // Clean up if stopped before first chunk
+                } else {
                     console.error("Gen failed:", error);
                     let errorMsg = "An error occurred while generating a response.";
+                    // ... Existing error mapping logic ...
                     if (error.message.includes("Network error")) { errorMsg = "Network error: Please check your internet connection and try again."; } 
-                    else if (error.message.includes("429") || error.message.includes("Rate limit")) { errorMsg = "Rate limit exceeded. Please wait a moment and try again."; } 
-                    else if (error.message.includes("500") || error.message.includes("503")) { errorMsg = "Service temporarily unavailable. Please try again in a moment."; } 
-                    else if (error.message.includes("401") || error.message.includes("Authentication")) { errorMsg = "Authentication error. Please check your API configuration."; } 
+                    else if (error.message.includes("429")) { errorMsg = "Rate limit exceeded. Please wait a moment and try again."; } 
                     else if (error.message) { errorMsg = `Error: ${error.message}`; }
+
+                    // Replace/Append error message
+                    if (!hasRemovedThinking) messageEl.remove();
+                    
                     const errorBotMessage = { id: ChatApp.Utils.generateUUID(), content: { role: 'model', parts: [{ text: errorMsg }] } };
                     await ChatApp.UI.renderMessage(errorBotMessage);
                     ChatApp.UI.showToast(errorMsg, 'error', 5000);
                 }
-                ChatApp.State.setGenerating(false);
+            } finally {
+                 ChatApp.State.setGenerating(false);
             }
         },
-
         async processResponseForImages(rawText) {
             if (!rawText || typeof rawText !== 'string') return rawText;
             const imageRegex = /\[IMAGE: (\{[\s\S]*?\})\]/g;
@@ -1217,6 +1199,15 @@ You are a digital professional. Be concise, accurate, and effective.`;
         handleMessageAreaClick(event) {
             const toggleBtn = event.target.closest('.collapse-toggle-button');
             if (toggleBtn) { const wrapper = toggleBtn.closest('.code-block-wrapper'); if (wrapper) wrapper.classList.toggle('is-collapsed'); return; }
+            
+            // Handle Agent Process Toggle
+            const agentHeader = event.target.closest('.agent-process-header');
+            if (agentHeader) {
+                const wrapper = agentHeader.closest('.agent-process-container');
+                if (wrapper) wrapper.classList.toggle('collapsed');
+                return;
+            }
+
             const mediaTarget = event.target.closest('.generated-image, .attachment-media, .svg-render-box img');
             const htmlBox = event.target.closest('.html-render-box');
             if (mediaTarget) { event.preventDefault(); if (mediaTarget.tagName === 'IMG') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'image'); else if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); } 

@@ -59,6 +59,7 @@ export const MessageFormatter = {
     },
 
     _extractAndReplaceBlocks(text) {
+        if (!text) return { processedText: '', blocks: [] };
         let processedText = text;
         const blocks = [];
         
@@ -86,7 +87,6 @@ export const MessageFormatter = {
         });
 
         // 3. Inline Math ($) - strict lookaround to avoid matching currency
-        // Note: Using non-lookbehind fallback for better browser compatibility
         processedText = processedText.replace(/(?<!\\)\$(?!\s)([^$\n]+?)(?<!\s)\$/g, (match, code) => {
             const trimmed = code.trim();
             // Skip if it looks like currency (e.g., $100, $1.50)
@@ -118,6 +118,7 @@ export const MessageFormatter = {
     },
 
     _processMarkdown(text, footnoteMap) {
+        if (!text) return '';
         let workingText = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         
         // --- BLOCK ELEMENTS ---
@@ -265,7 +266,8 @@ export const MessageFormatter = {
             const match = part.match(/JBAIBLOCK(\d+)END/);
             if (!match) return part;
             const block = blocks[parseInt(match[1], 10)];
-            
+            if (!block) return ''; // Safety check
+
             if (block.type === 'agent-process') return this._renderAgentBlock(block);
             if (block.type === 'code') {
                 if (block.lang.toLowerCase() === 'html') return this._renderHtmlPreview(block);
@@ -294,27 +296,7 @@ export const MessageFormatter = {
         else if (lowerContent.includes("error") || lowerContent.includes("correcting")) statusText = "Self-correcting...";
         else if (lowerContent.includes("thought:")) statusText = "Thinking...";
 
-        // Important: Recurse into markdown processing for the content of the agent block!
-        // We create a temporary map just for this block to handle internal footnotes if needed, though rare
-        const internalFootnoteMap = new Map();
-        const { processedText, blocks } = this._extractAndReplaceBlocks(content); // Handle code blocks inside thoughts
-        let internalHtml = this._processMarkdown(processedText, internalFootnoteMap);
-        
-        // We can't await here easily in synchronous flow if _reinsertBlocks wasn't async, 
-        // but _reinsertBlocks IS async. However, we are calling this from map.
-        // We need a way to process the blocks inside the agent block.
-        // For simplicity in this structure, we'll do a synchronous pass or simple escape if complexity is too high,
-        // BUT ideally we just render text. 
-        // Let's do a basic render without async block re-insertion for nested complex blocks to avoid deadlock/complexity,
-        // OR we just use SyntaxHighlighter.escapeHtml if we want to be safe.
-        // BETTER: Just format it as basic markdown.
-        
-        // *Improvement*: To fully support code blocks inside agent thought, we'd need to await.
-        // Since `_reinsertBlocks` calls this, and `_reinsertBlocks` is async, we can't easily await inside this synchronous helper 
-        // unless we change the architecture. 
-        // Compromise: We will treat content as mostly text/markdown but escape HTML tags.
-        
-        internalHtml = this._processMarkdown(content, new Map()); // Simple markdown pass
+        let internalHtml = this._processMarkdown(content, new Map()); // Simple markdown pass
 
         return `
         <div class="agent-process-container collapsed">
@@ -401,6 +383,7 @@ export const MessageFormatter = {
     },
 
     _wrapInParagraphs(html) {
+        if (!html) return '';
         let finalHtml = '';
         // Match block-level elements. If text is NOT inside one of these, wrap it in <p>.
         // Added: callout, math-block, hr, dl, agent-process-container
