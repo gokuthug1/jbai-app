@@ -19,7 +19,7 @@ const ChatApp = {
             codeExecution: false,
             agentMode: false
         },
-        // Stream reading speed is determined by network, no artificial delay needed
+        TYPING_SPEED_MS: 15, // Used for JSON fallback
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
@@ -45,6 +45,7 @@ const ChatApp = {
         allConversations: [],
         currentChatId: null,
         isGenerating: false,
+        typingInterval: null,
         attachedFiles: [],
         abortController: null,
         toolsConfig: {},
@@ -62,6 +63,10 @@ const ChatApp = {
             ChatApp.UI.toggleSendButtonState();
             ChatApp.UI.toggleStopButton(status);
             if (!status) {
+                if (this.typingInterval) {
+                    clearInterval(this.typingInterval);
+                    this.typingInterval = null;
+                }
                 this.abortController = null;
             }
         },
@@ -406,7 +411,8 @@ const ChatApp = {
                  contentEl.classList.add('result-streaming');
              }
         },
-        async finalizeBotMessage(messageEl, contentParts, messageId, botMessageForState) {
+        async finalizeBotMessage(messageEl, contentParts, messageId, botMessageForState, skipTyping = false) {
+            if (ChatApp.State.typingInterval) { clearInterval(ChatApp.State.typingInterval); ChatApp.State.typingInterval = null; }
             messageEl.classList.remove('thinking');
             messageEl.dataset.messageId = messageId;
             const contentEl = messageEl.querySelector('.message-content');
@@ -414,13 +420,36 @@ const ChatApp = {
             // Remove streaming cursor effect
             contentEl.classList.remove('result-streaming');
 
+            const isComplex = Array.isArray(contentParts) && contentParts.length > 1;
             const fullText = Array.isArray(contentParts) ? contentParts.map(p => p.text || '').join('\n') : contentParts;
             const groundingMetadata = botMessageForState.content.groundingMetadata || null;
 
-            contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
-            this._addMessageInteractions(messageEl, fullText, messageId);
-            this.scrollToBottom();
-            ChatApp.Controller.completeGeneration(botMessageForState);
+            if (skipTyping || ChatApp.Config.TYPING_SPEED_MS === 0 || isComplex) {
+                 contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
+                 this._addMessageInteractions(messageEl, fullText, messageId);
+                 this.scrollToBottom();
+                 ChatApp.Controller.completeGeneration(botMessageForState);
+                 return;
+            }
+            
+            // Fallback: Simulate typing for non-streaming backends (like JSON blocks)
+            contentEl.innerHTML = '';
+            let i = 0;
+            ChatApp.State.typingInterval = setInterval(async () => {
+                if (i < fullText.length) {
+                    const chunk = fullText.slice(i, i + 3); 
+                    contentEl.textContent += chunk;
+                    i += 3;
+                    if (i % 30 === 0) this.scrollToBottom();
+                } else {
+                    clearInterval(ChatApp.State.typingInterval);
+                    ChatApp.State.typingInterval = null;
+                    contentEl.innerHTML = await MessageFormatter.format(contentParts, groundingMetadata);
+                    this._addMessageInteractions(messageEl, fullText, messageId);
+                    this.scrollToBottom();
+                    ChatApp.Controller.completeGeneration(botMessageForState);
+                }
+            }, ChatApp.Config.TYPING_SPEED_MS);
         },
         _addMessageInteractions(messageEl, rawText, messageId) {
             this._addMessageAndCodeActions(messageEl, rawText);
@@ -745,7 +774,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         /**
          * Streams text response from server.
-         * Assumes server returns a stream of text chunks.
+         * Handles both raw text streaming and JSON fallback.
          */
         async *streamTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
             if (!Array.isArray(apiContents)) { throw new Error('Invalid apiContents: must be an array'); }
@@ -769,8 +798,6 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     const { done, value } = await reader.read();
                     if (done) break;
                     const chunk = decoder.decode(value, { stream: true });
-                    // Note: If server sends JSON lines, we might need parsing here.
-                    // For now, assuming raw text/partial text stream as requested.
                     yield chunk;
                 }
 
@@ -915,6 +942,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
             let fullTextAccumulator = "";
             let messageId = ChatApp.Utils.generateUUID();
             let hasRemovedThinking = false;
+            let isJsonMode = false;
 
             try {
                 const toolsConfig = ChatApp.State.toolsConfig;
@@ -930,32 +958,61 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 
                 // 3. Process Stream Chunks
                 for await (const chunk of stream) {
+                    if (!chunk) continue;
+                    
                     if (!hasRemovedThinking) {
                         messageEl.classList.remove('thinking');
                         messageEl.dataset.messageId = messageId;
                         hasRemovedThinking = true;
+                        // Heuristic: If first chunk starts with {, it's likely a JSON blob response, not raw text stream
+                        if (chunk.trimStart().startsWith('{')) {
+                            isJsonMode = true;
+                        }
                     }
-                    if (chunk) {
-                        fullTextAccumulator += chunk;
+
+                    fullTextAccumulator += chunk;
+
+                    // If it's JSON mode, we DON'T update the UI text yet (to avoid showing raw JSON)
+                    // If it's Text mode, we update the UI immediately
+                    if (!isJsonMode) {
                         await ChatApp.UI.updateStreamingMessage(messageEl, fullTextAccumulator);
                         ChatApp.UI.scrollToBottom();
                     }
                 }
 
                 if (!fullTextAccumulator && !hasRemovedThinking) {
-                     // Empty response or error caught internally
                      throw new Error("No response generated.");
                 }
 
-                // 4. Post-processing (Files/Images) once full text is available
-                // We do this at the end to prevent partial tags from rendering incorrectly during stream
+                // 4. Handle JSON Fallback (if backend returned a single JSON object instead of text stream)
+                if (isJsonMode) {
+                    try {
+                        const parsed = JSON.parse(fullTextAccumulator);
+                        const candidate = parsed.candidates?.[0];
+                        if (candidate?.content?.parts?.[0]?.text) {
+                            fullTextAccumulator = candidate.content.parts[0].text;
+                        } else {
+                            // Fallback if structure is unexpected
+                            console.warn("Parsed JSON but couldn't find text path", parsed);
+                        }
+                    } catch (e) {
+                        console.warn("Detected JSON start but failed to parse. Treating as raw text.", e);
+                    }
+                }
+
+                // 5. Post-processing (Files/Images) once full text is available
                 fullTextAccumulator = await this.processResponseForImages(fullTextAccumulator);
                 fullTextAccumulator = await this.processResponseForFiles(fullTextAccumulator);
 
-                // 5. Finalize
+                // 6. Finalize
                 const contentObj = { role: "model", parts: [{ text: fullTextAccumulator }] };
                 const botMessageForState = { id: messageId, content: contentObj };
-                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: fullTextAccumulator }], messageId, botMessageForState);
+                
+                // If we were in JSON mode, we suppressed the stream, so we want the typing effect now.
+                // If we were in Text mode, we already streamed it, so skip typing effect.
+                const skipTyping = !isJsonMode; 
+                
+                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: fullTextAccumulator }], messageId, botMessageForState, skipTyping);
 
             } catch (error) {
                 // If checking for abort
@@ -965,7 +1022,6 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 } else {
                     console.error("Gen failed:", error);
                     let errorMsg = "An error occurred while generating a response.";
-                    // ... Existing error mapping logic ...
                     if (error.message.includes("Network error")) { errorMsg = "Network error: Please check your internet connection and try again."; } 
                     else if (error.message.includes("429")) { errorMsg = "Rate limit exceeded. Please wait a moment and try again."; } 
                     else if (error.message) { errorMsg = `Error: ${error.message}`; }
