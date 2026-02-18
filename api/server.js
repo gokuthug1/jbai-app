@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 const { GOOGLE_API_KEY } = process.env;
-const MODEL_NAME = 'gemini-3-flash-preview';
+const MODEL_NAME = 'gemini-2.5-pro';
 const TITLE_MODEL_NAME = 'gemini-2.0-flash-lite';
 
 const GOOGLE_STREAM_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:streamGenerateContent?alt=sse`;
