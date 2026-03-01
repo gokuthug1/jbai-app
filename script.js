@@ -822,13 +822,32 @@ const ChatApp = {
                     openBtn.innerHTML = OPEN_NEW_TAB;
                     openBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
-                        const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
+                        let rawContent = '';
+                        try {
+                            rawContent = decodeURIComponent(wrapper.dataset.rawContent || '');
+                        } catch {
+                            rawContent = wrapper.dataset.rawContent || '';
+                        }
                         const previewType = wrapper.dataset.previewable;
-                        const newWindow = window.open('', '_blank', 'noopener,noreferrer');
-                        if (!newWindow) { this.showToast('Enable popups to open in a new tab.', 'error'); return; }
-                        newWindow.opener = null;
-                        if (previewType === 'html' || previewType === 'svg') { newWindow.document.write(rawContent); newWindow.document.close(); } 
-                        else { newWindow.document.write('<pre>' + ChatApp.Utils.escapeHTML(rawContent) + '</pre>'); newWindow.document.close(); }
+                        const newWindow = window.open('about:blank', '_blank');
+                        if (!newWindow || newWindow.closed) { this.showToast('Enable popups to open in a new tab.', 'error'); return; }
+                        try {
+                            newWindow.opener = null;
+                            newWindow.document.open();
+                            if (previewType === 'html' || previewType === 'svg') {
+                                newWindow.document.write(rawContent);
+                            } else {
+                                newWindow.document.write(
+                                    '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Code Preview</title>' +
+                                    '<style>body{margin:0;padding:16px;background:#0f172a;color:#e2e8f0;font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;}pre{margin:0;white-space:pre-wrap;word-break:break-word;}</style>' +
+                                    '</head><body><pre>' + ChatApp.Utils.escapeHTML(rawContent) + '</pre></body></html>'
+                                );
+                            }
+                            newWindow.document.close();
+                        } catch (error) {
+                            try { newWindow.close(); } catch {}
+                            this.showToast('Unable to open preview in a new tab.', 'error');
+                        }
                     });
                     actionsContainer.appendChild(openBtn);
                 }
@@ -1078,10 +1097,10 @@ const ChatApp = {
                     svgImg.alt = 'SVG preview';
                     fullscreenContent.appendChild(svgImg);
                     break;
-                case 'html': 
+                case 'html':
                     const iframe = document.createElement('iframe'); 
                     iframe.srcdoc = content; 
-                    iframe.sandbox = "allow-scripts allow-forms allow-popups";
+                    iframe.sandbox = "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox";
                     fullscreenContent.appendChild(iframe); 
                     break;
             }

@@ -333,7 +333,7 @@ export const MessageFormatter = {
     _renderHtmlPreview(block) {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
         const codeBlockHtml = `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div>`;
-        return `<div class="html-preview-container"><div class="html-render-box"><iframe srcdoc="${this._escapeForSrcdoc(block.content)}" sandbox="allow-scripts allow-forms allow-popups" loading="lazy"></iframe></div>${codeBlockHtml}</div>`;
+        return `<div class="html-preview-container"><div class="html-render-box"><iframe srcdoc="${this._escapeForSrcdoc(block.content)}" sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox" loading="lazy"></iframe></div>${codeBlockHtml}</div>`;
     },
 
     _renderSvgPreview(block) {
