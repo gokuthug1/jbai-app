@@ -12,6 +12,10 @@
     {
       "source": "/api/title",
       "destination": "/api/server.js"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/server.js"
     }
   ]
 }

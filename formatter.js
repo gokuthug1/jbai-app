@@ -204,7 +204,7 @@ export const MessageFormatter = {
 
         // Images/Links
         workingText = workingText.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, altText, rawUrl) => {
-            const safeUrl = this._sanitizeUrl(rawUrl, ['http:', 'https:', 'data:', 'blob:']);
+            const safeUrl = this._sanitizeImageUrl(rawUrl);
             if (!safeUrl) return '';
             return `<img src="${this._escapeAttribute(safeUrl)}" alt="${this._escapeAttribute(altText)}" class="markdown-image">`;
         });
@@ -336,7 +336,7 @@ export const MessageFormatter = {
         const highlightedCode = SyntaxHighlighter.highlight(block.content, 'html');
         const codeBlockHtml = `<div class="code-block-wrapper is-collapsible is-collapsed" data-previewable="html" data-raw-content="${encodeURIComponent(block.content)}"><div class="code-block-header"><span>HTML</span><div class="code-block-actions"></div></div><div class="collapsible-content"><pre class="language-html"><code class="language-html">${highlightedCode}</code></pre></div></div>`;
         const safeHtmlForSrcdoc = this._escapeForSrcdoc(block.content);
-        return `<div class="html-preview-container"><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" loading="lazy"></iframe></div>${codeBlockHtml}</div>`;
+        return `<div class="html-preview-container"><div class="html-render-box"><iframe srcdoc="${safeHtmlForSrcdoc}" sandbox="allow-scripts allow-forms allow-popups" loading="lazy"></iframe></div>${codeBlockHtml}</div>`;
     },
 
     _renderSvgPreview(block) {
@@ -350,7 +350,9 @@ export const MessageFormatter = {
         const safeFileList = SyntaxHighlighter.escapeHtml(String(block.fileList || ''));
         const fileCount = block.fileCount;
         const blobUrl = this._sanitizeUrl(block.blobUrl, ['blob:']) || '#';
-        const safeFilename = `files-${Date.now()}.zip`;
+        const rawBlockId = typeof block.blockId === 'string' ? block.blockId : 'files';
+        const safeBaseName = rawBlockId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 50) || 'files';
+        const safeFilename = `${safeBaseName}.zip`;
         
         return `<div class="files-download-wrapper">
             <div class="files-download-container">
@@ -439,6 +441,18 @@ export const MessageFormatter = {
         } catch {
             return null;
         }
+    },
+
+    _sanitizeImageUrl(url) {
+        const safeUrl = this._sanitizeUrl(url, ['http:', 'https:', 'blob:', 'data:']);
+        if (!safeUrl) return null;
+
+        if (safeUrl.startsWith('data:')) {
+            const isSafeImageData = /^data:image\/(?:png|jpeg|jpg|gif|webp|bmp|svg\+xml);base64,[a-z0-9+/=\s]+$/i.test(safeUrl);
+            if (!isSafeImageData) return null;
+        }
+
+        return safeUrl;
     },
 
     _toBase64(str) {

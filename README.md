@@ -63,6 +63,12 @@ Create `api/.env`:
 
 ```env
 GOOGLE_API_KEY=your_api_key_here
+# Optional server hardening/tuning:
+# CORS_ORIGINS=https://your-app.com,https://staging.your-app.com
+# JSON_LIMIT=30mb
+# REQUEST_TIMEOUT_MS=55000
+# MODEL_NAME=gemini-2.5-flash
+# TITLE_MODEL_NAME=gemini-2.5-flash-lite
 ```
 
 ### Run Locally
@@ -81,6 +87,7 @@ Then open `index.html` in your browser (or serve the root folder with a static s
 
 - `POST /api/server` - chat completion (streamed text)
 - `POST /api/title` - conversation title generation
+- `GET /api/health` - basic health check
 
 ## Deployment (Vercel)
 

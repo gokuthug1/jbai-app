@@ -20,6 +20,11 @@ const ChatApp = {
         },
         TYPING_SPEED_MS: 15,
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
+        MAX_FILES: 5,
+        MAX_GENERATED_FILES: 50,
+        MAX_GENERATED_FILE_BYTES: 1024 * 1024,
+        MAX_GENERATED_TOTAL_BYTES: 10 * 1024 * 1024,
+        MAX_GENERATED_FILENAME_LENGTH: 120,
         ICONS: {
             COPY: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>`,
             CHECK: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`,
@@ -47,17 +52,32 @@ const ChatApp = {
         typingInterval: null,
         attachedFiles: [],
         previewObjectUrls: [],
+        generatedDownloadUrls: [],
+        fileRenderCache: new Map(),
         abortController: null,
         toolsConfig: {},
         setCurrentConversation(history) {
-            this.currentConversation = history.map(msg => {
-                if (!msg) return null;
-                if (msg.id && msg.content && (msg.content.role || msg.content.parts)) return msg;
-                return null;
-            }).filter(Boolean);
+            this.currentConversation = Array.isArray(history)
+                ? history.map((msg, index) => ChatApp.Utils.normalizeMessage(msg, index)).filter(Boolean)
+                : [];
         },
         addMessage(message) { this.currentConversation.push(message); },
         removeMessage(messageId) { this.currentConversation = this.currentConversation.filter(msg => msg.id !== messageId); },
+        registerGeneratedDownloadUrl(url) {
+            if (typeof url !== 'string' || !url.startsWith('blob:')) return;
+            this.generatedDownloadUrls.push(url);
+        },
+        revokeGeneratedDownloadUrls() {
+            this.generatedDownloadUrls.forEach((url) => {
+                try {
+                    URL.revokeObjectURL(url);
+                } catch (error) {
+                    console.warn('Failed to revoke generated download URL:', error);
+                }
+            });
+            this.generatedDownloadUrls = [];
+            this.fileRenderCache.clear();
+        },
         setGenerating(status) {
             this.isGenerating = status;
             ChatApp.UI.toggleSendButtonState();
@@ -89,7 +109,7 @@ const ChatApp = {
             return str.replace(/[&<>"']/g, m => map[m]);
         },
         generateUUID() { 
-            return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
         },
         blobToBase64(blob) {
             return new Promise((resolve, reject) => {
@@ -123,6 +143,149 @@ const ChatApp = {
             const ALLOWED_EXTENSIONS = ['.js', '.lua', '.css', '.html', '.json', '.txt', '.md', '.py', '.sh'];
             return ALLOWED_TYPES.some(type => file.type.startsWith(type)) || ALLOWED_EXTENSIONS.some(ext => file.name.toLowerCase().endsWith(ext));
         },
+        inferMimeType(fileName) {
+            const extension = (fileName || '').split('.').pop()?.toLowerCase();
+            const mimeTypes = {
+                js: 'application/javascript',
+                mjs: 'application/javascript',
+                json: 'application/json',
+                txt: 'text/plain',
+                md: 'text/markdown',
+                html: 'text/html',
+                css: 'text/css',
+                svg: 'image/svg+xml',
+                xml: 'application/xml',
+                py: 'text/x-python',
+                sh: 'text/x-shellscript',
+                lua: 'text/plain'
+            };
+            return mimeTypes[extension] || 'application/octet-stream';
+        },
+        sanitizeGeneratedFilename(name, fallbackIndex = 0) {
+            const raw = typeof name === 'string' ? name : '';
+            const basename = raw.replace(/\\/g, '/').split('/').pop() || '';
+            let safeName = basename
+                .replace(/\.\./g, '')
+                .replace(/[<>:"|?*\x00-\x1F]/g, '_')
+                .trim();
+
+            if (!safeName) safeName = `file-${fallbackIndex + 1}.txt`;
+            if (safeName.length > ChatApp.Config.MAX_GENERATED_FILENAME_LENGTH) {
+                const lastDot = safeName.lastIndexOf('.');
+                if (lastDot > 0 && lastDot < safeName.length - 1) {
+                    const ext = safeName.slice(lastDot);
+                    const baseMax = ChatApp.Config.MAX_GENERATED_FILENAME_LENGTH - ext.length;
+                    safeName = `${safeName.slice(0, Math.max(1, baseMax))}${ext}`;
+                } else {
+                    safeName = safeName.slice(0, ChatApp.Config.MAX_GENERATED_FILENAME_LENGTH);
+                }
+            }
+            return safeName;
+        },
+        normalizeAttachment(attachment, index = 0) {
+            if (!attachment || typeof attachment !== 'object') return null;
+            const name = typeof attachment.name === 'string' && attachment.name.trim()
+                ? attachment.name.trim().slice(0, 120)
+                : `attachment-${index + 1}`;
+            const type = typeof attachment.type === 'string' && attachment.type.trim()
+                ? attachment.type.trim()
+                : this.inferMimeType(name);
+            const data = typeof attachment.data === 'string' ? attachment.data : null;
+            return { name, type, data };
+        },
+        normalizeMessage(message, index = 0) {
+            if (!message || typeof message !== 'object') return null;
+
+            const role = message?.content?.role;
+            if (role !== 'user' && role !== 'model') return null;
+
+            const rawParts = Array.isArray(message?.content?.parts) ? message.content.parts : [];
+            const parts = rawParts.map((part) => {
+                if (!part || typeof part !== 'object') return null;
+
+                if (typeof part.text === 'string') {
+                    return { text: part.text };
+                }
+
+                const inlineData = part.inlineData;
+                if (
+                    inlineData &&
+                    typeof inlineData === 'object' &&
+                    typeof inlineData.mimeType === 'string' &&
+                    typeof inlineData.data === 'string'
+                ) {
+                    return {
+                        inlineData: {
+                            mimeType: inlineData.mimeType,
+                            data: inlineData.data
+                        }
+                    };
+                }
+
+                return null;
+            }).filter(Boolean);
+
+            if (parts.length === 0) return null;
+
+            const normalized = {
+                id: message.id ? String(message.id) : this.generateUUID(),
+                content: { role, parts }
+            };
+
+            const groundingMetadata = message?.content?.groundingMetadata;
+            if (groundingMetadata && typeof groundingMetadata === 'object') {
+                normalized.content.groundingMetadata = groundingMetadata;
+            }
+
+            if (Array.isArray(message.attachments)) {
+                const attachments = message.attachments
+                    .map((attachment, attachmentIndex) => this.normalizeAttachment(attachment, attachmentIndex))
+                    .filter(Boolean);
+                if (attachments.length > 0) normalized.attachments = attachments;
+            }
+
+            return normalized;
+        },
+        normalizeConversations(conversations) {
+            if (!Array.isArray(conversations)) return [];
+
+            return conversations.map((chat, index) => {
+                if (!chat || typeof chat !== 'object') return null;
+
+                const hasNumericId = typeof chat.id === 'number' && Number.isFinite(chat.id);
+                const hasStringId = typeof chat.id === 'string' && chat.id.trim().length > 0;
+                const id = hasNumericId || hasStringId ? chat.id : `${Date.now()}-${index}`;
+                const title = typeof chat.title === 'string' && chat.title.trim()
+                    ? chat.title.trim().slice(0, 120)
+                    : 'Untitled Chat';
+                const history = Array.isArray(chat.history)
+                    ? chat.history.map((msg, msgIndex) => this.normalizeMessage(msg, msgIndex)).filter(Boolean)
+                    : [];
+
+                if (history.length === 0) return null;
+                return { id, title, history };
+            }).filter(Boolean);
+        },
+        async copyToClipboard(text) {
+            const value = typeof text === 'string' ? text : String(text ?? '');
+            if (!value) return false;
+
+            if (navigator.clipboard?.writeText) {
+                await navigator.clipboard.writeText(value);
+                return true;
+            }
+
+            const temp = document.createElement('textarea');
+            temp.value = value;
+            temp.setAttribute('readonly', '');
+            temp.style.position = 'absolute';
+            temp.style.left = '-9999px';
+            document.body.appendChild(temp);
+            temp.select();
+            const copied = document.execCommand('copy');
+            document.body.removeChild(temp);
+            return copied;
+        },
         debounce(func, wait) {
             let timeout;
             return function executedFunction(...args) {
@@ -146,7 +309,7 @@ const ChatApp = {
                         cleanMsg.attachments = cleanMsg.attachments.map(att => ({
                             name: att.name,
                             type: att.type,
-                            data: att.type.startsWith('text/') ? att.data : null 
+                            data: typeof att.type === 'string' && att.type.startsWith('text/') ? att.data : null 
                         }));
                     }
                     return cleanMsg;
@@ -163,7 +326,8 @@ const ChatApp = {
         loadAllConversations() {
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
-                ChatApp.State.allConversations = stored ? JSON.parse(stored) : [];
+                const parsed = stored ? JSON.parse(stored) : [];
+                ChatApp.State.allConversations = ChatApp.Utils.normalizeConversations(parsed);
             } catch (e) {
                 console.error("Failed to parse conversations, resetting.", e);
                 ChatApp.State.allConversations = [];
@@ -183,6 +347,7 @@ const ChatApp = {
                 ChatApp.State.toolsConfig = finalConfig;
                 return finalConfig;
             } catch (e) {
+                ChatApp.State.toolsConfig = { ...ChatApp.Config.DEFAULT_TOOLS };
                 return ChatApp.Config.DEFAULT_TOOLS;
             }
         }
@@ -240,6 +405,7 @@ const ChatApp = {
         initTooltips() {
             let tooltipTimeout;
             const tooltip = this.elements.customTooltip;
+            if (!tooltip) return;
             const showTooltip = (e) => {
                 const target = e.target.closest('[data-tooltip]');
                 if (!target) return;
@@ -277,6 +443,7 @@ const ChatApp = {
         },
         showToast(message, type = 'info', duration = 3000) {
             if (!message || typeof message !== 'string') return;
+            if (!this.elements.toastContainer) return;
             const toast = document.createElement('div');
             toast.className = `toast-message ${type}`;
             toast.setAttribute('role', 'alert');
@@ -340,7 +507,12 @@ const ChatApp = {
                 return;
             }
             
-            const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => (b.id || 0) - (a.id || 0));
+            const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => {
+                const aId = Number(a?.id);
+                const bId = Number(b?.id);
+                if (Number.isFinite(aId) && Number.isFinite(bId)) return bId - aId;
+                return 0;
+            });
             sortedConversations.forEach((chat, index) => {
                 const item = document.createElement('button');
                 item.className = 'conversation-item';
@@ -389,6 +561,12 @@ const ChatApp = {
                 if (sender === 'user') {
                     const textPart = rawContent.find(p => p.text);
                     rawContent = textPart ? textPart.text : '';
+                } else if (Array.isArray(rawContent)) {
+                    rawContent = await Promise.all(rawContent.map(async (part) => {
+                        if (!part?.text || typeof part.text !== 'string') return part;
+                        const processed = await ChatApp.Controller.processResponseForFiles(part.text);
+                        return { ...part, text: processed };
+                    }));
                 }
                 messageEl.className = `message ${sender}`;
                 contentEl.innerHTML = await MessageFormatter.format(rawContent, groundingMetadata);
@@ -496,7 +674,18 @@ const ChatApp = {
             if (rawText && !isPreview) {
                 const copyBtn = document.createElement('button');
                 copyBtn.className = 'copy-button'; copyBtn.type = 'button'; copyBtn.setAttribute('data-tooltip', 'Copy message text'); copyBtn.innerHTML = COPY;
-                copyBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(rawText).then(() => { copyBtn.innerHTML = CHECK; this.showToast('Message copied!'); setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000); }); });
+                copyBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    try {
+                        const copied = await ChatApp.Utils.copyToClipboard(rawText);
+                        if (!copied) throw new Error('Clipboard unavailable');
+                        copyBtn.innerHTML = CHECK;
+                        this.showToast('Message copied!');
+                        setTimeout(() => { copyBtn.innerHTML = COPY; }, 2000);
+                    } catch (error) {
+                        this.showToast('Unable to copy text.', 'error');
+                    }
+                });
                 messageEl.appendChild(copyBtn);
             }
             contentEl.querySelectorAll('.code-block-wrapper').forEach(wrapper => {
@@ -549,8 +738,9 @@ const ChatApp = {
                         e.stopPropagation();
                         const rawContent = decodeURIComponent(wrapper.dataset.rawContent);
                         const previewType = wrapper.dataset.previewable;
-                        const newWindow = window.open('about:blank', '_blank');
+                        const newWindow = window.open('', '_blank', 'noopener,noreferrer');
                         if (!newWindow) { this.showToast('Enable popups to open in a new tab.', 'error'); return; }
+                        newWindow.opener = null;
                         if (previewType === 'html' || previewType === 'svg') { newWindow.document.write(rawContent); newWindow.document.close(); } 
                         else { newWindow.document.write('<pre>' + ChatApp.Utils.escapeHTML(rawContent) + '</pre>'); newWindow.document.close(); }
                     });
@@ -580,7 +770,18 @@ const ChatApp = {
 
                 const copyCodeBtn = document.createElement('button');
                 copyCodeBtn.className = 'copy-code-button'; copyCodeBtn.type = 'button'; copyCodeBtn.setAttribute('data-tooltip', 'Copy code'); copyCodeBtn.innerHTML = COPY;
-                copyCodeBtn.addEventListener('click', e => { e.stopPropagation(); navigator.clipboard.writeText(pre.textContent).then(() => { copyCodeBtn.innerHTML = CHECK; this.showToast('Code copied!'); setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000); }); });
+                copyCodeBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    try {
+                        const copied = await ChatApp.Utils.copyToClipboard(pre.textContent);
+                        if (!copied) throw new Error('Clipboard unavailable');
+                        copyCodeBtn.innerHTML = CHECK;
+                        this.showToast('Code copied!');
+                        setTimeout(() => { copyCodeBtn.innerHTML = COPY; }, 2000);
+                    } catch (error) {
+                        this.showToast('Unable to copy code.', 'error');
+                    }
+                });
                 actionsContainer.appendChild(copyCodeBtn);
 
                 if (wrapper.classList.contains('is-collapsible')) {
@@ -686,6 +887,12 @@ const ChatApp = {
             fullscreenContent.innerHTML = '';
             switch(type) {
                 case 'video': const vid = document.createElement('video'); vid.src = content; vid.controls = true; vid.autoplay = true; fullscreenContent.appendChild(vid); break;
+                case 'image':
+                    const img = document.createElement('img');
+                    img.src = content;
+                    img.alt = 'Image preview';
+                    fullscreenContent.appendChild(img);
+                    break;
                 case 'svg':
                     const svgImg = document.createElement('img');
                     svgImg.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(content)}`;
@@ -829,6 +1036,10 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     }
                     throw new Error(errorMsg);
                 }
+
+                if (!response.body) {
+                    throw new Error('Streaming not supported by the current browser response.');
+                }
                 
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
@@ -881,6 +1092,10 @@ You are a digital professional. Be concise, accurate, and effective.`;
             elements.body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.add('drag-over'); });
             elements.body.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) { elements.body.classList.remove('drag-over'); } });
             elements.body.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.remove('drag-over'); if (e.dataTransfer?.files?.length > 0) { Controller.addFilesToState(e.dataTransfer.files); } });
+            window.addEventListener('beforeunload', () => {
+                ChatApp.UI._revokeFilePreviewUrls();
+                ChatApp.State.revokeGeneratedDownloadUrls();
+            });
         },
         startNewChat() {
             ChatApp.State.resetCurrentChat();
@@ -922,7 +1137,18 @@ You are a digital professional. Be concise, accurate, and effective.`;
 
             const fileDataPromises = files.map(file => new Promise((resolve, reject) => {
                 const reader = new FileReader();
-                reader.onload = e => resolve({ mimeType: file.type, data: e.target.result.split(',')[1] });
+                reader.onload = (e) => {
+                    const result = typeof e.target?.result === 'string' ? e.target.result : '';
+                    const base64Data = result.includes(',') ? result.split(',')[1] : '';
+                    if (!base64Data) {
+                        reject(new Error(`Failed to encode "${file.name}" for upload.`));
+                        return;
+                    }
+                    resolve({
+                        mimeType: file.type || ChatApp.Utils.inferMimeType(file.name),
+                        data: base64Data
+                    });
+                };
                 reader.onerror = reject;
                 reader.onabort = () => reject(new Error('File read aborted'));
                 reader.readAsDataURL(file);
@@ -933,11 +1159,14 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const messageParts = fileApiData.map(p => ({ inlineData: p }));
                 if (userInput) { messageParts.push({ text: userInput }); }
 
-                const userMessageAttachments = await Promise.all(files.map(file => new Promise((resolve) => {
-                    if (file.type.startsWith('image/') || file.type.startsWith('video/')) {
-                        ChatApp.Utils.blobToBase64(file).then(base64 => { resolve({ name: file.name, type: file.type, data: base64 }); });
-                    } else { resolve({ name: file.name, type: file.type, data: null }); }
-                })));
+                const userMessageAttachments = await Promise.all(files.map(async (file) => {
+                    const fileType = file.type || ChatApp.Utils.inferMimeType(file.name);
+                    if (fileType.startsWith('image/') || fileType.startsWith('video/')) {
+                        const base64 = await ChatApp.Utils.blobToBase64(file);
+                        return { name: file.name, type: fileType, data: base64 };
+                    }
+                    return { name: file.name, type: fileType, data: null };
+                }));
 
                 const userMessage = { id: ChatApp.Utils.generateUUID(), content: { role: "user", parts: messageParts }, attachments: userMessageAttachments };
                 ChatApp.State.addMessage(userMessage);
@@ -951,7 +1180,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
         addFilesToState(files) {
             if (!files || files.length === 0) return;
             const newFiles = Array.from(files);
-            const MAX_FILES = 5;
+            const MAX_FILES = ChatApp.Config.MAX_FILES;
             if (ChatApp.State.attachedFiles.length + newFiles.length > MAX_FILES) { ChatApp.UI.showToast(`Maximum ${MAX_FILES} files allowed.`, 'error'); return; }
             
             const validFiles = newFiles.filter(file => {
@@ -1025,13 +1254,14 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 }
 
                 // 4. Post-processing (Files)
-                fullTextAccumulator = await this.processResponseForFiles(fullTextAccumulator);
+                const rawModelText = fullTextAccumulator;
+                const processedModelText = await this.processResponseForFiles(rawModelText);
 
                 // 5. Finalize
-                const contentObj = { role: "model", parts: [{ text: fullTextAccumulator }] };
+                const contentObj = { role: "model", parts: [{ text: rawModelText }] };
                 const botMessageForState = { id: messageId, content: contentObj };
                 
-                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: fullTextAccumulator }], messageId, botMessageForState);
+                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: processedModelText }], messageId, botMessageForState);
 
             } catch (error) {
                 // If checking for abort
@@ -1068,6 +1298,8 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         async processResponseForFiles(rawText) {
             if (!rawText || typeof rawText !== 'string') return rawText;
+            const cachedProcessedText = ChatApp.State.fileRenderCache.get(rawText);
+            if (cachedProcessedText) return cachedProcessedText;
             if (typeof JSZip === 'undefined') { console.warn('JSZip library not loaded. File creation feature unavailable.'); return rawText; }
             const matches = [];
             let searchIndex = 0;
@@ -1107,13 +1339,39 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 try {
                     const params = JSON.parse(jsonString);
                     if (!params.files || !Array.isArray(params.files) || params.files.length === 0) { throw new Error('Missing or invalid files array in file parameters'); }
-                    for (const file of params.files) { if (!file.name || file.content === undefined) { throw new Error('Each file must have a name and content property'); } }
+                    if (params.files.length > ChatApp.Config.MAX_GENERATED_FILES) {
+                        throw new Error(`Generated file count exceeds ${ChatApp.Config.MAX_GENERATED_FILES}`);
+                    }
+
+                    let totalBytes = 0;
                     const zip = new JSZip();
-                    for (const file of params.files) { zip.file(file.name, file.content); }
+                    params.files.forEach((file, index) => {
+                        if (!file || file.content === undefined) {
+                            throw new Error('Each file must have a name and content property');
+                        }
+
+                        const safeName = ChatApp.Utils.sanitizeGeneratedFilename(file.name, index);
+                        const fileContent = typeof file.content === 'string' ? file.content : JSON.stringify(file.content, null, 2);
+                        const fileBytes = new Blob([fileContent]).size;
+
+                        if (fileBytes > ChatApp.Config.MAX_GENERATED_FILE_BYTES) {
+                            throw new Error(`"${safeName}" exceeds ${Math.round(ChatApp.Config.MAX_GENERATED_FILE_BYTES / 1024)}KB`);
+                        }
+
+                        totalBytes += fileBytes;
+                        if (totalBytes > ChatApp.Config.MAX_GENERATED_TOTAL_BYTES) {
+                            throw new Error('Generated files exceed total size limit');
+                        }
+
+                        zip.file(safeName, fileContent);
+                    });
+
                     const zipBlob = await zip.generateAsync({ type: 'blob' });
                     const blobUrl = URL.createObjectURL(zipBlob);
-                    const blockId = `files-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-                    const fileList = params.files.map(f => f.name).join(', ');
+                    ChatApp.State.registerGeneratedDownloadUrl(blobUrl);
+
+                    const blockId = `files-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+                    const fileList = params.files.map((file, index) => ChatApp.Utils.sanitizeGeneratedFilename(file.name, index)).join(', ');
                     const safeFileList = ChatApp.Utils.escapeHTML(fileList);
                     const fileCount = params.files.length;
                     return { original: originalTag, replacement: `[FILES: ${blockId}](${blobUrl}|${safeFileList}|${fileCount})` };
@@ -1126,6 +1384,13 @@ You are a digital professional. Be concise, accurate, and effective.`;
             const replacements = await Promise.all(replacementPromises);
             let processedText = rawText;
             replacements.forEach(({ original, replacement }) => { processedText = processedText.replace(original, replacement); });
+            if (processedText !== rawText) {
+                ChatApp.State.fileRenderCache.set(rawText, processedText);
+                if (ChatApp.State.fileRenderCache.size > 200) {
+                    const firstKey = ChatApp.State.fileRenderCache.keys().next().value;
+                    ChatApp.State.fileRenderCache.delete(firstKey);
+                }
+            }
             return processedText;
         },
         completeGeneration(botMessage) {
@@ -1215,8 +1480,15 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
-                        if (!Array.isArray(importedData)) throw new Error("Invalid format.");
-                        if (confirm('Replace all conversations?')) { ChatApp.State.allConversations = importedData; ChatApp.Store.saveAllConversations(); location.reload(); }
+                        const normalizedData = ChatApp.Utils.normalizeConversations(importedData);
+                        if (normalizedData.length === 0) throw new Error("No valid conversations found.");
+                        if (confirm('Replace all conversations?')) {
+                            ChatApp.State.allConversations = normalizedData;
+                            ChatApp.Store.saveAllConversations();
+                            ChatApp.Controller.startNewChat();
+                            ChatApp.UI.renderSidebar();
+                            ChatApp.UI.showToast('Data imported.');
+                        }
                     } catch (error) { ChatApp.UI.showToast(`Error: ${error.message}`, 'error'); }
                 };
                 reader.readAsText(file);
@@ -1232,13 +1504,15 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 reader.onload = (e) => {
                     try {
                         const importedData = JSON.parse(e.target.result);
-                        if (!Array.isArray(importedData)) throw new Error("Invalid format.");
+                        const normalizedData = ChatApp.Utils.normalizeConversations(importedData);
+                        if (normalizedData.length === 0) throw new Error("No valid conversations found.");
                         if (confirm('Merge conversations?')) {
                             const conversationMap = new Map(ChatApp.State.allConversations.map(c => [c.id, c]));
-                            importedData.forEach(chat => { if (!conversationMap.has(chat.id)) conversationMap.set(chat.id, chat); });
+                            normalizedData.forEach(chat => { if (!conversationMap.has(chat.id)) conversationMap.set(chat.id, chat); });
                             ChatApp.State.allConversations = Array.from(conversationMap.values());
                             ChatApp.Store.saveAllConversations();
-                            location.reload();
+                            ChatApp.UI.renderSidebar();
+                            ChatApp.UI.showToast('Data merged.');
                         }
                     } catch (error) { ChatApp.UI.showToast(`Error: ${error.message}`, 'error'); }
                 };
@@ -1252,7 +1526,12 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.TOOLS);
                 ChatApp.State.allConversations = [];
-                location.reload();
+                ChatApp.State.currentConversation = [];
+                ChatApp.State.currentChatId = null;
+                ChatApp.State.revokeGeneratedDownloadUrls();
+                ChatApp.UI.clearChatArea();
+                ChatApp.UI.renderSidebar();
+                ChatApp.UI.showToast('All data deleted.');
             }
         },
         handleMessageAreaClick(event) {
@@ -1269,7 +1548,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
 
             const mediaTarget = event.target.closest('.attachment-media, .svg-render-box img');
             const htmlBox = event.target.closest('.html-render-box');
-            if (mediaTarget) { event.preventDefault(); if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video'); } 
+            if (mediaTarget) {
+                event.preventDefault();
+                if (mediaTarget.tagName === 'VIDEO') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'video');
+                if (mediaTarget.tagName === 'IMG') ChatApp.UI.showFullscreenPreview(mediaTarget.src, 'image');
+            } 
             else if (htmlBox) { const iframe = htmlBox.querySelector('iframe'); if (iframe) ChatApp.UI.showFullscreenPreview(iframe.srcdoc, 'html'); }
             else { const svgWrapper = event.target.closest('.svg-preview-container'); if (svgWrapper) { const rawContent = svgWrapper.querySelector('.code-block-wrapper')?.dataset.rawContent; if (rawContent) ChatApp.UI.showFullscreenPreview(decodeURIComponent(rawContent), 'svg'); } }
         },
