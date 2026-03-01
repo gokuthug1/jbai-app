@@ -1,10 +1,16 @@
 /**
  * A lightweight, regex-based syntax highlighter.
+ * Note: Pure Regex highlighting is not an AST parser, so extreme edge-cases 
+ * (like highly nested string interpolations) may fall back to default text colors.
+ * 
  * @namespace SyntaxHighlighter
  */
 export const SyntaxHighlighter = {
+    // PRECEDENCE MATTERS: The order of keys here dictates token matching priority.
+    // Rule of thumb: Comments > Strings > Keywords > Functions > Numbers > Operators.
     GRAMMAR: {
         json: {
+            'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
             'property': /"(?:\\.|[^"\\])*"(?=\s*:)/,
             'string': /"(?:\\.|[^"\\])*"/,
             'number': /\b-?\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/i,
@@ -13,29 +19,32 @@ export const SyntaxHighlighter = {
             'punctuation': /[{}[\](),]/,
         },
         javascript: {
-            'comment': /(\/\/.*)|(\/\*[\s\S]*?\*\/)/,
-            'string': /(?:'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|`(?:\\`|[^`])*`)/,
+            'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+            // Supports single, double, and template literals
+            'string': /(?:`(?:\\`|[^`])*`|'(?:\\'|[^'])*'|"(?:\\"|[^"])*")/,
+            'regex': /\/(?:\\\/|[^\n\r/])+\/[gimyus]*/,
             'class-name': /\b[A-Z][A-Za-z0-9_]+\b/,
             'jbai-keyword': /\b(ChatApp|Config|State|Utils|Store|UI|Api|Controller)\b/,
-            'keyword': /\b(?:const|let|var|if|else|for|while|do|async|await|function|return|new|import|export|from|class|extends|super|this|switch|case|default|break|continue|try|catch|finally|throw|delete|typeof|instanceof|void)\b/,
+            'keyword': /\b(?:const|let|var|if|else|for|while|do|async|await|function|return|new|import|export|from|class|extends|super|this|switch|case|default|break|continue|try|catch|finally|throw|delete|typeof|instanceof|void|yield)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
-            'number': /\b-?\d+(?:\.\d+)?\b/,
+            'number': /\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\b0[xX][a-fA-F0-9]+\b/,
             'boolean': /\b(?:true|false|null|undefined)\b/,
-            'operator': /=>|\.\.\.|[|&^!~*\/%<>=+-]=?|&&|\|\||\?/,
-            'punctuation': /[{}[\]();,.:]/,
+            'operator': /=>|\.\.\.|[|&^!~*\/%<>=+-]=?|&&|\|\||\?|:/,
+            'punctuation': /[{}[\]();,.]/,
         },
         python: {
             'comment': /#.*/,
-            'string': /(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\'|[^'])*'|"(?:\\"|[^"])*")/,
-            'keyword': /\b(?:def|class|if|else|elif|for|while|return|import|from|as|try|except|finally|with|lambda|and|or|not|is|in|pass|break|continue|global|nonlocal)\b/,
+            // Supports f-strings, raw strings, and triple quotes
+            'string': /[fFbrR]*(?:'''[\s\S]*?'''|"""[\s\S]*?"""|'(?:\\'|[^'])*'|"(?:\\"|[^"])*")/,
+            'keyword': /\b(?:def|class|if|else|elif|for|while|return|import|from|as|try|except|finally|with|lambda|and|or|not|is|in|pass|break|continue|global|nonlocal|yield|async|await)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
-            'number': /\b-?\d+(?:\.\d+)?\b/,
+            'number': /\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\b0[xX][a-fA-F0-9]+\b/,
             'boolean': /\b(?:True|False|None)\b/,
             'operator': /([*\/%+\-&|~^<>=!]=?|[*\/]=|\/\/|@)/,
             'punctuation': /[{}[\]();,.:]/,
         },
         lua: {
-            'comment': /--.*|--\[\[[\s\S]*?\]\]/,
+            'comment': /--\[\[[\s\S]*?\]\]|--.*/,
             'string': /'(?:\\'|[^'])*'|"(?:\\"|[^"])*"|\[\[[\s\S]*?\]\]/,
             'keyword': /\b(?:function|end|if|then|else|elseif|for|while|do|return|local|and|or|not|break|repeat|until|in)\b/,
             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
@@ -47,53 +56,86 @@ export const SyntaxHighlighter = {
         html: {
             'comment': /<!--[\s\S]*?-->/,
             'doctype': /<!DOCTYPE[\s\S]+?>/i,
+            'attr-value': /=(?:("|')(?:\\\1|.)*?\1|[^\s>]+)/,
+            'attr-name': /\s+[a-zA-Z0-9:\-]+(?=\s*=\s*|\s*>|\s*\/>)/,
             'tag': /<\/?[\w:-]+\b/, 
-            'attr-value': /("|')(?:\\\1|.)*?\1/,
-            'attr-name': /[\w:-]+(?=\s*=\s*["'])/, 
-            'punctuation': /\/?>|=/
+            'punctuation': /\/?>|<|=/
         },
         css: {
             'comment': /\/\*[\s\S]*?\*\//,
+            'string': /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'/,
+            'function': /\b(?:rgb|rgba|hsl|hsla|url|calc|var|min|max|clamp)\b(?=\()/,
             'selector': /[^{}\s][^{}]*(?=\s*\{)/,
             'property': /[\w-]+(?=\s*:)/,
-            'string': /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'/,
-            'function': /\b(?:rgb|rgba|url|calc|var|min|max|clamp)\b/,
-            'number': /\b-?\d+(?:\.\d+)?(?:px|em|rem|%|vw|vh|deg|s|ms)?\b/,
+            'number': /\b-?\d+(?:\.\d+)?(?:px|em|rem|%|vw|vh|deg|s|ms|pt)?\b/,
+            'operator': /!important|:|;/,
+            'punctuation': /[{}]/
         },
         bash: {
              'comment': /#.*/,
              'string': /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'/,
              'variable': /\$[a-zA-Z_][a-zA-Z0-9_]*|\$\{[^}]+\}/,
-             'keyword': /\b(?:if|then|else|elif|fi|for|while|in|do|done|case|esac|function|return|exit|echo|printf|read|source|export|local)\b/,
+             'keyword': /\b(?:if|then|else|elif|fi|for|while|in|do|done|case|esac|function|return|exit|echo|printf|read|source|export|local|alias|set)\b/,
              'function': /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\(\))/,
-             'operator': /&&|\|\||;;|\||&|>|<|!/,
+             'operator': /&&|\|\||;;|\||&|>|<|!|=/,
              'number': /\b\d+\b/
         },
         sql: {
             'comment': /--.*|\/\*[\s\S]*?\*\//,
-            'string': /'(?:''|[^'])*'/,
-            'keyword': /\b(?:SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|JOIN|INNER|OUTER|LEFT|RIGHT|ON|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|AS|DISTINCT|CASE|WHEN|THEN|ELSE|END|IS|NULL|AND|OR|NOT|IN|EXISTS|LIKE|VALUES|SET|PRIMARY|KEY|FOREIGN|REFERENCES)\b/i,
-            'function': /\b(?:COUNT|SUM|AVG|MIN|MAX|NOW|DATE|CONCAT)\b/i,
+            'string': /'(?:''|[^'])*'|"(?:""|[^"])*"/,
+            'keyword': /\b(?:SELECT|FROM|WHERE|INSERT|INTO|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INDEX|JOIN|INNER|OUTER|LEFT|RIGHT|ON|GROUP|BY|ORDER|HAVING|LIMIT|OFFSET|UNION|ALL|AS|DISTINCT|CASE|WHEN|THEN|ELSE|END|IS|NULL|AND|OR|NOT|IN|EXISTS|LIKE|ILIKE|VALUES|SET|PRIMARY|KEY|FOREIGN|REFERENCES|DEFAULT|AUTO_INCREMENT|SERIAL)\b/i,
+            'function': /\b(?:COUNT|SUM|AVG|MIN|MAX|NOW|DATE|CONCAT|COALESCE|CAST)\b/i,
             'number': /\b-?\d+(?:\.\d+)?\b/,
-            'operator': /[=<>!]+/,
+            'operator': /[=<>!+\-*/]+/,
             'punctuation': /[();,.]/
         },
         cpp: {
-             'comment': /(\/\/.*)|(\/\*[\s\S]*?\*\/)/,
-             'string': /"(?:\\"|[^"])*"/,
-             'keyword': /\b(?:int|float|double|char|void|if|else|for|while|do|switch|case|default|break|continue|return|struct|class|public|private|protected|static|const|virtual|override|new|delete|using|namespace|include|template|typename|bool|auto)\b/,
-             'number': /\b-?\d+(?:\.\d+)?\b/,
+             'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+             'string': /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'/,
+             'keyword': /\b(?:int|float|double|char|void|if|else|for|while|do|switch|case|default|break|continue|return|struct|class|public|private|protected|static|const|virtual|override|new|delete|using|namespace|include|template|typename|bool|auto|inline)\b/,
+             'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
+             'number': /\b-?\d+(?:\.\d+)?(?:[fFdD])?\b|\b0[xX][a-fA-F0-9]+\b/,
              'boolean': /\b(?:true|false)\b/,
-             'operator': /[+\-*\/%&|^!~=<>]+/,
-             'punctuation': /[{}[\]();,.:]/
+             'operator': /::|->|[+\-*\/%&|^!~=<>]=?|<<|>>|&&|\|\||\?|:/,
+             'punctuation': /[{}[\]();,.]/
+        },
+        java: {
+            'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+            'string': /"(?:\\"|[^"])*"|'(?:\\'|[^'])*'/,
+            'keyword': /\b(?:abstract|assert|boolean|break|byte|case|catch|char|class|const|continue|default|do|double|else|enum|extends|final|finally|float|for|goto|if|implements|import|instanceof|int|interface|long|native|new|package|private|protected|public|return|short|static|strictfp|super|switch|synchronized|this|throw|throws|transient|try|void|volatile|while)\b/,
+            'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()/,
+            'number': /\b-?\d+(?:\.\d+)?(?:[fFdDlL])?\b|\b0[xX][a-fA-F0-9]+\b/,
+            'boolean': /\b(?:true|false|null)\b/,
+            'operator': /->|[+\-*\/%&|^!~=<>]=?|&&|\|\||\?|:/,
+            'punctuation': /[{}[\]();,.]/
+        },
+        rust: {
+            'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+            'string': /"(?:\\"|[^"])*"|r#"[^]*?"#/,
+            'keyword': /\b(?:as|async|await|break|const|continue|crate|dyn|else|enum|extern|false|fn|for|if|impl|in|let|loop|match|mod|move|mut|pub|ref|return|self|Self|static|struct|super|trait|true|type|unsafe|use|where|while)\b/,
+            'function': /\b[a-z_][A-Za-z0-9_]*(?=\s*\()|\b[a-z_][A-Za-z0-9_]*(?=!)/i,
+            'number': /\b\d+(?:_\d+)*(?:\.\d+(?:_\d+)*)?(?:[ef]\d+)?(?:[iu](?:8|16|32|64|128|size)|f(?:32|64))?\b|\b0x[a-fA-F0-9_]+\b/,
+            'boolean': /\b(?:true|false)\b/,
+            'operator': /=>|->|::|[+\-*\/%&|^!~=<>]=?|&&|\|\||\?/,
+            'punctuation': /[{}[\]();,.]/
+        },
+        go: {
+            'comment': /\/\/.*|\/\*[\s\S]*?\*\//,
+            'string': /"(?:\\"|[^"])*"|`(?:[^`])*`|'(?:\\'|[^'])*'/,
+            'keyword': /\b(?:break|case|chan|const|continue|default|defer|else|fallthrough|for|func|go|goto|if|import|interface|map|package|range|return|select|struct|switch|type|var)\b/,
+            'function': /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/,
+            'number': /\b-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b|\b0[xX][a-fA-F0-9]+\b/,
+            'boolean': /\b(?:true|false|nil)\b/,
+            'operator': /:=|<-|\.\.\.|[+\-*\/%&|^!~=<>]=?|&&|\|\|/,
+            'punctuation': /[{}[\]();,.]/
         },
         markdown: {
             'comment': /<!--[\s\S]*?-->/,
             'keyword': /^#{1,6}.*$/m, // Headers
-            'string': /`[^`]+`/, // Inline code
+            'string': /(`{1,3})[\s\S]*?\1/, // Inline code & blocks
             'variable': /\[.*?\]\(.*?\)|!\[.*?\]\(.*?\)/, // Links/Images
-            'function': /\*\*.*?\*\*|__.*?__/, // Bold
-            'operator': /\*.*?\*|_.*?_/, // Italic
+            'function': /\*\*[^*]+\*\*|__[^\n]+__/, // Bold
+            'operator': /\*[^*]+\*|_[^\n]+_/, // Italic
             'punctuation': /^[*\-+]\s|\d+\.\s/m // Lists
         }
     },
@@ -113,14 +155,20 @@ export const SyntaxHighlighter = {
             return this.escapeHtml(code);
         }
         
-        // Alias Mapping
+        // Expanded Alias Mapping
         const alias = { 
-            'xml': 'html', 'svg': 'html', 'sh': 'bash', 'shell': 'bash', 
-            'js': 'javascript', 'ts': 'javascript', 'typescript': 'javascript',
+            'xml': 'html', 'svg': 'html', 'vue': 'html',
+            'sh': 'bash', 'shell': 'bash', 'zsh': 'bash',
+            'js': 'javascript', 'ts': 'javascript', 'typescript': 'javascript', 'jsx': 'javascript', 'tsx': 'javascript',
             'c': 'cpp', 'h': 'cpp', 'hpp': 'cpp', 'cc': 'cpp', 'c++': 'cpp', 
-            'cs': 'cpp', 'csharp': 'cpp', // Basic C-style fallback
-            'md': 'markdown', 'yml': 'json', 'yaml': 'json', // JSON is close enough for simple YAML highlighting
-            'bat': 'bash', 'cmd': 'bash' // close enough for basic
+            'cs': 'java', 'csharp': 'java', 'kotlin': 'java', // Java is close enough for simple C#/Kotlin mapping
+            'py': 'python', 'py3': 'python',
+            'md': 'markdown', 
+            'yml': 'json', 'yaml': 'json', // JSON is a decent fallback for simple YAML syntax
+            'bat': 'bash', 'cmd': 'bash', 
+            'rb': 'ruby',
+            'rs': 'rust',
+            'golang': 'go'
         };
         const effectiveLang = (alias[lang.toLowerCase()] || lang).toLowerCase();
 
@@ -132,7 +180,8 @@ export const SyntaxHighlighter = {
     },
 
     highlightHtml(code) {
-        const regex = /(<script[\s\S]*?>)([\s\S]*?)(<\/script>)|(<style[\s\S]*?>)([\s\S]*?)(<\/style>)/gi;
+        // Safer multi-regex for embedded JS and CSS. Matches tags more carefully.
+        const regex = /(<script[^>]*>)([\s\S]*?)(<\/script>)|(<style[^>]*>)([\s\S]*?)(<\/style>)/gi;
         
         let lastIndex = 0;
         let result = '';
@@ -182,16 +231,18 @@ export const SyntaxHighlighter = {
             return this.escapeHtml(code);
         }
 
-        let tokenStream = [code];
+        let tokenStream =[code];
 
-        // Process each token type in order
+        // Because JS guarantees insertion order for standard string keys in objects,
+        // this cleanly applies Tokens in the correct order (Comments -> Strings -> Keywords).
         for (const tokenName in grammar) {
             if (!grammar.hasOwnProperty(tokenName)) continue;
             
             const pattern = grammar[tokenName];
-            const newStream = [];
+            const newStream =[];
 
             tokenStream.forEach(token => {
+                // If it's a string, it hasn't been tokenized yet. Parse it.
                 if (typeof token === 'string') {
                     try {
                         const regex = new RegExp(pattern, 'g');
@@ -214,11 +265,11 @@ export const SyntaxHighlighter = {
                         const remainingText = token.slice(lastIndex);
                         if (remainingText) newStream.push(remainingText);
                     } catch (error) {
-                        // If regex fails, just push the token as-is
-                        console.warn(`Regex error for token ${tokenName}:`, error);
+                        console.warn(`Syntax Highlighter - Regex error for token ${tokenName}:`, error);
                         newStream.push(token);
                     }
                 } else {
+                    // Already a matched token, leave it alone (protects against nested overlaps)
                     newStream.push(token);
                 }
             });
@@ -234,7 +285,7 @@ export const SyntaxHighlighter = {
     },
 
     /**
-     * Escapes HTML special characters
+     * Escapes HTML special characters securely
      * @param {string} str - String to escape
      * @returns {string} Escaped string
      */
@@ -243,8 +294,11 @@ export const SyntaxHighlighter = {
         const map = {
             '&': '&amp;',
             '<': '&lt;',
-            '>': '&gt;'
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
         };
-        return String(str).replace(/[&<>]/g, m => map[m]);
+        // By escaping quotes as well, we protect against payload escapes
+        return String(str).replace(/[&<>"']/g, m => map[m]);
     }
 };
