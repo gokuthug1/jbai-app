@@ -9,67 +9,67 @@
 @keyframes cursor-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 :root { 
-    /* --- LIGHT THEME (White & Black) --- */
+    /* --- LIGHT THEME (Remastered - Modern UI Inspired) --- */
     color-scheme: light;
-    --bg-color: #ffffff;
-    --sidebar-bg: #f7f7f7;
-    --sidebar-border: #e0e0e0;
-    --sidebar-hover: #eeeeee;
+    --bg-color: #f9fafb;
+    --sidebar-bg: #f9fafb;
+    --sidebar-border: #e5e7eb;
+    --sidebar-hover: #f3f4f6;
     --sidebar-active-bg: #ffffff;
-    --sidebar-active-border: #000000;
+    --sidebar-active-border: #111827;
     --chat-container-bg: #ffffff;
-    --text-color: #000000;
-    --text-secondary: #555555;
-    --border-color: #e0e0e0;
-    --input-bg: #f7f7f7;
+    --text-color: #111827;
+    --text-secondary: #6b7280;
+    --border-color: #e5e7eb;
+    --input-bg: #ffffff;
     
-    --button-bg: #000000;
-    --button-hover-bg: #333333;
+    --button-bg: #111827;
+    --button-hover-bg: #374151;
     --button-text: #ffffff;
 
-    --message-user-bg: #e0e0e0;
-    --message-bot-bg: #f2f2f2;
+    --message-user-bg: #f3f4f6;
+    --message-bot-bg: #ffffff;
     
-    --code-bg: #f4f4f4;
-    --code-text: #000000;
-    --scrollbar-thumb: #cccccc;
+    --code-bg: #f8fafc;
+    --code-text: #0f172a;
+    --scrollbar-thumb: #d1d5db;
     
     --modal-bg: #ffffff;
-    --modal-shadow: rgba(0, 0, 0, 0.15);
+    --modal-shadow: rgba(0, 0, 0, 0.08);
     
-    --switch-bg: #e0e0e0;
+    --switch-bg: #d1d5db;
     --switch-handle-bg: #ffffff;
     
-    --danger-color: #ff0000;
-    --danger-bg: rgba(255, 0, 0, 0.1);
+    --danger-color: #ef4444;
+    --danger-bg: rgba(239, 68, 68, 0.1);
     
-    --focus-color: #000000;
-    --citation-color: #0000EE;
+    --focus-color: #3b82f6;
+    --citation-color: #2563eb;
     
-    --terminal-header-bg: #e0e0e0;
-    --terminal-body-bg: #f4f4f4;
+    --terminal-header-bg: #f1f5f9;
+    --terminal-body-bg: #f8fafc;
 
     /* Agent Process Colors */
-    --agent-bg: #f0f7ff;
-    --agent-border: #cce5ff;
-    --agent-header-bg: #e6f2ff;
-    --agent-text: #004085;
-    --agent-spinner: #007bff;
+    --agent-bg: #eff6ff;
+    --agent-border: #bfdbfe;
+    --agent-header-bg: #dbeafe;
+    --agent-text: #1e3a8a;
+    --agent-spinner: #2563eb;
 
-    /* Callout Colors (GitHub Light) */
-    --callout-note-bg: #f3f5f8; --callout-note-border: #0969da;
-    --callout-tip-bg: #eefbf3; --callout-tip-border: #1a7f37;
-    --callout-important-bg: #f5f3ff; --callout-important-border: #8250df;
-    --callout-warning-bg: #fff8c5; --callout-warning-border: #bf8700;
-    --callout-caution-bg: #ffebe9; --callout-caution-border: #cf222e;
+    /* Callout Colors (Modernized) */
+    --callout-note-bg: #eff6ff; --callout-note-border: #3b82f6;
+    --callout-tip-bg: #f0fdf4; --callout-tip-border: #22c55e;
+    --callout-important-bg: #faf5ff; --callout-important-border: #a855f7;
+    --callout-warning-bg: #fefce8; --callout-warning-border: #eab308;
+    --callout-caution-bg: #fef2f2; --callout-caution-border: #ef4444;
 
     /* Syntax Highlighting: Light */
-    --token-comment: #008000; --token-punctuation: #333333; --token-property: #000000;
-    --token-selector: #800000; --token-operator: #000000; --token-keyword: #0000ff;
-    --token-function: #795e26; --token-class-name: #267f99; --token-string: #a31515;
-    --token-number: #098658; --token-variable: #001080; --token-tag: #800000;
-    --token-attr-name: #ff0000; --token-attr-value: #0000ff; --token-doctype: #0000ff;
-    --token-label: #800000; 
+    --token-comment: #64748b; --token-punctuation: #334155; --token-property: #0369a1;
+    --token-selector: #15803d; --token-operator: #334155; --token-keyword: #be123c;
+    --token-function: #6d28d9; --token-class-name: #b45309; --token-string: #1d4ed8;
+    --token-number: #0369a1; --token-variable: #b45309; --token-tag: #15803d;
+    --token-attr-name: #0369a1; --token-attr-value: #1d4ed8; --token-doctype: #64748b;
+    --token-label: #334155; 
 }
 
 [data-theme="dark"] {
@@ -625,7 +625,7 @@ pre.terminal-body { background-color: var(--terminal-body-bg); color: var(--code
     position: absolute; right: 8px; bottom: 8px; padding: 4px; opacity: 0;
     color: var(--text-color); background: rgba(0,0,0,0.1); display: flex;
     align-items: center; justify-content: center; cursor: pointer; border: none;
-    border-radius: 5px; transition: opacity 0.2s, background-color 0.2s;
+    border-radius: 5px; transition: opacity 0.2s, background-color: 0.2s;
 }
 .message-content:hover .copy-button { opacity: 0.7; }
 .copy-button:hover { opacity: 1; background: rgba(0,0,0,0.2); }
