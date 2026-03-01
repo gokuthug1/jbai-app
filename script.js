@@ -3,16 +3,36 @@ import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
 const ChatApp = {
     Config: {
-        API_URLS: {
-            TEXT: '/api/server',
-            TITLE: '/api/title'
+        PROVIDERS: {
+            GOOGLE: 'google',
+            OPENAI: 'openai',
+            ANTHROPIC: 'anthropic'
+        },
+        API_ENDPOINTS: {
+            GOOGLE_BASE: 'https://generativelanguage.googleapis.com/v1beta/models',
+            OPENAI_CHAT: 'https://api.openai.com/v1/chat/completions',
+            ANTHROPIC_MESSAGES: 'https://api.anthropic.com/v1/messages'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
-            TOOLS: 'jbai_tools_config'
+            TOOLS: 'jbai_tools_config',
+            PROVIDER_SETTINGS: 'jbai_provider_settings'
         },
         DEFAULT_THEME: 'light',
+        DEFAULT_PROVIDER_SETTINGS: {
+            provider: 'google',
+            models: {
+                google: 'gemini-2.5-flash',
+                openai: 'gpt-4.1-mini',
+                anthropic: 'claude-3-5-haiku-latest'
+            },
+            apiKeys: {
+                google: '',
+                openai: '',
+                anthropic: ''
+            }
+        },
         DEFAULT_TOOLS: {
             googleSearch: false,
             codeExecution: false,
@@ -56,6 +76,7 @@ const ChatApp = {
         fileRenderCache: new Map(),
         abortController: null,
         toolsConfig: {},
+        providerSettings: {},
         setCurrentConversation(history) {
             this.currentConversation = Array.isArray(history)
                 ? history.map((msg, index) => ChatApp.Utils.normalizeMessage(msg, index)).filter(Boolean)
@@ -335,6 +356,71 @@ const ChatApp = {
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
+        saveProviderSettings(settings) {
+            const defaultSettings = ChatApp.Config.DEFAULT_PROVIDER_SETTINGS;
+            const provider = Object.values(ChatApp.Config.PROVIDERS).includes(settings?.provider)
+                ? settings.provider
+                : defaultSettings.provider;
+
+            const sanitized = {
+                provider,
+                models: {
+                    ...defaultSettings.models,
+                    ...(settings?.models || {})
+                },
+                apiKeys: {
+                    ...defaultSettings.apiKeys,
+                    ...(settings?.apiKeys || {})
+                }
+            };
+
+            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS, JSON.stringify(sanitized));
+            ChatApp.State.providerSettings = sanitized;
+            return sanitized;
+        },
+        getProviderSettings() {
+            const defaultSettings = ChatApp.Config.DEFAULT_PROVIDER_SETTINGS;
+
+            try {
+                const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS);
+                const parsed = stored ? JSON.parse(stored) : {};
+                const provider = Object.values(ChatApp.Config.PROVIDERS).includes(parsed?.provider)
+                    ? parsed.provider
+                    : defaultSettings.provider;
+
+                const merged = {
+                    provider,
+                    models: {
+                        ...defaultSettings.models,
+                        ...(parsed?.models || {})
+                    },
+                    apiKeys: {
+                        ...defaultSettings.apiKeys,
+                        ...(parsed?.apiKeys || {})
+                    }
+                };
+
+                ChatApp.State.providerSettings = merged;
+                return merged;
+            } catch (error) {
+                const fallback = JSON.parse(JSON.stringify(defaultSettings));
+                ChatApp.State.providerSettings = fallback;
+                return fallback;
+            }
+        },
+        getActiveProviderSettings() {
+            const hasSettings = ChatApp.State.providerSettings && typeof ChatApp.State.providerSettings === 'object';
+            const settings = hasSettings ? ChatApp.State.providerSettings : this.getProviderSettings();
+            const provider = Object.values(ChatApp.Config.PROVIDERS).includes(settings?.provider)
+                ? settings.provider
+                : ChatApp.Config.DEFAULT_PROVIDER_SETTINGS.provider;
+
+            return {
+                provider,
+                model: String(settings?.models?.[provider] || '').trim(),
+                apiKey: String(settings?.apiKeys?.[provider] || '').trim()
+            };
+        },
         saveToolsConfig(config) { 
             localStorage.setItem(ChatApp.Config.STORAGE_KEYS.TOOLS, JSON.stringify(config)); 
             ChatApp.State.toolsConfig = config;
@@ -796,6 +882,7 @@ const ChatApp = {
             const overlay = document.createElement('div');
             overlay.className = 'modal-overlay';
             const tools = ChatApp.Store.getToolsConfig();
+            const providerSettings = ChatApp.Store.getProviderSettings();
             
             overlay.innerHTML = `
             <div class="settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -817,6 +904,25 @@ const ChatApp = {
                     </label>
                 </div>
                 <hr>
+                <h3>Provider & Model</h3>
+                <div class="settings-row">
+                    <label for="provider-select">Provider</label>
+                    <select id="provider-select">
+                        <option value="google">Google</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                    </select>
+                </div>
+                <div class="settings-row settings-row-input">
+                    <label for="provider-model-input">Model Name</label>
+                    <input id="provider-model-input" type="text" autocomplete="off" spellcheck="false">
+                </div>
+                <div class="settings-row settings-row-input">
+                    <label for="provider-api-key-input">API Key</label>
+                    <input id="provider-api-key-input" type="password" autocomplete="off" spellcheck="false">
+                </div>
+                <p id="provider-capability-note" style="font-size:0.85em; color:var(--text-secondary); margin-top:-10px; margin-bottom:16px;"></p>
+                <hr>
                 <h3>AI Capabilities</h3>
                 <div class="settings-row">
                     <label for="toggle-agent-mode" style="font-weight:bold; color:var(--focus-color);">Agent Mode (Autonomous)</label>
@@ -826,17 +932,17 @@ const ChatApp = {
                     </label>
                 </div>
                 <p style="font-size:0.85em; color:var(--text-secondary); margin-top:-10px; margin-bottom:20px;">
-                    Enables autonomous reasoning, planning, and self-correction. Forces tools on.
+                    Enables autonomous reasoning and planning. On Google provider, this also enables Search and Code Execution.
                 </p>
 
-                <div class="settings-row">
+                <div class="settings-row" data-google-tool-row="true">
                     <label for="toggle-google-search">Google Search (Grounding)</label>
                     <label class="switch">
                         <input type="checkbox" id="toggle-google-search" ${tools.googleSearch ? 'checked' : ''}>
                         <span class="slider round"></span>
                     </label>
                 </div>
-                <div class="settings-row">
+                <div class="settings-row" data-google-tool-row="true">
                     <label for="toggle-code-exec">Code Execution (Python)</label>
                     <label class="switch">
                         <input type="checkbox" id="toggle-code-exec" ${tools.codeExecution ? 'checked' : ''}>
@@ -859,6 +965,79 @@ const ChatApp = {
             const themeSelect = overlay.querySelector('#themeSelect');
             themeSelect.value = ChatApp.Store.getTheme();
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
+
+            const providerSelect = overlay.querySelector('#provider-select');
+            const providerModelInput = overlay.querySelector('#provider-model-input');
+            const providerApiKeyInput = overlay.querySelector('#provider-api-key-input');
+            const providerCapabilityNote = overlay.querySelector('#provider-capability-note');
+            const googleToolRows = overlay.querySelectorAll('[data-google-tool-row="true"]');
+            const googleSearchToggle = overlay.querySelector('#toggle-google-search');
+            const codeExecToggle = overlay.querySelector('#toggle-code-exec');
+
+            const providerMetadata = {
+                google: {
+                    modelPlaceholder: 'gemini-2.5-flash',
+                    keyPlaceholder: 'AIza...',
+                    supportsGoogleTools: true
+                },
+                openai: {
+                    modelPlaceholder: 'gpt-4.1-mini',
+                    keyPlaceholder: 'sk-...',
+                    supportsGoogleTools: false
+                },
+                anthropic: {
+                    modelPlaceholder: 'claude-3-5-haiku-latest',
+                    keyPlaceholder: 'sk-ant-...',
+                    supportsGoogleTools: false
+                }
+            };
+
+            let draftProviderSettings = JSON.parse(JSON.stringify(providerSettings));
+            const persistProviderSettings = () => {
+                draftProviderSettings = ChatApp.Store.saveProviderSettings(draftProviderSettings);
+            };
+
+            const refreshProviderUI = () => {
+                const provider = providerSelect.value;
+                const metadata = providerMetadata[provider] || providerMetadata.google;
+
+                providerModelInput.value = draftProviderSettings.models?.[provider] || '';
+                providerApiKeyInput.value = draftProviderSettings.apiKeys?.[provider] || '';
+                providerModelInput.placeholder = metadata.modelPlaceholder;
+                providerApiKeyInput.placeholder = metadata.keyPlaceholder;
+
+                const disableGoogleTools = metadata.supportsGoogleTools !== true;
+                googleToolRows.forEach((row) => {
+                    row.classList.toggle('settings-row-disabled', disableGoogleTools);
+                });
+                googleSearchToggle.disabled = disableGoogleTools;
+                codeExecToggle.disabled = disableGoogleTools;
+
+                providerCapabilityNote.textContent = disableGoogleTools
+                    ? 'Google Search and Code Execution are only available when Provider is Google.'
+                    : 'Google Search and Code Execution are available for this provider.';
+            };
+
+            providerSelect.value = draftProviderSettings.provider;
+            refreshProviderUI();
+
+            providerSelect.addEventListener('change', () => {
+                draftProviderSettings.provider = providerSelect.value;
+                persistProviderSettings();
+                refreshProviderUI();
+            });
+
+            providerModelInput.addEventListener('input', () => {
+                const provider = providerSelect.value;
+                draftProviderSettings.models[provider] = providerModelInput.value;
+                persistProviderSettings();
+            });
+
+            providerApiKeyInput.addEventListener('input', () => {
+                const provider = providerSelect.value;
+                draftProviderSettings.apiKeys[provider] = providerApiKeyInput.value;
+                persistProviderSettings();
+            });
 
             overlay.querySelector('#toggle-fullscreen').addEventListener('change', (e) => {
                 ChatApp.Controller.toggleFullScreen(e.target.checked);
@@ -912,26 +1091,380 @@ const ChatApp = {
     },
 
     Api: {
-        async getSystemContext(isAgentMode = false) {
-            if (isAgentMode) {
-                return this.getAgentSystemContext();
+        getProviderLabel(provider) {
+            switch (provider) {
+                case ChatApp.Config.PROVIDERS.OPENAI:
+                    return 'OpenAI';
+                case ChatApp.Config.PROVIDERS.ANTHROPIC:
+                    return 'Anthropic';
+                default:
+                    return 'Google';
             }
+        },
+        getActiveProviderConfig() {
+            const { provider, model, apiKey } = ChatApp.Store.getActiveProviderSettings();
+            const providerLabel = this.getProviderLabel(provider);
+            if (!apiKey) {
+                throw new Error(`${providerLabel} API key is missing. Add it in Settings.`);
+            }
+            if (!model) {
+                throw new Error(`${providerLabel} model name is missing. Add it in Settings.`);
+            }
+            return { provider, model, apiKey };
+        },
+        sanitizeApiContents(apiContents) {
+            return apiContents.map((content) => {
+                if (!content?.role || !Array.isArray(content.parts)) return content;
+                return {
+                    role: content.role,
+                    parts: content.parts.map((part) => {
+                        if (part?.text) {
+                            return { text: ChatApp.Utils.sanitizeTextForApi(part.text) };
+                        }
+                        return part;
+                    })
+                };
+            });
+        },
+        joinSystemInstruction(systemInstruction) {
+            if (!systemInstruction || !Array.isArray(systemInstruction.parts)) return '';
+            return systemInstruction.parts
+                .map((part) => (typeof part?.text === 'string' ? part.text : ''))
+                .filter(Boolean)
+                .join('\n\n')
+                .trim();
+        },
+        buildGoogleTools(toolsConfig) {
+            const tools = [];
+            if (!toolsConfig || typeof toolsConfig !== 'object') return tools;
+
+            const isAgent = toolsConfig.agentMode === true;
+            if (toolsConfig.googleSearch === true || isAgent) tools.push({ googleSearch: {} });
+            if (toolsConfig.codeExecution === true || isAgent) tools.push({ codeExecution: {} });
+            return tools;
+        },
+        partsToOpenAiContent(parts) {
+            const content = [];
+            let omittedCount = 0;
+
+            parts.forEach((part) => {
+                if (typeof part?.text === 'string' && part.text) {
+                    content.push({ type: 'text', text: part.text });
+                    return;
+                }
+
+                const inlineData = part?.inlineData;
+                if (!inlineData || typeof inlineData !== 'object') return;
+
+                const mimeType = typeof inlineData.mimeType === 'string' ? inlineData.mimeType : 'application/octet-stream';
+                const data = typeof inlineData.data === 'string' ? inlineData.data : '';
+
+                if (!data) return;
+                if (mimeType.startsWith('image/')) {
+                    content.push({
+                        type: 'image_url',
+                        image_url: {
+                            url: `data:${mimeType};base64,${data}`
+                        }
+                    });
+                    return;
+                }
+
+                omittedCount += 1;
+            });
+
+            if (omittedCount > 0) {
+                content.push({
+                    type: 'text',
+                    text: `[${omittedCount} non-image attachment(s) omitted because OpenAI direct mode only forwards image attachments.]`
+                });
+            }
+
+            if (content.length === 0) {
+                return [{ type: 'text', text: '' }];
+            }
+
+            return content;
+        },
+        partsToAnthropicContent(parts) {
+            const content = [];
+            let omittedCount = 0;
+
+            parts.forEach((part) => {
+                if (typeof part?.text === 'string' && part.text) {
+                    content.push({ type: 'text', text: part.text });
+                    return;
+                }
+
+                const inlineData = part?.inlineData;
+                if (!inlineData || typeof inlineData !== 'object') return;
+
+                const mimeType = typeof inlineData.mimeType === 'string' ? inlineData.mimeType : 'application/octet-stream';
+                const data = typeof inlineData.data === 'string' ? inlineData.data : '';
+
+                if (!data) return;
+                if (mimeType.startsWith('image/')) {
+                    content.push({
+                        type: 'image',
+                        source: {
+                            type: 'base64',
+                            media_type: mimeType,
+                            data
+                        }
+                    });
+                    return;
+                }
+
+                omittedCount += 1;
+            });
+
+            if (omittedCount > 0) {
+                content.push({
+                    type: 'text',
+                    text: `[${omittedCount} non-image attachment(s) omitted because Anthropic direct mode only forwards image attachments.]`
+                });
+            }
+
+            if (content.length === 0) {
+                return [{ type: 'text', text: '' }];
+            }
+
+            return content;
+        },
+        toOpenAiMessages(contents, systemInstructionText) {
+            const messages = [];
+            if (systemInstructionText) {
+                messages.push({ role: 'system', content: systemInstructionText });
+            }
+
+            contents.forEach((message) => {
+                const role = message.role === 'model' ? 'assistant' : 'user';
+                messages.push({
+                    role,
+                    content: this.partsToOpenAiContent(message.parts || [])
+                });
+            });
+            return messages;
+        },
+        toAnthropicMessages(contents) {
+            return contents.map((message) => ({
+                role: message.role === 'model' ? 'assistant' : 'user',
+                content: this.partsToAnthropicContent(message.parts || [])
+            }));
+        },
+        extractOpenAiText(data) {
+            const content = data?.choices?.[0]?.message?.content;
+            if (typeof content === 'string') return content;
+            if (Array.isArray(content)) {
+                return content
+                    .map((item) => {
+                        if (typeof item?.text === 'string') return item.text;
+                        if (typeof item?.content === 'string') return item.content;
+                        return '';
+                    })
+                    .filter(Boolean)
+                    .join('');
+            }
+            return '';
+        },
+        extractAnthropicText(data) {
+            if (!Array.isArray(data?.content)) return '';
+            return data.content
+                .map((item) => (item?.type === 'text' && typeof item?.text === 'string' ? item.text : ''))
+                .filter(Boolean)
+                .join('');
+        },
+        extractGoogleText(data) {
+            const candidates = Array.isArray(data?.candidates) ? data.candidates : [];
+            const chunks = [];
+            candidates.forEach((candidate) => {
+                const parts = Array.isArray(candidate?.content?.parts) ? candidate.content.parts : [];
+                parts.forEach((part) => {
+                    if (typeof part?.text === 'string' && part.text) {
+                        chunks.push(part.text);
+                    }
+                });
+            });
+            return chunks.join('');
+        },
+        async getErrorMessageFromResponse(response, providerLabel) {
+            const fallback = `${providerLabel} API error: ${response.status}`;
+            let raw = '';
+            try {
+                raw = await response.text();
+            } catch {
+                return fallback;
+            }
+            if (!raw) return fallback;
+
+            try {
+                const parsed = JSON.parse(raw);
+                if (typeof parsed?.error?.message === 'string') return parsed.error.message;
+                if (typeof parsed?.message === 'string') return parsed.message;
+            } catch {
+                // Keep raw fallback.
+            }
+
+            return raw.slice(0, 300) || fallback;
+        },
+        async requestGoogleText({ apiKey, model, contents, systemInstruction, toolsConfig, signal, titleMode = false }) {
+            const endpoint = `${ChatApp.Config.API_ENDPOINTS.GOOGLE_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+            const tools = this.buildGoogleTools(toolsConfig);
+            const payload = {
+                contents,
+                ...(systemInstruction ? { systemInstruction } : {}),
+                ...(tools.length > 0 ? { tools } : {}),
+                ...(titleMode ? { generationConfig: { maxOutputTokens: 40, temperature: 0.3 } } : {})
+            };
+
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal
+            });
+
+            if (!response.ok) {
+                throw new Error(await this.getErrorMessageFromResponse(response, 'Google'));
+            }
+
+            const data = await response.json();
+            const text = this.extractGoogleText(data).trim();
+            if (!text) throw new Error('Google returned an empty response.');
+            return text;
+        },
+        async requestOpenAiText({ apiKey, model, contents, systemInstructionText, signal, titleMode = false }) {
+            const payload = {
+                model,
+                messages: this.toOpenAiMessages(contents, systemInstructionText),
+                temperature: titleMode ? 0.2 : 0.7,
+                ...(titleMode ? { max_tokens: 30 } : {})
+            };
+
+            const response = await fetch(ChatApp.Config.API_ENDPOINTS.OPENAI_CHAT, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${apiKey}`
+                },
+                body: JSON.stringify(payload),
+                signal
+            });
+
+            if (!response.ok) {
+                throw new Error(await this.getErrorMessageFromResponse(response, 'OpenAI'));
+            }
+
+            const data = await response.json();
+            const text = this.extractOpenAiText(data).trim();
+            if (!text) throw new Error('OpenAI returned an empty response.');
+            return text;
+        },
+        async requestAnthropicText({ apiKey, model, contents, systemInstructionText, signal, titleMode = false }) {
+            const payload = {
+                model,
+                max_tokens: titleMode ? 30 : 2048,
+                temperature: titleMode ? 0.2 : 0.7,
+                messages: this.toAnthropicMessages(contents),
+                ...(systemInstructionText ? { system: systemInstructionText } : {})
+            };
+
+            const response = await fetch(ChatApp.Config.API_ENDPOINTS.ANTHROPIC_MESSAGES, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify(payload),
+                signal
+            });
+
+            if (!response.ok) {
+                throw new Error(await this.getErrorMessageFromResponse(response, 'Anthropic'));
+            }
+
+            const data = await response.json();
+            const text = this.extractAnthropicText(data).trim();
+            if (!text) throw new Error('Anthropic returned an empty response.');
+            return text;
+        },
+        splitTextForStreaming(text, chunkSize = 120) {
+            const safeText = typeof text === 'string' ? text : '';
+            const chunks = [];
+            if (!safeText) return chunks;
+            for (let i = 0; i < safeText.length; i += chunkSize) {
+                chunks.push(safeText.slice(i, i + chunkSize));
+            }
+            return chunks;
+        },
+        async generateText({ apiContents, systemInstruction, signal, toolsConfig, titleMode = false }) {
+            if (!Array.isArray(apiContents)) {
+                throw new Error('Invalid contents for generation.');
+            }
+
+            const { provider, model, apiKey } = this.getActiveProviderConfig();
+            const sanitizedContents = this.sanitizeApiContents(apiContents);
+            const systemInstructionText = this.joinSystemInstruction(systemInstruction);
+
+            if (provider === ChatApp.Config.PROVIDERS.OPENAI) {
+                return this.requestOpenAiText({
+                    apiKey,
+                    model,
+                    contents: sanitizedContents,
+                    systemInstructionText,
+                    signal,
+                    titleMode
+                });
+            }
+
+            if (provider === ChatApp.Config.PROVIDERS.ANTHROPIC) {
+                return this.requestAnthropicText({
+                    apiKey,
+                    model,
+                    contents: sanitizedContents,
+                    systemInstructionText,
+                    signal,
+                    titleMode
+                });
+            }
+
+            return this.requestGoogleText({
+                apiKey,
+                model,
+                contents: sanitizedContents,
+                systemInstruction,
+                toolsConfig,
+                signal,
+                titleMode
+            });
+        },
+        async getSystemContext(isAgentMode = false, provider = ChatApp.Config.PROVIDERS.GOOGLE) {
+            if (isAgentMode) {
+                return this.getAgentSystemContext(provider);
+            }
+
+            const providerNote = provider === ChatApp.Config.PROVIDERS.GOOGLE
+                ? '- Tool note: Google Search and Code Execution can be enabled from Settings.'
+                : `- Tool note: External Search/Code tools are unavailable on ${this.getProviderLabel(provider)} direct mode.`;
 
             return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 --- Custom Commands ---
-/html → Give a random HTML code that's interesting and fun.
-/profile → List all custom commands and explain what each does.
-/concept → Ask what concept the user wants to create.
-/song → Ask about the user's music taste, then recommend a fitting song.
-/word → Give a new word and its definition.
-/tip → Share a useful lifehack or tip.
-/invention → Generate a fictional, interesting invention idea.
-/sp → Correct any text the user sends for spelling and grammar.
-/art → Suggest a prompt or idea for a creative art project.
-/bdw → Break down a word: pronunciation, definition, and similar-sounding word.
+/html -> Give a random HTML code that's interesting and fun.
+/profile -> List all custom commands and explain what each does.
+/concept -> Ask what concept the user wants to create.
+/song -> Ask about the user's music taste, then recommend a fitting song.
+/word -> Give a new word and its definition.
+/tip -> Share a useful lifehack or tip.
+/invention -> Generate a fictional, interesting invention idea.
+/sp -> Correct any text the user sends for spelling and grammar.
+/art -> Suggest a prompt or idea for a creative art project.
+/bdw -> Break down a word: pronunciation, definition, and similar-sounding word.
 
 --- General Rules ---
 - Use standard Markdown in your responses (including tables).
+${providerNote}
 
 --- MULTIPLE FILES & DOWNLOAD (CRITICAL) ---
 When users ask for multiple files, separate files, or a download link, you MUST use this format:
@@ -952,118 +1485,96 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
 - Current Date/Time: ${new Date().toLocaleString()}
 - For single-file HTML responses (without file requests), HTML must be self-contained in one markdown block. When using [FILES: {...}], you can include multiple files.`;
         },
+        async getAgentSystemContext(provider = ChatApp.Config.PROVIDERS.GOOGLE) {
+            const toolCapability = provider === ChatApp.Config.PROVIDERS.GOOGLE
+                ? 'Use Google Search and Code Execution tools when needed.'
+                : `No external tools are available in ${this.getProviderLabel(provider)} direct mode. Reason using only the conversation context and your own model output.`;
 
-        async getAgentSystemContext() {
             return `You are J.B.A.I. in **AGENT MODE**. You are an autonomous digital worker designed to solve complex, multi-step problems.
             
 --- CORE DIRECTIVES ---
 1. **PERCEIVE & REASON**: Do not just answer immediately. Analyze the request, break it down, and plan your approach.
-2. **ACT**: Use your available tools (Google Search, Code Execution) proactively to gather information, verify facts, or perform calculations.
-3. **REFLECT**: Look at the results of your actions. Did you get what you needed? If not, adjust your plan.
-4. **SYNTHESIZE**: Only provide the final answer once you have sufficient information.
+2. **ACT**: ${toolCapability}
+3. **REFLECT**: Look at your intermediate results. If they are weak, revise your plan.
+4. **SYNTHESIZE**: Only provide the final answer after enough evidence has been gathered.
 
 --- FORMATTING RULES (CRITICAL) ---
-You MUST wrap your internal thought process, planning, tool usage, and observations inside \`<agent_process>\` and \`</agent_process>\` tags.
+You MUST wrap your internal thought process, planning, and observations inside \`<agent_process>\` and \`</agent_process>\` tags.
 Your final answer to the user must be OUTSIDE these tags.
 
-Example:
-<agent_process>
-**Plan:** I need to find the latest stock price for Apple.
-**Action:** Google Search for "Apple stock price today".
-**Observation:** Found price: $150.
-</agent_process>
-The current stock price for Apple is $150.
-
 --- CAPABILITIES ---
-- **Search**: Use Google Search to find real-time info, docs, or news.
-- **Code**: Use Python to calculate, process data, or solve logic puzzles.
 - **Files**: You can generate multiple files using the standard [FILES: {...}] format.
 
 --- BEHAVIORAL RULES ---
-- Be autonomous. Do not ask the user for permission to use tools; just use them.
-- If an error occurs, analyze it, fix your approach, and try again (Self-Correction).
+- Be autonomous. Do not ask the user for permission to proceed.
+- If an error occurs, analyze it, fix your approach, and try again.
 - Current Date/Time: ${new Date().toLocaleString()}
 
 You are a digital professional. Be concise, accurate, and effective.`;
         },
-
         async fetchTitle(chatHistory) {
-            if (!Array.isArray(chatHistory) || chatHistory.length === 0) { return "New Chat"; }
-            const safeHistory = chatHistory.filter(h => {
-                const text = h?.content?.parts?.[0]?.text;
+            if (!Array.isArray(chatHistory) || chatHistory.length === 0) return 'New Chat';
+            const safeHistory = chatHistory.filter((message) => {
+                const text = message?.content?.parts?.[0]?.text;
                 return text && typeof text === 'string';
             });
-            if (safeHistory.length < 2) { return "New Chat"; }
+            if (safeHistory.length < 2) return 'New Chat';
+
             const userText = safeHistory[0].content.parts[0].text.substring(0, 200);
             const aiText = safeHistory[1].content.parts[0].text.substring(0, 200);
             const prompt = `Based on this conversation, create a short, concise title (4 words max). Output only the title, no quotes, no markdown, no punctuation at the end.\n\nUser: ${userText}\nAI: ${aiText}`;
-            try {
-                const response = await fetch(ChatApp.Config.API_URLS.TITLE, {
-                    method: "POST", headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
-                });
-                if (!response.ok) { const errorData = await response.json().catch(() => ({})); throw new Error(errorData.message || `API error: ${response.status}`); }
-                const data = await response.json();
-                const title = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim().replace(/^["'`]|["'`]$/g, '').replace(/^\*+|\*+$/g, '').replace(/\.$/, '').substring(0, 50) || "Chat";
-                return title || "Chat";
-            } catch (error) { console.warn('Title generation failed:', error); return "Titled Chat"; }
-        },
-        /**
-         * Streams text response from server.
-         * The server now returns a raw text stream (via SSE or chunked transfer)
-         */
-        async *streamTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
-            if (!Array.isArray(apiContents)) { throw new Error('Invalid apiContents: must be an array'); }
-            const sanitizedContents = apiContents.map(content => {
-                if (!content?.role || !Array.isArray(content.parts)) { console.warn('Invalid content structure:', content); return content; }
-                return { role: content.role, parts: content.parts.map(part => { if (part?.text) { return { text: ChatApp.Utils.sanitizeTextForApi(part.text) }; } return part; }) };
-            });
-            const payload = { contents: sanitizedContents, systemInstruction: systemInstruction, toolsConfig: toolsConfig };
-            
-            try {
-                const response = await fetch(ChatApp.Config.API_URLS.TEXT, {
-                    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), signal: signal 
-                });
-                
-                if (!response.ok) { 
-                    const errorText = await response.text().catch(() => 'Unknown error'); 
-                    let errorMsg = `API Error: ${response.status}`;
-                    try {
-                        const errorObj = JSON.parse(errorText);
-                        errorMsg = errorObj.message || errorObj.error || errorMsg;
-                    } catch (e) {
-                        errorMsg = errorText || errorMsg;
-                    }
-                    throw new Error(errorMsg);
-                }
 
-                if (!response.body) {
-                    throw new Error('Streaming not supported by the current browser response.');
-                }
-                
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    const chunk = decoder.decode(value, { stream: true });
-                    // The server now sends raw text chunks of the answer directly
+            try {
+                const titleText = await this.generateText({
+                    apiContents: [{ role: 'user', parts: [{ text: prompt }] }],
+                    systemInstruction: null,
+                    signal: undefined,
+                    toolsConfig: { googleSearch: false, codeExecution: false, agentMode: false },
+                    titleMode: true
+                });
+                const sanitizedTitle = titleText
+                    .trim()
+                    .replace(/^["'`]|["'`]$/g, '')
+                    .replace(/^\*+|\*+$/g, '')
+                    .replace(/\.$/, '')
+                    .substring(0, 50);
+                return sanitizedTitle || 'Chat';
+            } catch (error) {
+                console.warn('Title generation failed:', error);
+                return 'Titled Chat';
+            }
+        },
+        async *streamTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
+            try {
+                const text = await this.generateText({
+                    apiContents,
+                    systemInstruction,
+                    signal,
+                    toolsConfig,
+                    titleMode: false
+                });
+                const chunks = this.splitTextForStreaming(text);
+                for (const chunk of chunks) {
+                    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
                     yield chunk;
                 }
-
             } catch (error) {
-                if (error.name === 'AbortError') { throw new Error("Generation stopped by user."); }
-                if (error instanceof TypeError && error.message.includes('fetch')) { throw new Error("Network error: Please check your connection."); }
+                if (error?.name === 'AbortError') {
+                    throw new Error('Generation stopped by user.');
+                }
+                if (error instanceof TypeError && error.message.includes('fetch')) {
+                    throw new Error('Network error: Please check your connection.');
+                }
                 throw error;
             }
         }
     },
-    
+
     Controller: {
         init() {
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
+            ChatApp.Store.getProviderSettings();
             ChatApp.Store.getToolsConfig();
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
@@ -1127,6 +1638,13 @@ You are a digital professional. Be concise, accurate, and effective.`;
             if (!validation.valid) { ChatApp.UI.showToast(validation.error, 'error'); return; }
             
             if (ChatApp.State.isGenerating) return;
+
+            try {
+                ChatApp.Api.getActiveProviderConfig();
+            } catch (error) {
+                ChatApp.UI.showToast(error.message || 'Provider settings are incomplete.', 'error');
+                return;
+            }
 
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
@@ -1218,8 +1736,9 @@ You are a digital professional. Be concise, accurate, and effective.`;
             try {
                 const toolsConfig = ChatApp.State.toolsConfig;
                 const isAgentMode = toolsConfig.agentMode === true;
+                const { provider } = ChatApp.Store.getActiveProviderSettings();
                 
-                const systemText = await ChatApp.Api.getSystemContext(isAgentMode);
+                const systemText = await ChatApp.Api.getSystemContext(isAgentMode, provider);
                 const systemInstruction = { parts: [{ text: systemText }] };
                 
                 const apiContents = ChatApp.State.currentConversation.map(msg => ({ role: msg.content.role, parts: msg.content.parts }));
@@ -1525,9 +2044,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.TOOLS);
+                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS);
                 ChatApp.State.allConversations = [];
                 ChatApp.State.currentConversation = [];
                 ChatApp.State.currentChatId = null;
+                ChatApp.State.providerSettings = {};
                 ChatApp.State.revokeGeneratedDownloadUrls();
                 ChatApp.UI.clearChatArea();
                 ChatApp.UI.renderSidebar();
@@ -1577,3 +2098,4 @@ You are a digital professional. Be concise, accurate, and effective.`;
 document.addEventListener('DOMContentLoaded', () => {
     ChatApp.Controller.init();
 });
+

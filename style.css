@@ -782,6 +782,12 @@ textarea#chat-input {
 .settings-card h3 { font-size: 16px; margin-top: 25px; margin-bottom: 10px; color: var(--text-secondary); }
 .settings-card hr { margin: 25px 0; border: none; border-top: 1px solid var(--border-color); }
 .settings-row { display: flex; align-items: center; justify-content: space-between; margin: 20px 0; }
+.settings-row-input { flex-direction: column; align-items: stretch; gap: 8px; }
+.settings-row-input input {
+    width: 100%; padding: 8px; color: var(--text-color); background: var(--input-bg);
+    border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px;
+}
+.settings-row-disabled { opacity: 0.55; }
 .settings-group { display: flex; flex-direction: column; gap: 10px; }
 .settings-group input { width: 100%; padding: 8px; color: var(--text-color); background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; font-size: 14px; }
 .settings-card select {
