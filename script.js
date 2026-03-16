@@ -799,7 +799,9 @@ const ChatApp = {
                             if (!isPaused) {
                                 const currentSrc = iframe.getAttribute('srcdoc');
                                 iframe.setAttribute('data-original-src', currentSrc);
-                                const pausedHtml = `<!DOCTYPE html><html><body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background-color:transparent;color:#888;font-family:sans-serif;font-size:14px;">Preview Paused</body></html>`;
+                                const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--chat-container-bg').trim();
+                                const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text-secondary').trim();
+                                const pausedHtml = `<!DOCTYPE html><html><body style="display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background-color:${bgColor};color:${textColor};font-family:sans-serif;font-size:14px;">Preview Paused</body></html>`;
                                 iframe.setAttribute('srcdoc', pausedHtml);
                                 toggleBtn.innerHTML = PLAY;
                                 toggleBtn.setAttribute('data-state', 'paused');
@@ -2117,4 +2119,3 @@ You are a digital professional. Be concise, accurate, and effective.`;
 document.addEventListener('DOMContentLoaded', () => {
     ChatApp.Controller.init();
 });
-
