@@ -690,6 +690,19 @@ const ChatApp = {
             };
 
             merged.baseUrls.jbai = ChatApp.Utils.normalizeJbAiBaseUrl(merged.baseUrls?.jbai);
+
+            // On a deployed (non-local) host, auto-confirm the origin as the backend URL
+            // so the legacy migration guard does not wipe it on first load.
+            if (!ChatApp.Utils.isLocalBrowserContext()) {
+                const origin = ChatApp.Utils.normalizeJbAiBaseUrl(window.location.origin);
+                if (!merged.baseUrls.jbai) {
+                    merged.baseUrls.jbai = origin;
+                }
+                if (merged.baseUrls.jbai === origin && ChatApp.Utils.getJbAiConfirmationValue() !== origin) {
+                    ChatApp.Utils.setJbAiConfirmationValue(origin);
+                }
+            }
+
             if (ChatApp.Utils.shouldMigrateLegacyJbAiOrigin(merged.baseUrls.jbai)) {
                 merged.baseUrls.jbai = '';
             }
