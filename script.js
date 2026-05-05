@@ -801,11 +801,8 @@ const ChatApp = {
             area.classList.toggle('message-area-home', !hasMessages);
             if (hasMessages) return;
 
+            // Leave the home screen completely empty per user request.
             area.innerHTML = '';
-            const panel = document.createElement('section');
-            panel.className = 'prompt-home';
-            this.populatePromptLibrary(panel, { mode: 'home' });
-            area.appendChild(panel);
         },
         refreshPromptLibraryModal() {
             const modalBody = document.querySelector('[data-prompt-library-body="true"]');

@@ -779,22 +779,26 @@ kbd {
 }
 .citation-ref:hover { background: rgba(0,0,0,0.1); text-decoration: underline; }
 .sources-container {
-    margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 0.9em;
+    margin-top: 24px; padding-top: 16px; border-top: 1px dashed var(--border-color); font-size: 0.9em;
 }
-.sources-container h4 { margin: 0 0 8px 0; font-size: 0.85em; text-transform: uppercase; color: var(--text-secondary); }
-.sources-list { display: flex; flex-direction: column; gap: 6px; }
+.sources-container h4 { margin: 0 0 12px 0; font-size: 0.85em; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-secondary); }
+.sources-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .source-item {
-    display: flex; align-items: center; gap: 8px; text-decoration: none;
-    color: var(--text-color); padding: 6px 10px; border-radius: 6px;
-    background: var(--bg-color); border: 1px solid var(--border-color); transition: background-color 0.2s;
+    display: flex; align-items: center; gap: 10px; text-decoration: none;
+    color: var(--text-color); padding: 12px 14px; border-radius: 12px;
+    background: linear-gradient(145deg, color-mix(in srgb, var(--message-bot-bg) 78%, var(--bg-color)), var(--message-bot-bg));
+    border: 1px solid var(--border-color); transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.source-item:hover { background-color: var(--sidebar-hover); }
+.source-item:hover {
+    transform: translateY(-2px); border-color: color-mix(in srgb, var(--focus-color) 40%, var(--border-color));
+    box-shadow: 0 8px 16px color-mix(in srgb, var(--focus-color) 8%, transparent);
+}
 .source-index {
     display: flex; align-items: center; justify-content: center;
-    width: 20px; height: 20px; border-radius: 50%;
-    background: var(--citation-color); color: #fff; font-size: 11px; font-weight: bold; flex-shrink: 0;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: var(--focus-color); color: #fff; font-size: 11px; font-weight: 700; flex-shrink: 0;
 }
-.source-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; }
+.source-title { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 0.9em; font-weight: 500; }
 
 /* --- Preview Containers --- */
 .html-preview-container, .svg-preview-container { padding-top: 8px; }
