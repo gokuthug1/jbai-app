@@ -14,237 +14,7 @@ const getDefaultJbAiBaseUrl = () => {
 
 const JBAI_REMOTE_PLACEHOLDER = 'https://your-jbai-backend.example.com';
 
-const BUILTIN_PROMPT_PRESETS = [
-    {
-        id: 'latest-news-brief',
-        kind: 'preset',
-        category: 'Research',
-        title: 'Latest news brief',
-        description: 'Pull the latest developments on a topic and explain why they matter.',
-        promptTemplate: `Give me a current news brief about: [topic]
-
-Please include:
-- What happened
-- Why it matters
-- Key dates, people, and figures
-- Conflicting or uncertain points
-- A short takeaway
-
-Use recent credible sources and cite every factual claim.`,
-        providerHint: 'Best with J.B.A.I'
-    },
-    {
-        id: 'market-landscape',
-        kind: 'preset',
-        category: 'Research',
-        title: 'Market landscape',
-        description: 'Map competitors, positioning, trends, and whitespace for a market.',
-        promptTemplate: `Research the market landscape for: [company, product, or category]
-
-Please cover:
-- Market definition
-- Key competitors
-- Positioning differences
-- Recent trends or shifts
-- Gaps or opportunities
-
-Cite factual claims from credible sources.`,
-        providerHint: 'Best with J.B.A.I'
-    },
-    {
-        id: 'compare-two-options',
-        kind: 'preset',
-        category: 'Research',
-        title: 'Compare two options',
-        description: 'Contrast two tools, vendors, products, or approaches with evidence.',
-        promptTemplate: `Compare these two options: [option A] vs [option B]
-
-Please include:
-- Core differences
-- Pros and cons
-- Pricing or packaging if available
-- Best fit by use case
-- A short recommendation with tradeoffs
-
-Ground the comparison in cited sources.`,
-        providerHint: 'Best with J.B.A.I'
-    },
-    {
-        id: 'rewrite-professionally',
-        kind: 'preset',
-        category: 'Writing',
-        title: 'Rewrite professionally',
-        description: 'Refine rough writing into a polished, professional version.',
-        promptTemplate: `Rewrite the following so it sounds polished, professional, and concise.
-
-Audience:
-[Who will read it?]
-
-Tone:
-[e.g. executive, warm, direct, diplomatic]
-
-Text:
-[Paste the draft here]`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'summarize-notes-pdf',
-        kind: 'preset',
-        category: 'Writing',
-        title: 'Summarize notes or PDF',
-        description: 'Turn messy notes into a crisp summary with action items.',
-        promptTemplate: `Summarize the following notes or document content.
-
-Please produce:
-- Executive summary
-- Key points
-- Risks or open questions
-- Action items
-
-Content:
-[Paste notes or document text here]`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'draft-email-memo',
-        kind: 'preset',
-        category: 'Writing',
-        title: 'Draft an email or memo',
-        description: 'Generate a clear communication draft for a specific audience.',
-        promptTemplate: `Draft an email or memo for me.
-
-Audience:
-[Who is this for?]
-
-Goal:
-[What do you need this message to accomplish?]
-
-Context:
-[Any relevant background or constraints]
-
-Tone:
-[e.g. concise, assertive, collaborative]`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'build-web-app',
-        kind: 'preset',
-        category: 'Build',
-        title: 'Build a webpage/app',
-        description: 'Create a structured implementation prompt for a new app or feature.',
-        promptTemplate: `Help me build a webpage or app.
-
-Goal:
-[What are we building?]
-
-Target users:
-[Who is it for?]
-
-Core features:
-- [Feature 1]
-- [Feature 2]
-- [Feature 3]
-
-Tech preferences:
-[Framework, stack, or constraints]
-
-Output:
-[Prototype, production code, architecture, etc.]`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'debug-code',
-        kind: 'preset',
-        category: 'Build',
-        title: 'Debug code',
-        description: 'Organize a bug report into a high-signal debugging request.',
-        promptTemplate: `Help me debug an issue.
-
-What is happening:
-[Describe the bug]
-
-What I expected:
-[Describe the expected behavior]
-
-Relevant code or logs:
-[Paste the code, stack trace, or error output]
-
-What I already tried:
-[List attempts so far]`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'generate-multi-file-project',
-        kind: 'preset',
-        category: 'Build',
-        title: 'Generate a multi-file project',
-        description: 'Ask for a full project structure with multiple generated files.',
-        promptTemplate: `Generate a multi-file project for this idea:
-[Describe the app or tool]
-
-Please include:
-- Project structure
-- Key files and their contents
-- Setup instructions
-- Notes on where to customize next
-
-Prefer a practical, runnable starting point.`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'explain-simply',
-        kind: 'preset',
-        category: 'Analyze',
-        title: 'Explain a complex topic simply',
-        description: 'Break down a difficult concept with plain language and analogies.',
-        promptTemplate: `Explain this topic simply:
-[topic]
-
-Please include:
-- A plain-English explanation
-- A concrete example or analogy
-- Common misconceptions
-- A short version for a beginner`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'notes-to-action-plan',
-        kind: 'preset',
-        category: 'Analyze',
-        title: 'Turn notes into an action plan',
-        description: 'Convert raw notes into priorities, owners, and next steps.',
-        promptTemplate: `Turn the following notes into an action plan.
-
-Please produce:
-- Prioritized workstreams
-- Specific next steps
-- Owners or roles to assign
-- Risks and dependencies
-- A suggested timeline
-
-Notes:
-[Paste notes here]`,
-        providerHint: 'Works with any provider'
-    },
-    {
-        id: 'extract-key-facts',
-        kind: 'preset',
-        category: 'Analyze',
-        title: 'Extract key facts from sources',
-        description: 'Pull the most important facts out of a document set or source list.',
-        promptTemplate: `Extract the key facts from these materials.
-
-Please provide:
-- The most important facts
-- Supporting evidence or citations
-- Contradictions or uncertainties
-- A short summary of what matters most
-
-Sources or content:
-[Paste links, excerpts, or source text here]`,
-        providerHint: 'Best with J.B.A.I'
-    }
-];
+const BUILTIN_PROMPT_PRESETS = [];
 
 const ChatApp = {
     Config: {
@@ -1053,8 +823,14 @@ const ChatApp = {
                 : items.filter((item) => item.category === activeCategory);
             const skillCatalogState = ChatApp.State.skillCatalog;
             const provider = ChatApp.Store.getActiveProviderSettings().provider;
-            const showStatusCard = provider === ChatApp.Config.PROVIDERS.JBAI;
-            const statusPresentation = this.getJbAiStatusPresentation();
+            const showStatusCard = false;
+            const statusPresentation = {};
+            const statusCardMarkup = '';
+            const skillStatusNote = '';
+
+            const headerMarkup = mode === 'home'
+                ? `<div class="prompt-home-hero"><div class="prompt-home-copy"><h1>My Prompts</h1></div></div>`
+                : `<div class="prompt-library-header"><div class="prompt-library-copy"><h2 id="prompt-library-title">My Prompts</h2></div></div>`;
 
             const categoryChips = categories.map((category) => `
                 <button
@@ -1085,50 +861,6 @@ const ChatApp = {
                 </div>
             `).join('');
 
-            const skillStatusNote = skillCatalogState.status === 'loading'
-                ? '<div class="prompt-home-empty">Loading shared skill cards from the J.B.A.I backend...</div>'
-                : skillCatalogState.status === 'error' && skillCatalogState.items.length === 0
-                    ? `<div class="prompt-home-empty">${ChatApp.Utils.escapeHTML(skillCatalogState.error || 'Shared skills are unavailable right now.')}</div>`
-                    : '';
-
-            const statusCardMarkup = showStatusCard ? `
-                <div class="prompt-status-card" data-status="${ChatApp.Utils.escapeHTML(statusPresentation.status)}">
-                    <div class="prompt-status-header">
-                        <div>
-                            <p class="prompt-status-title">${ChatApp.Utils.escapeHTML(statusPresentation.title)}</p>
-                        </div>
-                        <span class="provider-status-badge" data-status="${ChatApp.Utils.escapeHTML(statusPresentation.status)}">${ChatApp.Utils.escapeHTML(statusPresentation.label)}</span>
-                    </div>
-                    <div class="prompt-status-body">
-                        <p>${ChatApp.Utils.escapeHTML(statusPresentation.message)}</p>
-                        <div class="prompt-status-meta">${ChatApp.Utils.escapeHTML(statusPresentation.meta)}</div>
-                    </div>
-                    <div class="prompt-status-actions">
-                        <button type="button" data-prompt-action="open-settings">Open Settings</button>
-                        <button type="button" data-prompt-action="retry-jbai">Check connection</button>
-                        <button type="button" data-prompt-action="switch-provider">Use Google instead</button>
-                    </div>
-                </div>
-            ` : '';
-
-            const headerMarkup = mode === 'home'
-                ? `
-                    <div class="prompt-home-hero">
-                        <div class="prompt-home-copy">
-                            <h1>J.B.A.I starter prompts</h1>
-                            <p>Search mode, guided starters, and reusable skill templates live in one shared prompt library. Pick a card to prefill the composer, then edit it before sending.</p>
-                        </div>
-                    </div>
-                `
-                : `
-                    <div class="prompt-library-header">
-                        <div class="prompt-library-copy">
-                            <h2 id="prompt-library-title">Starter prompts</h2>
-                            <p>Choose a preset or shared skill template to prefill the composer.</p>
-                        </div>
-                    </div>
-                `;
-
             const customPresetsMarkup = `
                 <div class="custom-preset-form-container" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
                     <h3 style="margin-bottom: 12px; font-size: 1rem;">Create Custom Preset</h3>
@@ -1145,14 +877,11 @@ const ChatApp = {
             container.innerHTML = `
                 ${headerMarkup}
                 <div class="prompt-library-content">
-                    ${statusCardMarkup}
                     <div class="prompt-category-row">${categoryChips}</div>
-                    ${filteredItems.length > 0 ? `<div class="prompt-grid">${cards}</div>` : skillStatusNote || '<div class="prompt-home-empty">No prompt cards match this category yet.</div>'}
-                    ${filteredItems.length > 0 ? skillStatusNote : ''}
+                    ${filteredItems.length > 0 ? `<div class="prompt-grid">${cards}</div>` : '<div class="prompt-home-empty">No prompts yet. Create your first one below.</div>'}
                     ${customPresetsMarkup}
                 </div>
             `;
-
             container.querySelectorAll('[data-prompt-category]').forEach((button) => {
                 button.addEventListener('click', () => {
                     ChatApp.Controller.setPromptCategory(button.dataset.promptCategory);

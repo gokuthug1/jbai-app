@@ -16,13 +16,15 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     search_provider: str = "tavily"
-    synthesis_provider: str = "openai"
+    synthesis_provider: str = "groq"
 
     tavily_api_key: str | None = None
     openai_api_key: str | None = None
     gemini_api_key: str | None = None
+    groq_api_key: str | None = None
+    hf_api_key: str | None = None
 
-    synthesis_model: str = "gemini-2.0-flash-lite"
+    synthesis_model: str = "llama-3.3-70b-versatile"
     max_context_tokens: int = Field(default=10_000, ge=2_000, le=64_000)
     reserved_answer_tokens: int = Field(default=1_600, ge=256, le=8_192)
     max_sources: int = Field(default=6, ge=1, le=12)
