@@ -298,8 +298,8 @@ class HuggingFaceSynthesizer:
 
     @property
     def hf_chat_url(self) -> str:
-        # The free Inference API requires the model ID in the URL
-        return f"https://api-inference.huggingface.co/models/{self.settings.synthesis_model}/v1/chat/completions"
+        # Hugging Face provides a dedicated OpenAI-compatible router endpoint
+        return "https://router.huggingface.co/v1/chat/completions"
 
     def _headers(self) -> dict[str, str]:
         if not self.settings.hf_api_key:
