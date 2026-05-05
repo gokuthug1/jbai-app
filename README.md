@@ -29,6 +29,8 @@ Provider settings are stored locally in the browser (`localStorage`) for that us
 - Google Search + Code Execution toggles are available only with the Google provider.
 - OpenAI/Anthropic direct mode currently forwards image attachments; non-image attachments are omitted in provider requests.
 - Conversation history, theme, tools, and provider settings are local to the browser.
+- A new optional backend for Perplexity-style grounded web search lives in `backend/`.
+- The design and integration blueprint for that backend lives in `docs/web-search-mode-blueprint.md`.
 
 ## Local Run
 
@@ -39,6 +41,14 @@ npx serve .
 ```
 
 Then open the shown URL in your browser.
+
+## Optional Web Search Mode Backend
+
+The default app remains client-side. If you want a real search-augmented mode with backend-held search/model credentials, streaming phases, and inline citations:
+
+1. Open `docs/web-search-mode-blueprint.md`
+2. Configure `backend/.env`
+3. Run `uvicorn app.main:app --reload --port 8000` from `backend/`
 
 ## Security
 
