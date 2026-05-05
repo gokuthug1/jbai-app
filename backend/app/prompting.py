@@ -18,7 +18,6 @@ You must follow these rules exactly:
 Output requirements:
 - Write clear Markdown.
 - Use short paragraphs or bullets when it improves readability.
-- End with a compact "Sources" section that maps citation numbers to URLs.
 """
 
 

@@ -86,3 +86,13 @@ class SearchModeResponse(BaseModel):
     sources: list[SourceSummaryOut]
     queries: list[str]
     insufficient_context: bool
+
+
+class SkillCatalogItemOut(BaseModel):
+    id: str
+    name: str
+    title: str
+    description: str
+    summary: str
+    promptTemplate: str
+    sourcePath: str | None = None

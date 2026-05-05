@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .config import Settings, get_settings
-from .models import SearchModeRequest, SearchModeResponse
+from .models import SearchModeRequest, SearchModeResponse, SkillCatalogItemOut
 from .orchestrator import WebSearchOrchestrator
+from .skills_catalog import discover_skill_catalog
 
 
 app = FastAPI(
@@ -49,6 +50,11 @@ def get_orchestrator(request: Request, settings: Settings = Depends(get_settings
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/v1/skills/catalog", response_model=list[SkillCatalogItemOut])
+async def skills_catalog() -> list[SkillCatalogItemOut]:
+    return discover_skill_catalog()
 
 
 @app.post("/v1/web-search", response_model=SearchModeResponse)

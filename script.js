@@ -1,12 +1,249 @@
 import { MessageFormatter } from './formatter.js';
 import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
-const getDefaultJbAiBaseUrl = () => {
-    const { protocol, hostname, origin } = window.location;
-    if (protocol === 'file:') return 'http://localhost:8000';
-    if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:8000';
-    return origin;
+const isLocalBrowserContext = () => {
+    const { protocol, hostname } = window.location;
+    if (protocol === 'file:') return true;
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 };
+
+const getDefaultJbAiBaseUrl = () => {
+    return isLocalBrowserContext() ? 'http://localhost:8000' : '';
+};
+
+const JBAI_REMOTE_PLACEHOLDER = 'https://your-jbai-backend.example.com';
+
+const BUILTIN_PROMPT_PRESETS = [
+    {
+        id: 'latest-news-brief',
+        kind: 'preset',
+        category: 'Research',
+        title: 'Latest news brief',
+        description: 'Pull the latest developments on a topic and explain why they matter.',
+        promptTemplate: `Give me a current news brief about: [topic]
+
+Please include:
+- What happened
+- Why it matters
+- Key dates, people, and figures
+- Conflicting or uncertain points
+- A short takeaway
+
+Use recent credible sources and cite every factual claim.`,
+        providerHint: 'Best with J.B.A.I'
+    },
+    {
+        id: 'market-landscape',
+        kind: 'preset',
+        category: 'Research',
+        title: 'Market landscape',
+        description: 'Map competitors, positioning, trends, and whitespace for a market.',
+        promptTemplate: `Research the market landscape for: [company, product, or category]
+
+Please cover:
+- Market definition
+- Key competitors
+- Positioning differences
+- Recent trends or shifts
+- Gaps or opportunities
+
+Cite factual claims from credible sources.`,
+        providerHint: 'Best with J.B.A.I'
+    },
+    {
+        id: 'compare-two-options',
+        kind: 'preset',
+        category: 'Research',
+        title: 'Compare two options',
+        description: 'Contrast two tools, vendors, products, or approaches with evidence.',
+        promptTemplate: `Compare these two options: [option A] vs [option B]
+
+Please include:
+- Core differences
+- Pros and cons
+- Pricing or packaging if available
+- Best fit by use case
+- A short recommendation with tradeoffs
+
+Ground the comparison in cited sources.`,
+        providerHint: 'Best with J.B.A.I'
+    },
+    {
+        id: 'rewrite-professionally',
+        kind: 'preset',
+        category: 'Writing',
+        title: 'Rewrite professionally',
+        description: 'Refine rough writing into a polished, professional version.',
+        promptTemplate: `Rewrite the following so it sounds polished, professional, and concise.
+
+Audience:
+[Who will read it?]
+
+Tone:
+[e.g. executive, warm, direct, diplomatic]
+
+Text:
+[Paste the draft here]`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'summarize-notes-pdf',
+        kind: 'preset',
+        category: 'Writing',
+        title: 'Summarize notes or PDF',
+        description: 'Turn messy notes into a crisp summary with action items.',
+        promptTemplate: `Summarize the following notes or document content.
+
+Please produce:
+- Executive summary
+- Key points
+- Risks or open questions
+- Action items
+
+Content:
+[Paste notes or document text here]`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'draft-email-memo',
+        kind: 'preset',
+        category: 'Writing',
+        title: 'Draft an email or memo',
+        description: 'Generate a clear communication draft for a specific audience.',
+        promptTemplate: `Draft an email or memo for me.
+
+Audience:
+[Who is this for?]
+
+Goal:
+[What do you need this message to accomplish?]
+
+Context:
+[Any relevant background or constraints]
+
+Tone:
+[e.g. concise, assertive, collaborative]`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'build-web-app',
+        kind: 'preset',
+        category: 'Build',
+        title: 'Build a webpage/app',
+        description: 'Create a structured implementation prompt for a new app or feature.',
+        promptTemplate: `Help me build a webpage or app.
+
+Goal:
+[What are we building?]
+
+Target users:
+[Who is it for?]
+
+Core features:
+- [Feature 1]
+- [Feature 2]
+- [Feature 3]
+
+Tech preferences:
+[Framework, stack, or constraints]
+
+Output:
+[Prototype, production code, architecture, etc.]`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'debug-code',
+        kind: 'preset',
+        category: 'Build',
+        title: 'Debug code',
+        description: 'Organize a bug report into a high-signal debugging request.',
+        promptTemplate: `Help me debug an issue.
+
+What is happening:
+[Describe the bug]
+
+What I expected:
+[Describe the expected behavior]
+
+Relevant code or logs:
+[Paste the code, stack trace, or error output]
+
+What I already tried:
+[List attempts so far]`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'generate-multi-file-project',
+        kind: 'preset',
+        category: 'Build',
+        title: 'Generate a multi-file project',
+        description: 'Ask for a full project structure with multiple generated files.',
+        promptTemplate: `Generate a multi-file project for this idea:
+[Describe the app or tool]
+
+Please include:
+- Project structure
+- Key files and their contents
+- Setup instructions
+- Notes on where to customize next
+
+Prefer a practical, runnable starting point.`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'explain-simply',
+        kind: 'preset',
+        category: 'Analyze',
+        title: 'Explain a complex topic simply',
+        description: 'Break down a difficult concept with plain language and analogies.',
+        promptTemplate: `Explain this topic simply:
+[topic]
+
+Please include:
+- A plain-English explanation
+- A concrete example or analogy
+- Common misconceptions
+- A short version for a beginner`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'notes-to-action-plan',
+        kind: 'preset',
+        category: 'Analyze',
+        title: 'Turn notes into an action plan',
+        description: 'Convert raw notes into priorities, owners, and next steps.',
+        promptTemplate: `Turn the following notes into an action plan.
+
+Please produce:
+- Prioritized workstreams
+- Specific next steps
+- Owners or roles to assign
+- Risks and dependencies
+- A suggested timeline
+
+Notes:
+[Paste notes here]`,
+        providerHint: 'Works with any provider'
+    },
+    {
+        id: 'extract-key-facts',
+        kind: 'preset',
+        category: 'Analyze',
+        title: 'Extract key facts from sources',
+        description: 'Pull the most important facts out of a document set or source list.',
+        promptTemplate: `Extract the key facts from these materials.
+
+Please provide:
+- The most important facts
+- Supporting evidence or citations
+- Contradictions or uncertainties
+- A short summary of what matters most
+
+Sources or content:
+[Paste links, excerpts, or source text here]`,
+        providerHint: 'Best with J.B.A.I'
+    }
+];
 
 const ChatApp = {
     Config: {
@@ -20,14 +257,26 @@ const ChatApp = {
             GOOGLE_BASE: 'https://generativelanguage.googleapis.com/v1beta/models',
             OPENAI_CHAT: 'https://api.openai.com/v1/chat/completions',
             ANTHROPIC_MESSAGES: 'https://api.anthropic.com/v1/messages',
+            JBAI_HEALTH_PATH: '/healthz',
+            JBAI_OPENAPI_PATH: '/openapi.json',
             JBAI_SEARCH_PATH: '/v1/web-search',
-            JBAI_SEARCH_STREAM_PATH: '/v1/web-search/stream'
+            JBAI_SEARCH_STREAM_PATH: '/v1/web-search/stream',
+            JBAI_SKILLS_PATH: '/v1/skills/catalog'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
             CONVERSATIONS: 'jbai_conversations',
             TOOLS: 'jbai_tools_config',
-            PROVIDER_SETTINGS: 'jbai_provider_settings'
+            PROVIDER_SETTINGS: 'jbai_provider_settings',
+            JBAI_BACKEND_CONFIRMATION: 'jbai_backend_url_confirmed'
+        },
+        JBAI_BACKEND_STATES: {
+            UNKNOWN: 'unknown',
+            CHECKING: 'checking',
+            MISSING: 'missing',
+            UNAVAILABLE: 'unavailable',
+            API_MISSING: 'api-missing',
+            CONNECTED: 'connected'
         },
         DEFAULT_THEME: 'light',
         DEFAULT_PROVIDER_SETTINGS: {
@@ -46,6 +295,8 @@ const ChatApp = {
                 anthropic: ''
             }
         },
+        PROMPT_LIBRARY_DEFAULT_CATEGORY: 'All',
+        BUILTIN_PROMPT_PRESETS,
         DEFAULT_TOOLS: {
             googleSearch: false,
             codeExecution: false,
@@ -90,6 +341,23 @@ const ChatApp = {
         abortController: null,
         toolsConfig: {},
         providerSettings: {},
+        jbAiBackend: {
+            status: 'unknown',
+            title: 'Not checked yet',
+            message: 'Check the J.B.A.I backend connection before sending a search request.',
+            baseUrl: '',
+            checkedAt: 0,
+            detail: ''
+        },
+        skillCatalog: {
+            status: 'idle',
+            items: [],
+            baseUrl: '',
+            error: ''
+        },
+        promptLibrary: {
+            category: 'All'
+        },
         setCurrentConversation(history) {
             this.currentConversation = Array.isArray(history)
                 ? history.map((msg, index) => ChatApp.Utils.normalizeMessage(msg, index)).filter(Boolean)
@@ -212,6 +480,46 @@ const ChatApp = {
 
             return words.join(' ').substring(0, 50) || 'Chat';
         },
+        isLocalBrowserContext() {
+            return isLocalBrowserContext();
+        },
+        normalizeJbAiBaseUrl(value) {
+            const raw = String(value || '').trim();
+            if (!raw) return '';
+
+            const candidate = /^https?:\/\//i.test(raw) ? raw : `http://${raw}`;
+            try {
+                const parsed = new URL(candidate);
+                if (!['http:', 'https:'].includes(parsed.protocol)) return raw;
+                const path = parsed.pathname.replace(/\/$/, '');
+                const normalizedPath = path === '/' ? '' : path;
+                return `${parsed.origin}${normalizedPath}`;
+            } catch {
+                return raw.replace(/\/$/, '');
+            }
+        },
+        getRemoteJbAiPlaceholder() {
+            return this.isLocalBrowserContext() ? getDefaultJbAiBaseUrl() : JBAI_REMOTE_PLACEHOLDER;
+        },
+        getJbAiConfirmationValue() {
+            return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.JBAI_BACKEND_CONFIRMATION) || '';
+        },
+        setJbAiConfirmationValue(baseUrl) {
+            const normalized = this.normalizeJbAiBaseUrl(baseUrl);
+            if (!normalized) {
+                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.JBAI_BACKEND_CONFIRMATION);
+                return;
+            }
+            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.JBAI_BACKEND_CONFIRMATION, normalized);
+        },
+        shouldMigrateLegacyJbAiOrigin(baseUrl) {
+            if (this.isLocalBrowserContext()) return false;
+            const normalized = this.normalizeJbAiBaseUrl(baseUrl);
+            if (!normalized) return false;
+            const origin = this.normalizeJbAiBaseUrl(window.location.origin);
+            if (normalized !== origin) return false;
+            return this.getJbAiConfirmationValue() !== normalized;
+        },
         sanitizeGeneratedFilename(name, fallbackIndex = 0) {
             const raw = typeof name === 'string' ? name : '';
             const basename = raw.replace(/\\/g, '/').split('/').pop() || '';
@@ -288,6 +596,11 @@ const ChatApp = {
                 normalized.content.groundingMetadata = groundingMetadata;
             }
 
+            const searchMetadata = message?.searchMetadata;
+            if (searchMetadata && typeof searchMetadata === 'object') {
+                normalized.searchMetadata = searchMetadata;
+            }
+
             if (Array.isArray(message.attachments)) {
                 const attachments = message.attachments
                     .map((attachment, attachmentIndex) => this.normalizeAttachment(attachment, attachmentIndex))
@@ -351,6 +664,35 @@ const ChatApp = {
     },
 
     Store: {
+        normalizeProviderSettings(settings) {
+            const defaultSettings = ChatApp.Config.DEFAULT_PROVIDER_SETTINGS;
+            const provider = Object.values(ChatApp.Config.PROVIDERS).includes(settings?.provider)
+                ? settings.provider
+                : defaultSettings.provider;
+
+            const merged = {
+                provider,
+                baseUrls: {
+                    ...defaultSettings.baseUrls,
+                    ...(settings?.baseUrls || {})
+                },
+                models: {
+                    ...defaultSettings.models,
+                    ...(settings?.models || {})
+                },
+                apiKeys: {
+                    ...defaultSettings.apiKeys,
+                    ...(settings?.apiKeys || {})
+                }
+            };
+
+            merged.baseUrls.jbai = ChatApp.Utils.normalizeJbAiBaseUrl(merged.baseUrls?.jbai);
+            if (ChatApp.Utils.shouldMigrateLegacyJbAiOrigin(merged.baseUrls.jbai)) {
+                merged.baseUrls.jbai = '';
+            }
+
+            return merged;
+        },
         saveAllConversations() { 
             const leanConversations = ChatApp.State.allConversations.map(chat => ({
                 ...chat,
@@ -387,61 +729,26 @@ const ChatApp = {
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
         getTheme() { return localStorage.getItem(ChatApp.Config.STORAGE_KEYS.THEME) || ChatApp.Config.DEFAULT_THEME; },
         saveProviderSettings(settings) {
-            const defaultSettings = ChatApp.Config.DEFAULT_PROVIDER_SETTINGS;
-            const provider = Object.values(ChatApp.Config.PROVIDERS).includes(settings?.provider)
-                ? settings.provider
-                : defaultSettings.provider;
+            const sanitized = this.normalizeProviderSettings(settings);
 
-            const sanitized = {
-                provider,
-                baseUrls: {
-                    ...defaultSettings.baseUrls,
-                    ...(settings?.baseUrls || {})
-                },
-                models: {
-                    ...defaultSettings.models,
-                    ...(settings?.models || {})
-                },
-                apiKeys: {
-                    ...defaultSettings.apiKeys,
-                    ...(settings?.apiKeys || {})
-                }
-            };
+            ChatApp.Utils.setJbAiConfirmationValue(sanitized.baseUrls?.jbai);
 
             localStorage.setItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS, JSON.stringify(sanitized));
             ChatApp.State.providerSettings = sanitized;
             return sanitized;
         },
         getProviderSettings() {
-            const defaultSettings = ChatApp.Config.DEFAULT_PROVIDER_SETTINGS;
-
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS);
                 const parsed = stored ? JSON.parse(stored) : {};
-                const provider = Object.values(ChatApp.Config.PROVIDERS).includes(parsed?.provider)
-                    ? parsed.provider
-                    : defaultSettings.provider;
-
-                const merged = {
-                    provider,
-                    baseUrls: {
-                        ...defaultSettings.baseUrls,
-                        ...(parsed?.baseUrls || {})
-                    },
-                    models: {
-                        ...defaultSettings.models,
-                        ...(parsed?.models || {})
-                    },
-                    apiKeys: {
-                        ...defaultSettings.apiKeys,
-                        ...(parsed?.apiKeys || {})
-                    }
-                };
-
+                const merged = this.normalizeProviderSettings(parsed);
                 ChatApp.State.providerSettings = merged;
+                if (JSON.stringify(parsed) !== JSON.stringify(merged)) {
+                    localStorage.setItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS, JSON.stringify(merged));
+                }
                 return merged;
             } catch (error) {
-                const fallback = JSON.parse(JSON.stringify(defaultSettings));
+                const fallback = this.normalizeProviderSettings(ChatApp.Config.DEFAULT_PROVIDER_SETTINGS);
                 ChatApp.State.providerSettings = fallback;
                 return fallback;
             }
@@ -493,6 +800,7 @@ const ChatApp = {
                 sendButton: document.getElementById('send-button'),
                 stopButton: document.getElementById('stop-button'),
                 settingsButton: document.getElementById('toggle-options-button'),
+                promptLauncherButton: document.getElementById('prompt-launcher-button'),
                 attachFileButton: document.getElementById('attach-file-button'),
                 fileInput: document.getElementById('file-input'),
                 filePreviewsContainer: document.getElementById('file-previews-container'),
@@ -597,6 +905,7 @@ const ChatApp = {
             this.elements.chatInput.value = '';
             this.elements.chatInput.style.height = 'auto';
             this.toggleSendButtonState();
+            this.renderConversationSurface();
         },
         _revokeFilePreviewUrls() {
             ChatApp.State.previewObjectUrls.forEach((url) => {
@@ -612,11 +921,244 @@ const ChatApp = {
             const hasText = this.elements.chatInput.value.trim().length > 0;
             const hasFiles = ChatApp.State.attachedFiles.length > 0;
             const isGenerating = ChatApp.State.isGenerating;
-            this.elements.sendButton.disabled = (!hasText && !hasFiles) || isGenerating;
+            const isCheckingJbAi = ChatApp.Store.getActiveProviderSettings().provider === ChatApp.Config.PROVIDERS.JBAI
+                && ChatApp.State.jbAiBackend.status === ChatApp.Config.JBAI_BACKEND_STATES.CHECKING;
+            this.elements.sendButton.disabled = (!hasText && !hasFiles) || isGenerating || isCheckingJbAi;
             this.elements.sendButton.style.display = isGenerating ? 'none' : 'flex';
         },
         toggleStopButton(isGenerating) {
             this.elements.stopButton.style.display = isGenerating ? 'flex' : 'none';
+        },
+        setChatInputValue(value) {
+            this.elements.chatInput.value = value || '';
+            this.elements.chatInput.dispatchEvent(new Event('input'));
+            this.focusChatInput();
+            const end = this.elements.chatInput.value.length;
+            this.elements.chatInput.setSelectionRange(end, end);
+        },
+        focusChatInput() {
+            this.elements.chatInput.focus();
+        },
+        getJbAiStatusPresentation(statusData = ChatApp.State.jbAiBackend) {
+            const status = statusData?.status || ChatApp.Config.JBAI_BACKEND_STATES.UNKNOWN;
+            const baseUrl = statusData?.baseUrl ? `Backend URL: ${statusData.baseUrl}` : '';
+            const detail = statusData?.detail ? String(statusData.detail).trim() : '';
+
+            switch (status) {
+                case ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED:
+                    return {
+                        status,
+                        label: 'Connected',
+                        title: 'J.B.A.I backend connected',
+                        message: 'Search mode is ready to search the web, read sources, and load shared skill cards.',
+                        meta: baseUrl || 'Backend URL confirmed.'
+                    };
+                case ChatApp.Config.JBAI_BACKEND_STATES.CHECKING:
+                    return {
+                        status,
+                        label: 'Checking connection',
+                        title: 'Checking J.B.A.I backend',
+                        message: 'Validating the backend URL and required J.B.A.I routes.',
+                        meta: baseUrl || 'Using the configured backend URL.'
+                    };
+                case ChatApp.Config.JBAI_BACKEND_STATES.MISSING:
+                    return {
+                        status,
+                        label: 'Missing backend URL',
+                        title: 'J.B.A.I needs a backend URL',
+                        message: 'Add the backend URL in Settings before using the official web search mode.',
+                        meta: 'Use http://localhost:8000 for local development or your deployed backend URL.'
+                    };
+                case ChatApp.Config.JBAI_BACKEND_STATES.API_MISSING:
+                    return {
+                        status,
+                        label: 'J.B.A.I API missing',
+                        title: 'Backend responded but J.B.A.I API is missing',
+                        message: 'This server responded, but it does not expose the J.B.A.I search endpoints.',
+                        meta: detail || baseUrl || 'Verify you pointed Settings at the FastAPI backend.'
+                    };
+                case ChatApp.Config.JBAI_BACKEND_STATES.UNAVAILABLE:
+                    return {
+                        status,
+                        label: 'Backend unavailable',
+                        title: 'J.B.A.I backend is unreachable',
+                        message: 'Start the backend service or fix the configured URL before sending search requests.',
+                        meta: detail || baseUrl || 'No reachable backend found.'
+                    };
+                default:
+                    return {
+                        status: ChatApp.Config.JBAI_BACKEND_STATES.UNKNOWN,
+                        label: 'Not checked yet',
+                        title: 'J.B.A.I backend not checked yet',
+                        message: 'We will verify the backend when you select J.B.A.I, change the URL, or send your first request.',
+                        meta: baseUrl || 'Configure a backend URL in Settings.'
+                    };
+            }
+        },
+        renderConversationSurface() {
+            const area = this.elements.messageArea;
+            if (!area) return;
+
+            const hasMessages = ChatApp.State.currentConversation.length > 0;
+            area.classList.toggle('message-area-home', !hasMessages);
+            if (hasMessages) return;
+
+            area.innerHTML = '';
+            const panel = document.createElement('section');
+            panel.className = 'prompt-home';
+            this.populatePromptLibrary(panel, { mode: 'home' });
+            area.appendChild(panel);
+        },
+        refreshPromptLibraryModal() {
+            const modalBody = document.querySelector('[data-prompt-library-body="true"]');
+            if (!modalBody) return;
+            this.populatePromptLibrary(modalBody, { mode: 'modal' });
+        },
+        populatePromptLibrary(container, { mode = 'home' } = {}) {
+            if (!container) return;
+
+            const items = ChatApp.Controller.getPromptCatalogItems();
+            const categories = ChatApp.Controller.getVisiblePromptCategories(items);
+            const activeCategory = ChatApp.Controller.getActivePromptCategory(categories);
+            const filteredItems = activeCategory === ChatApp.Config.PROMPT_LIBRARY_DEFAULT_CATEGORY
+                ? items
+                : items.filter((item) => item.category === activeCategory);
+            const skillCatalogState = ChatApp.State.skillCatalog;
+            const provider = ChatApp.Store.getActiveProviderSettings().provider;
+            const showStatusCard = provider === ChatApp.Config.PROVIDERS.JBAI;
+            const statusPresentation = this.getJbAiStatusPresentation();
+
+            const categoryChips = categories.map((category) => `
+                <button
+                    type="button"
+                    class="prompt-category-chip ${category === activeCategory ? 'is-active' : ''}"
+                    data-prompt-category="${ChatApp.Utils.escapeHTML(category)}"
+                >${ChatApp.Utils.escapeHTML(category)}</button>
+            `).join('');
+
+            const cards = filteredItems.map((item) => `
+                <button
+                    type="button"
+                    class="prompt-card"
+                    data-prompt-id="${ChatApp.Utils.escapeHTML(item.id)}"
+                >
+                    <div class="prompt-card-header">
+                        <h3 class="prompt-card-title">${ChatApp.Utils.escapeHTML(item.title)}</h3>
+                    </div>
+                    <p class="prompt-card-description">${ChatApp.Utils.escapeHTML(item.description)}</p>
+                    <div class="prompt-card-footer">
+                        <span class="prompt-badge" data-kind="${ChatApp.Utils.escapeHTML(item.kind)}">${item.kind === 'skill' ? 'Skill' : 'Preset'}</span>
+                        ${item.providerHint ? `<span class="prompt-badge">${ChatApp.Utils.escapeHTML(item.providerHint)}</span>` : ''}
+                    </div>
+                </button>
+            `).join('');
+
+            const skillStatusNote = skillCatalogState.status === 'loading'
+                ? '<div class="prompt-home-empty">Loading shared skill cards from the J.B.A.I backend...</div>'
+                : skillCatalogState.status === 'error' && skillCatalogState.items.length === 0
+                    ? `<div class="prompt-home-empty">${ChatApp.Utils.escapeHTML(skillCatalogState.error || 'Shared skills are unavailable right now.')}</div>`
+                    : '';
+
+            const statusCardMarkup = showStatusCard ? `
+                <div class="prompt-status-card" data-status="${ChatApp.Utils.escapeHTML(statusPresentation.status)}">
+                    <div class="prompt-status-header">
+                        <div>
+                            <p class="prompt-status-title">${ChatApp.Utils.escapeHTML(statusPresentation.title)}</p>
+                        </div>
+                        <span class="provider-status-badge" data-status="${ChatApp.Utils.escapeHTML(statusPresentation.status)}">${ChatApp.Utils.escapeHTML(statusPresentation.label)}</span>
+                    </div>
+                    <div class="prompt-status-body">
+                        <p>${ChatApp.Utils.escapeHTML(statusPresentation.message)}</p>
+                        <div class="prompt-status-meta">${ChatApp.Utils.escapeHTML(statusPresentation.meta)}</div>
+                    </div>
+                    <div class="prompt-status-actions">
+                        <button type="button" data-prompt-action="open-settings">Open Settings</button>
+                        <button type="button" data-prompt-action="retry-jbai">Check connection</button>
+                        <button type="button" data-prompt-action="switch-provider">Use Google instead</button>
+                    </div>
+                </div>
+            ` : '';
+
+            const headerMarkup = mode === 'home'
+                ? `
+                    <div class="prompt-home-hero">
+                        <div class="prompt-home-copy">
+                            <h1>J.B.A.I starter prompts</h1>
+                            <p>Search mode, guided starters, and reusable skill templates live in one shared prompt library. Pick a card to prefill the composer, then edit it before sending.</p>
+                        </div>
+                    </div>
+                `
+                : `
+                    <div class="prompt-library-header">
+                        <div class="prompt-library-copy">
+                            <h2 id="prompt-library-title">Starter prompts</h2>
+                            <p>Choose a preset or shared skill template to prefill the composer.</p>
+                        </div>
+                    </div>
+                `;
+
+            container.innerHTML = `
+                ${headerMarkup}
+                <div class="prompt-library-content">
+                    ${statusCardMarkup}
+                    <div class="prompt-category-row">${categoryChips}</div>
+                    ${filteredItems.length > 0 ? `<div class="prompt-grid">${cards}</div>` : skillStatusNote || '<div class="prompt-home-empty">No prompt cards match this category yet.</div>'}
+                    ${filteredItems.length > 0 ? skillStatusNote : ''}
+                </div>
+            `;
+
+            container.querySelectorAll('[data-prompt-category]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    ChatApp.Controller.setPromptCategory(button.dataset.promptCategory);
+                });
+            });
+
+            container.querySelectorAll('[data-prompt-id]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    ChatApp.Controller.prefillPromptTemplate(button.dataset.promptId);
+                });
+            });
+
+            container.querySelectorAll('[data-prompt-action]').forEach((button) => {
+                button.addEventListener('click', async () => {
+                    const action = button.dataset.promptAction;
+                    if (action === 'open-settings') {
+                        const promptOverlay = document.querySelector('[data-prompt-library-body="true"]')?.closest('.modal-overlay');
+                        if (promptOverlay) promptOverlay.remove();
+                        this.renderSettingsModal();
+                        return;
+                    }
+                    if (action === 'switch-provider') {
+                        ChatApp.Controller.switchProvider(ChatApp.Config.PROVIDERS.GOOGLE);
+                        return;
+                    }
+                    if (action === 'retry-jbai') {
+                        await ChatApp.Controller.refreshJbAiBackendStatus({ force: true, silent: false });
+                    }
+                });
+            });
+        },
+        openPromptLibrary() {
+            if (document.querySelector('.modal-overlay')) return;
+
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay';
+            overlay.innerHTML = `
+                <div class="prompt-library-card" role="dialog" aria-modal="true" aria-labelledby="prompt-library-title">
+                    <div data-prompt-library-body="true"></div>
+                    <button type="button" class="prompt-library-close btn-primary">Close</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            const body = overlay.querySelector('[data-prompt-library-body="true"]');
+            this.populatePromptLibrary(body, { mode: 'modal' });
+            if (ChatApp.Store.getActiveProviderSettings().provider === ChatApp.Config.PROVIDERS.JBAI) {
+                void ChatApp.Controller.refreshJbAiBackendStatus({ force: false, silent: true });
+            }
+            overlay.addEventListener('click', (event) => {
+                if (event.target === overlay) overlay.remove();
+            });
+            overlay.querySelector('.prompt-library-close').addEventListener('click', () => overlay.remove());
         },
         renderSidebar() {
             const list = this.elements.conversationList;
@@ -668,6 +1210,10 @@ const ChatApp = {
             });
         },
         async renderMessage(message, isTyping = false) {
+            const existingHome = this.elements.messageArea.querySelector('.prompt-home');
+            if (existingHome) existingHome.remove();
+            this.elements.messageArea.classList.remove('message-area-home');
+
             const messageEl = document.createElement('div');
             messageEl.dataset.messageId = message.id;
             const contentEl = document.createElement('div');
@@ -993,6 +1539,22 @@ const ChatApp = {
                     <label for="provider-base-url-input">Backend URL</label>
                     <input id="provider-base-url-input" type="text" autocomplete="off" spellcheck="false">
                 </div>
+                <div class="settings-row settings-row-input provider-status-row" data-provider-status-row="true">
+                    <label for="provider-healthcheck-button">J.B.A.I Backend Status</label>
+                    <div class="provider-status-card" id="jbai-provider-status-card">
+                        <div class="provider-status-header">
+                            <p class="provider-status-title">Checking backend</p>
+                            <span class="provider-status-badge" data-status="unknown">Not checked yet</span>
+                        </div>
+                        <div class="provider-status-body">
+                            <p>We verify the backend URL, health endpoint, and required J.B.A.I routes.</p>
+                            <div class="provider-status-meta"></div>
+                        </div>
+                        <div class="provider-status-actions">
+                            <button id="provider-healthcheck-button" type="button">Check connection</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="settings-row settings-row-input" data-provider-model-row="true">
                     <label for="provider-model-input">Model Name</label>
                     <input id="provider-model-input" type="text" autocomplete="off" spellcheck="false">
@@ -1054,15 +1616,22 @@ const ChatApp = {
             const googleToolRows = overlay.querySelectorAll('[data-google-tool-row="true"]');
             const agentToolRows = overlay.querySelectorAll('[data-agent-tool-row="true"]');
             const providerBaseUrlRow = overlay.querySelector('[data-provider-base-url-row="true"]');
+            const providerStatusRow = overlay.querySelector('[data-provider-status-row="true"]');
             const providerModelRow = overlay.querySelector('[data-provider-model-row="true"]');
             const providerApiKeyRow = overlay.querySelector('[data-provider-api-key-row="true"]');
             const agentModeToggle = overlay.querySelector('#toggle-agent-mode');
             const googleSearchToggle = overlay.querySelector('#toggle-google-search');
             const codeExecToggle = overlay.querySelector('#toggle-code-exec');
+            const providerStatusCard = overlay.querySelector('#jbai-provider-status-card');
+            const providerHealthcheckButton = overlay.querySelector('#provider-healthcheck-button');
+            const providerStatusTitle = providerStatusCard.querySelector('.provider-status-title');
+            const providerStatusBadge = providerStatusCard.querySelector('.provider-status-badge');
+            const providerStatusBody = providerStatusCard.querySelector('.provider-status-body p');
+            const providerStatusMeta = providerStatusCard.querySelector('.provider-status-meta');
 
             const providerMetadata = {
                 jbai: {
-                    baseUrlPlaceholder: getDefaultJbAiBaseUrl(),
+                    baseUrlPlaceholder: ChatApp.Utils.getRemoteJbAiPlaceholder(),
                     supportsGoogleTools: false,
                     supportsAgentMode: false,
                     requiresBaseUrl: true,
@@ -1105,7 +1674,34 @@ const ChatApp = {
             let draftProviderSettings = JSON.parse(JSON.stringify(providerSettings));
             const persistProviderSettings = () => {
                 draftProviderSettings = ChatApp.Store.saveProviderSettings(draftProviderSettings);
+                ChatApp.UI.toggleSendButtonState();
+                ChatApp.UI.renderConversationSurface();
             };
+
+            const renderProviderStatus = () => {
+                const presentation = ChatApp.UI.getJbAiStatusPresentation();
+                providerStatusCard.dataset.status = presentation.status;
+                providerStatusTitle.textContent = presentation.title;
+                providerStatusBadge.dataset.status = presentation.status;
+                providerStatusBadge.textContent = presentation.label;
+                providerStatusBody.textContent = presentation.message;
+                providerStatusMeta.textContent = presentation.meta;
+                providerHealthcheckButton.disabled = presentation.status === ChatApp.Config.JBAI_BACKEND_STATES.CHECKING;
+            };
+
+            const runJbAiStatusCheck = async (force = false, silent = true) => {
+                if (providerSelect.value !== ChatApp.Config.PROVIDERS.JBAI) return;
+                await ChatApp.Controller.refreshJbAiBackendStatus({
+                    force,
+                    silent,
+                    baseUrlOverride: providerBaseUrlInput.value
+                });
+                renderProviderStatus();
+            };
+
+            const debouncedJbAiStatusCheck = ChatApp.Utils.debounce(() => {
+                runJbAiStatusCheck(true, true);
+            }, 500);
 
             const refreshProviderUI = () => {
                 const provider = providerSelect.value;
@@ -1119,6 +1715,7 @@ const ChatApp = {
                 providerApiKeyInput.placeholder = metadata.keyPlaceholder || '';
 
                 providerBaseUrlRow.hidden = metadata.requiresBaseUrl !== true;
+                providerStatusRow.hidden = provider !== ChatApp.Config.PROVIDERS.JBAI;
                 providerModelRow.hidden = metadata.requiresModel !== true;
                 providerApiKeyRow.hidden = metadata.requiresApiKey !== true;
 
@@ -1136,21 +1733,43 @@ const ChatApp = {
                 agentModeToggle.disabled = disableAgentMode;
 
                 providerCapabilityNote.textContent = metadata.capabilityNote;
+                renderProviderStatus();
             };
 
             providerSelect.value = draftProviderSettings.provider;
             refreshProviderUI();
+            if (providerSelect.value === ChatApp.Config.PROVIDERS.JBAI) {
+                runJbAiStatusCheck(false, true);
+            }
 
             providerSelect.addEventListener('change', () => {
                 draftProviderSettings.provider = providerSelect.value;
                 persistProviderSettings();
                 refreshProviderUI();
+                if (providerSelect.value === ChatApp.Config.PROVIDERS.JBAI) {
+                    runJbAiStatusCheck(false, true);
+                }
             });
 
             providerBaseUrlInput.addEventListener('input', () => {
                 const provider = providerSelect.value;
                 draftProviderSettings.baseUrls[provider] = providerBaseUrlInput.value;
                 persistProviderSettings();
+                if (provider === ChatApp.Config.PROVIDERS.JBAI) {
+                    ChatApp.Controller.markJbAiBackendStatusUnknown(providerBaseUrlInput.value);
+                    renderProviderStatus();
+                    debouncedJbAiStatusCheck();
+                }
+            });
+
+            providerBaseUrlInput.addEventListener('blur', () => {
+                const provider = providerSelect.value;
+                if (provider !== ChatApp.Config.PROVIDERS.JBAI) return;
+                draftProviderSettings.baseUrls[provider] = ChatApp.Utils.normalizeJbAiBaseUrl(providerBaseUrlInput.value);
+                persistProviderSettings();
+                providerBaseUrlInput.value = draftProviderSettings.baseUrls[provider] || '';
+                ChatApp.Controller.markJbAiBackendStatusUnknown(providerBaseUrlInput.value);
+                renderProviderStatus();
             });
 
             providerModelInput.addEventListener('input', () => {
@@ -1167,6 +1786,10 @@ const ChatApp = {
 
             overlay.querySelector('#toggle-fullscreen').addEventListener('change', (e) => {
                 ChatApp.Controller.toggleFullScreen(e.target.checked);
+            });
+
+            providerHealthcheckButton.addEventListener('click', async () => {
+                await runJbAiStatusCheck(true, false);
             });
 
             const updateTools = () => {
@@ -1217,6 +1840,175 @@ const ChatApp = {
     },
 
     Api: {
+        buildJbAiUrl(baseUrl, path) {
+            const normalizedBaseUrl = ChatApp.Utils.normalizeJbAiBaseUrl(baseUrl);
+            return `${normalizedBaseUrl.replace(/\/$/, '')}${path}`;
+        },
+        async fetchWithTimeout(url, options = {}, timeoutMs = 6000) {
+            const controller = new AbortController();
+            const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                const response = await fetch(url, {
+                    ...options,
+                    signal: options.signal || controller.signal
+                });
+                return response;
+            } finally {
+                window.clearTimeout(timeoutId);
+            }
+        },
+        async checkJbAiBackend(baseUrl) {
+            const normalizedBaseUrl = ChatApp.Utils.normalizeJbAiBaseUrl(baseUrl);
+            const checkedAt = Date.now();
+
+            if (!normalizedBaseUrl) {
+                return {
+                    status: ChatApp.Config.JBAI_BACKEND_STATES.MISSING,
+                    baseUrl: '',
+                    checkedAt,
+                    detail: ''
+                };
+            }
+
+            try {
+                const healthResponse = await this.fetchWithTimeout(
+                    this.buildJbAiUrl(normalizedBaseUrl, ChatApp.Config.API_ENDPOINTS.JBAI_HEALTH_PATH),
+                    {
+                        method: 'GET',
+                        headers: { Accept: 'application/json' }
+                    },
+                    5000
+                );
+
+                if (!healthResponse.ok) {
+                    return {
+                        status: ChatApp.Config.JBAI_BACKEND_STATES.UNAVAILABLE,
+                        baseUrl: normalizedBaseUrl,
+                        checkedAt,
+                        detail: `Health check returned HTTP ${healthResponse.status}.`
+                    };
+                }
+            } catch (error) {
+                const timedOut = error?.name === 'AbortError';
+                return {
+                    status: ChatApp.Config.JBAI_BACKEND_STATES.UNAVAILABLE,
+                    baseUrl: normalizedBaseUrl,
+                    checkedAt,
+                    detail: timedOut ? 'Health check timed out.' : 'Unable to connect to the backend URL.'
+                };
+            }
+
+            try {
+                const schemaResponse = await this.fetchWithTimeout(
+                    this.buildJbAiUrl(normalizedBaseUrl, ChatApp.Config.API_ENDPOINTS.JBAI_OPENAPI_PATH),
+                    {
+                        method: 'GET',
+                        headers: { Accept: 'application/json' }
+                    },
+                    5000
+                );
+
+                if (!schemaResponse.ok) {
+                    return {
+                        status: ChatApp.Config.JBAI_BACKEND_STATES.API_MISSING,
+                        baseUrl: normalizedBaseUrl,
+                        checkedAt,
+                        detail: `OpenAPI check returned HTTP ${schemaResponse.status}.`
+                    };
+                }
+
+                const schema = await schemaResponse.json();
+                const paths = schema?.paths || {};
+                const requiredPaths = [
+                    ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_PATH,
+                    ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_STREAM_PATH,
+                    ChatApp.Config.API_ENDPOINTS.JBAI_SKILLS_PATH
+                ];
+                const hasAllPaths = requiredPaths.every((path) => Boolean(paths[path]));
+                if (!hasAllPaths) {
+                    return {
+                        status: ChatApp.Config.JBAI_BACKEND_STATES.API_MISSING,
+                        baseUrl: normalizedBaseUrl,
+                        checkedAt,
+                        detail: 'Required J.B.A.I API routes were not found on this server.'
+                    };
+                }
+            } catch (error) {
+                return {
+                    status: ChatApp.Config.JBAI_BACKEND_STATES.API_MISSING,
+                    baseUrl: normalizedBaseUrl,
+                    checkedAt,
+                    detail: 'Unable to verify the J.B.A.I routes from the backend schema.'
+                };
+            }
+
+            return {
+                status: ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED,
+                baseUrl: normalizedBaseUrl,
+                checkedAt,
+                detail: ''
+            };
+        },
+        async fetchJbAiSkillCatalog(baseUrl) {
+            const endpoint = this.buildJbAiUrl(baseUrl, ChatApp.Config.API_ENDPOINTS.JBAI_SKILLS_PATH);
+            const response = await this.fetchWithTimeout(endpoint, {
+                method: 'GET',
+                headers: {
+                    Accept: 'application/json'
+                }
+            }, 6000);
+
+            if (!response.ok) {
+                throw new Error(await this.getJbAiBackendErrorMessage(response, baseUrl));
+            }
+
+            const data = await response.json();
+            if (!Array.isArray(data)) return [];
+            return data
+                .filter((item) => item && typeof item === 'object')
+                .map((item) => ({
+                    id: String(item.id || ''),
+                    kind: 'skill',
+                    category: 'Skills',
+                    name: String(item.name || ''),
+                    title: String(item.title || item.name || 'Skill'),
+                    description: String(item.description || item.summary || 'Shared skill'),
+                    summary: String(item.summary || ''),
+                    promptTemplate: String(item.promptTemplate || ''),
+                    providerHint: 'Best with J.B.A.I',
+                    sourcePath: typeof item.sourcePath === 'string' ? item.sourcePath : undefined
+                }))
+                .filter((item) => item.id && item.promptTemplate);
+        },
+        mapJbAiCompletionPayload(payload) {
+            const citations = Array.isArray(payload?.citations) ? payload.citations : [];
+            const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+            const queries = Array.isArray(payload?.queries) ? payload.queries : [];
+            const groundingChunks = citations
+                .map((citation) => {
+                    const url = typeof citation?.url === 'string' ? citation.url.trim() : '';
+                    if (!url) return null;
+                    return {
+                        web: {
+                            uri: url,
+                            title: typeof citation?.title === 'string' ? citation.title : 'Source',
+                            domain: typeof citation?.domain === 'string' ? citation.domain : '',
+                            publishedAt: typeof citation?.published_at === 'string' ? citation.published_at : null
+                        }
+                    };
+                })
+                .filter(Boolean);
+
+            return {
+                groundingMetadata: groundingChunks.length > 0 ? { groundingChunks } : null,
+                searchMetadata: {
+                    citations,
+                    sources,
+                    queries,
+                    insufficientContext: Boolean(payload?.insufficient_context)
+                }
+            };
+        },
         getProviderLabel(provider) {
             switch (provider) {
                 case ChatApp.Config.PROVIDERS.JBAI:
@@ -1233,10 +2025,11 @@ const ChatApp = {
             const { provider, model, apiKey, baseUrl } = ChatApp.Store.getActiveProviderSettings();
             const providerLabel = this.getProviderLabel(provider);
             if (provider === ChatApp.Config.PROVIDERS.JBAI) {
-                if (!baseUrl) {
+                const normalizedBaseUrl = ChatApp.Utils.normalizeJbAiBaseUrl(baseUrl);
+                if (!normalizedBaseUrl) {
                     throw new Error('J.B.A.I backend URL is missing. Add it in Settings.');
                 }
-                return { provider, baseUrl };
+                return { provider, baseUrl: normalizedBaseUrl };
             }
             if (!apiKey) {
                 throw new Error(`${providerLabel} API key is missing. Add it in Settings.`);
@@ -1507,6 +2300,16 @@ const ChatApp = {
 
             return raw.slice(0, 300) || fallback;
         },
+        async getJbAiBackendErrorMessage(response, baseUrl) {
+            const normalizedBaseUrl = ChatApp.Utils.normalizeJbAiBaseUrl(baseUrl);
+            if (response.status === 404) {
+                return `Backend responded but J.B.A.I API is missing at ${normalizedBaseUrl}. Check the backend URL in Settings.`;
+            }
+            if (response.status === 502 || response.status === 503 || response.status === 504) {
+                return `J.B.A.I backend is unavailable at ${normalizedBaseUrl}. Please try again after the service recovers.`;
+            }
+            return this.getErrorMessageFromResponse(response, 'J.B.A.I');
+        },
         async requestGoogleText({ apiKey, model, contents, systemInstruction, toolsConfig, signal, titleMode = false }) {
             const endpoint = `${ChatApp.Config.API_ENDPOINTS.GOOGLE_BASE}/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
             const tools = this.buildGoogleTools(toolsConfig);
@@ -1597,7 +2400,7 @@ const ChatApp = {
                 throw new Error('J.B.A.I mode currently requires a text question. Attachments alone are not supported yet.');
             }
 
-            const endpoint = `${baseUrl.replace(/\/$/, '')}${ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_PATH}`;
+            const endpoint = this.buildJbAiUrl(baseUrl, ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_PATH);
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
@@ -1609,7 +2412,7 @@ const ChatApp = {
             });
 
             if (!response.ok) {
-                throw new Error(await this.getErrorMessageFromResponse(response, 'J.B.A.I'));
+                throw new Error(await this.getJbAiBackendErrorMessage(response, baseUrl));
             }
 
             const data = await response.json();
@@ -1625,7 +2428,7 @@ const ChatApp = {
                 throw new Error('J.B.A.I mode currently requires a text question. Attachments alone are not supported yet.');
             }
 
-            const endpoint = `${baseUrl.replace(/\/$/, '')}${ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_STREAM_PATH}`;
+            const endpoint = this.buildJbAiUrl(baseUrl, ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_STREAM_PATH);
             const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
@@ -1637,7 +2440,7 @@ const ChatApp = {
             });
 
             if (!response.ok) {
-                throw new Error(await this.getErrorMessageFromResponse(response, 'J.B.A.I'));
+                throw new Error(await this.getJbAiBackendErrorMessage(response, baseUrl));
             }
 
             if (!response.body) {
@@ -1910,7 +2713,12 @@ You are a digital professional. Be concise, accurate, and effective.`;
             ChatApp.UI.initTooltips();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
+            ChatApp.UI.renderConversationSurface();
             this.initOfflineDetection();
+            this.markJbAiBackendStatusUnknown(ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
+            if (ChatApp.Store.getActiveProviderSettings().provider === ChatApp.Config.PROVIDERS.JBAI) {
+                void this.refreshJbAiBackendStatus({ force: false, silent: true });
+            }
             
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
@@ -1922,6 +2730,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
             elements.chatInput.addEventListener('paste', Controller.handlePaste.bind(Controller));
             elements.newChatBtn.addEventListener('click', Controller.startNewChat.bind(Controller));
             elements.settingsButton.addEventListener('click', ChatApp.UI.renderSettingsModal.bind(ChatApp.UI));
+            elements.promptLauncherButton.addEventListener('click', () => ChatApp.UI.openPromptLibrary());
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
             elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
             elements.sidebarToggle.addEventListener('click', () => { const isOpen = elements.body.classList.toggle('sidebar-open'); elements.sidebarToggle.setAttribute('aria-expanded', isOpen.toString()); });
@@ -1937,6 +2746,170 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 ChatApp.UI._revokeFilePreviewUrls();
                 ChatApp.State.revokeGeneratedDownloadUrls();
             });
+        },
+        setJbAiBackendStatus(statusUpdate) {
+            const current = ChatApp.State.jbAiBackend || {};
+            ChatApp.State.jbAiBackend = {
+                ...current,
+                ...statusUpdate,
+                baseUrl: ChatApp.Utils.normalizeJbAiBaseUrl(statusUpdate?.baseUrl ?? current.baseUrl),
+                checkedAt: statusUpdate?.checkedAt ?? current.checkedAt ?? 0,
+                detail: typeof statusUpdate?.detail === 'string' ? statusUpdate.detail : (current.detail || '')
+            };
+            ChatApp.UI.toggleSendButtonState();
+            ChatApp.UI.renderConversationSurface();
+            ChatApp.UI.refreshPromptLibraryModal();
+            return ChatApp.State.jbAiBackend;
+        },
+        markJbAiBackendStatusUnknown(baseUrl = '') {
+            const normalizedBaseUrl = ChatApp.Utils.normalizeJbAiBaseUrl(baseUrl || ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
+            if (ChatApp.State.skillCatalog.baseUrl && ChatApp.State.skillCatalog.baseUrl !== normalizedBaseUrl) {
+                ChatApp.State.skillCatalog = {
+                    status: 'idle',
+                    items: [],
+                    baseUrl: normalizedBaseUrl,
+                    error: ''
+                };
+            }
+            const status = normalizedBaseUrl
+                ? ChatApp.Config.JBAI_BACKEND_STATES.UNKNOWN
+                : ChatApp.Config.JBAI_BACKEND_STATES.MISSING;
+            return this.setJbAiBackendStatus({
+                status,
+                baseUrl: normalizedBaseUrl,
+                checkedAt: 0,
+                detail: ''
+            });
+        },
+        async refreshJbAiBackendStatus({ force = false, silent = true, baseUrlOverride = '' } = {}) {
+            const baseUrl = ChatApp.Utils.normalizeJbAiBaseUrl(baseUrlOverride || ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
+            const current = ChatApp.State.jbAiBackend;
+
+            if (
+                !force &&
+                current.baseUrl === baseUrl &&
+                current.status !== ChatApp.Config.JBAI_BACKEND_STATES.UNKNOWN &&
+                current.status !== ChatApp.Config.JBAI_BACKEND_STATES.CHECKING
+            ) {
+                return current;
+            }
+
+            this.setJbAiBackendStatus({
+                status: baseUrl ? ChatApp.Config.JBAI_BACKEND_STATES.CHECKING : ChatApp.Config.JBAI_BACKEND_STATES.MISSING,
+                baseUrl,
+                detail: ''
+            });
+
+            const result = await ChatApp.Api.checkJbAiBackend(baseUrl);
+            this.setJbAiBackendStatus(result);
+
+            if (result.status === ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED) {
+                await this.ensureSkillCatalog({ force, baseUrlOverride: result.baseUrl });
+            } else if (ChatApp.State.skillCatalog.baseUrl !== result.baseUrl) {
+                ChatApp.State.skillCatalog = {
+                    status: 'idle',
+                    items: [],
+                    baseUrl: result.baseUrl || '',
+                    error: ''
+                };
+            }
+
+            if (!silent) {
+                const presentation = ChatApp.UI.getJbAiStatusPresentation(result);
+                const toastType = result.status === ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED ? 'success' : 'error';
+                ChatApp.UI.showToast(presentation.label, toastType, 3200);
+            }
+
+            ChatApp.UI.renderConversationSurface();
+            ChatApp.UI.refreshPromptLibraryModal();
+            return result;
+        },
+        async ensureSkillCatalog({ force = false, baseUrlOverride = '' } = {}) {
+            const baseUrl = ChatApp.Utils.normalizeJbAiBaseUrl(baseUrlOverride || ChatApp.State.jbAiBackend.baseUrl || ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
+            if (!baseUrl || ChatApp.State.jbAiBackend.status !== ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED) {
+                return ChatApp.State.skillCatalog.items;
+            }
+
+            const current = ChatApp.State.skillCatalog;
+            if (!force && current.status === 'loaded' && current.baseUrl === baseUrl) {
+                return current.items;
+            }
+
+            ChatApp.State.skillCatalog = {
+                ...current,
+                status: 'loading',
+                baseUrl,
+                error: ''
+            };
+            ChatApp.UI.renderConversationSurface();
+            ChatApp.UI.refreshPromptLibraryModal();
+
+            try {
+                const items = await ChatApp.Api.fetchJbAiSkillCatalog(baseUrl);
+                ChatApp.State.skillCatalog = {
+                    status: 'loaded',
+                    items,
+                    baseUrl,
+                    error: ''
+                };
+            } catch (error) {
+                ChatApp.State.skillCatalog = {
+                    status: 'error',
+                    items: current.baseUrl === baseUrl ? current.items : [],
+                    baseUrl,
+                    error: error?.message || 'Unable to load shared skills from the J.B.A.I backend.'
+                };
+            }
+
+            ChatApp.UI.renderConversationSurface();
+            ChatApp.UI.refreshPromptLibraryModal();
+            return ChatApp.State.skillCatalog.items;
+        },
+        getPromptCatalogItems() {
+            return [
+                ...ChatApp.Config.BUILTIN_PROMPT_PRESETS,
+                ...ChatApp.State.skillCatalog.items
+            ];
+        },
+        getVisiblePromptCategories(items = this.getPromptCatalogItems()) {
+            const knownOrder = ['Research', 'Writing', 'Build', 'Analyze', 'Skills'];
+            const available = new Set(items.map((item) => item.category).filter(Boolean));
+            return [
+                ChatApp.Config.PROMPT_LIBRARY_DEFAULT_CATEGORY,
+                ...knownOrder.filter((category) => available.has(category))
+            ];
+        },
+        getActivePromptCategory(categories = this.getVisiblePromptCategories()) {
+            const current = ChatApp.State.promptLibrary.category || ChatApp.Config.PROMPT_LIBRARY_DEFAULT_CATEGORY;
+            if (categories.includes(current)) return current;
+            return ChatApp.Config.PROMPT_LIBRARY_DEFAULT_CATEGORY;
+        },
+        setPromptCategory(category) {
+            const categories = this.getVisiblePromptCategories();
+            ChatApp.State.promptLibrary.category = categories.includes(category)
+                ? category
+                : ChatApp.Config.PROMPT_LIBRARY_DEFAULT_CATEGORY;
+            ChatApp.UI.renderConversationSurface();
+            ChatApp.UI.refreshPromptLibraryModal();
+        },
+        prefillPromptTemplate(promptId) {
+            const item = this.getPromptCatalogItems().find((entry) => entry.id === promptId);
+            if (!item) return;
+            ChatApp.UI.setChatInputValue(item.promptTemplate);
+            const promptOverlay = document.querySelector('[data-prompt-library-body="true"]')?.closest('.modal-overlay');
+            if (promptOverlay) promptOverlay.remove();
+        },
+        switchProvider(provider) {
+            const settings = ChatApp.Store.getProviderSettings();
+            settings.provider = provider;
+            ChatApp.Store.saveProviderSettings(settings);
+            ChatApp.UI.toggleSendButtonState();
+            ChatApp.UI.renderConversationSurface();
+            ChatApp.UI.refreshPromptLibraryModal();
+            if (provider === ChatApp.Config.PROVIDERS.JBAI) {
+                void this.refreshJbAiBackendStatus({ force: false, silent: true });
+            }
+            ChatApp.UI.showToast(`Provider switched to ${ChatApp.Api.getProviderLabel(provider)}.`, 'info', 2800);
         },
         startNewChat() {
             ChatApp.State.resetCurrentChat();
@@ -1971,6 +2944,18 @@ You are a digital professional. Be concise, accurate, and effective.`;
             if (ChatApp.State.isGenerating) return;
 
             try {
+                if (provider === ChatApp.Config.PROVIDERS.JBAI) {
+                    const status = await ChatApp.Controller.refreshJbAiBackendStatus({
+                        force: ChatApp.State.jbAiBackend.status !== ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED,
+                        silent: true
+                    });
+                    if (status.status !== ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED) {
+                        const presentation = ChatApp.UI.getJbAiStatusPresentation(status);
+                        ChatApp.UI.showToast(presentation.label, 'error', 4200);
+                        ChatApp.UI.renderConversationSurface();
+                        return;
+                    }
+                }
                 ChatApp.Api.getActiveProviderConfig();
             } catch (error) {
                 ChatApp.UI.showToast(error.message || 'Provider settings are incomplete.', 'error');
@@ -2142,7 +3127,14 @@ You are a digital professional. Be concise, accurate, and effective.`;
 
                 // 5. Finalize
                 const contentObj = { role: "model", parts: [{ text: rawModelText }] };
+                const jbAiMetadata = completionPayload ? ChatApp.Api.mapJbAiCompletionPayload(completionPayload) : null;
+                if (jbAiMetadata?.groundingMetadata) {
+                    contentObj.groundingMetadata = jbAiMetadata.groundingMetadata;
+                }
                 const botMessageForState = { id: messageId, content: contentObj };
+                if (jbAiMetadata?.searchMetadata) {
+                    botMessageForState.searchMetadata = jbAiMetadata.searchMetadata;
+                }
                 
                 await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: processedModelText }], messageId, botMessageForState);
 
@@ -2331,7 +3323,14 @@ You are a digital professional. Be concise, accurate, and effective.`;
             const messageEl = document.querySelector(`[data-message-id='${messageId}']`);
             if (messageEl) {
                 messageEl.classList.add('fade-out');
-                setTimeout(() => { messageEl.remove(); ChatApp.UI.scrollToBottom(); }, 400);
+                setTimeout(() => {
+                    messageEl.remove();
+                    if (ChatApp.State.currentConversation.length === 0) {
+                        ChatApp.UI.renderConversationSurface();
+                    } else {
+                        ChatApp.UI.scrollToBottom();
+                    }
+                }, 400);
             }
             await this.saveCurrentChat();
             ChatApp.UI.showToast('Message deleted.');
@@ -2409,6 +3408,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.THEME);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.TOOLS);
                 localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS);
+                localStorage.removeItem(ChatApp.Config.STORAGE_KEYS.JBAI_BACKEND_CONFIRMATION);
                 ChatApp.State.allConversations = [];
                 ChatApp.State.currentConversation = [];
                 ChatApp.State.currentChatId = null;
