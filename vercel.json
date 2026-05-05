@@ -1,22 +1,16 @@
 {
-  "version": 2,
   "rewrites": [
     {
-      "source": "/v1/(.*)",
-      "destination": "/api/index.py"
-    },
-    {
       "source": "/healthz",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
     },
     {
       "source": "/openapi.json",
-      "destination": "/api/index.py"
+      "destination": "/api/index"
+    },
+    {
+      "source": "/v1/:path*",
+      "destination": "/api/index"
     }
-  ],
-  "functions": {
-    "api/index.py": {
-      "runtime": "vercel-python@3.0.0"
-    }
-  }
+  ]
 }
