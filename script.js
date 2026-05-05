@@ -8,7 +8,8 @@ const isLocalBrowserContext = () => {
 };
 
 const getDefaultJbAiBaseUrl = () => {
-    return isLocalBrowserContext() ? 'http://localhost:8000' : '';
+    if (isLocalBrowserContext()) return 'http://localhost:8000';
+    return window.location.origin;
 };
 
 const JBAI_REMOTE_PLACEHOLDER = 'https://your-jbai-backend.example.com';
@@ -268,7 +269,8 @@ const ChatApp = {
             CONVERSATIONS: 'jbai_conversations',
             TOOLS: 'jbai_tools_config',
             PROVIDER_SETTINGS: 'jbai_provider_settings',
-            JBAI_BACKEND_CONFIRMATION: 'jbai_backend_url_confirmed'
+            JBAI_BACKEND_CONFIRMATION: 'jbai_backend_url_confirmed',
+            CUSTOM_PRESETS: 'jbai_custom_presets'
         },
         JBAI_BACKEND_STATES: {
             UNKNOWN: 'unknown',
@@ -358,6 +360,7 @@ const ChatApp = {
         promptLibrary: {
             category: 'All'
         },
+        customPresets: [],
         setCurrentConversation(history) {
             this.currentConversation = Array.isArray(history)
                 ? history.map((msg, index) => ChatApp.Utils.normalizeMessage(msg, index)).filter(Boolean)
@@ -716,6 +719,18 @@ const ChatApp = {
                 ChatApp.UI.showToast("History full. Old chats may not save.", "error");
             }
         },
+        saveCustomPresets(presets) {
+            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS, JSON.stringify(presets));
+            ChatApp.State.customPresets = presets;
+        },
+        loadCustomPresets() {
+            try {
+                const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS);
+                ChatApp.State.customPresets = stored ? JSON.parse(stored) : [];
+            } catch (e) {
+                ChatApp.State.customPresets = [];
+            }
+        },
         loadAllConversations() {
             try {
                 const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
@@ -1037,20 +1052,24 @@ const ChatApp = {
             `).join('');
 
             const cards = filteredItems.map((item) => `
-                <button
-                    type="button"
-                    class="prompt-card"
-                    data-prompt-id="${ChatApp.Utils.escapeHTML(item.id)}"
-                >
-                    <div class="prompt-card-header">
-                        <h3 class="prompt-card-title">${ChatApp.Utils.escapeHTML(item.title)}</h3>
-                    </div>
-                    <p class="prompt-card-description">${ChatApp.Utils.escapeHTML(item.description)}</p>
-                    <div class="prompt-card-footer">
-                        <span class="prompt-badge" data-kind="${ChatApp.Utils.escapeHTML(item.kind)}">${item.kind === 'skill' ? 'Skill' : 'Preset'}</span>
-                        ${item.providerHint ? `<span class="prompt-badge">${ChatApp.Utils.escapeHTML(item.providerHint)}</span>` : ''}
-                    </div>
-                </button>
+                <div style="position: relative; display: flex; flex-direction: column;">
+                    <button
+                        type="button"
+                        class="prompt-card"
+                        data-prompt-id="${ChatApp.Utils.escapeHTML(item.id)}"
+                        style="flex: 1;"
+                    >
+                        <div class="prompt-card-header">
+                            <h3 class="prompt-card-title">${ChatApp.Utils.escapeHTML(item.title)}</h3>
+                        </div>
+                        <p class="prompt-card-description">${ChatApp.Utils.escapeHTML(item.description)}</p>
+                        <div class="prompt-card-footer">
+                            <span class="prompt-badge" data-kind="${ChatApp.Utils.escapeHTML(item.kind)}">${item.kind === 'skill' ? 'Skill' : (item.kind === 'custom' ? 'Custom' : 'Preset')}</span>
+                            ${item.providerHint ? `<span class="prompt-badge">${ChatApp.Utils.escapeHTML(item.providerHint)}</span>` : ''}
+                        </div>
+                    </button>
+                    ${item.kind === 'custom' ? `<button type="button" class="delete-custom-preset-btn" data-preset-id="${ChatApp.Utils.escapeHTML(item.id)}" style="position: absolute; top: 12px; right: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-secondary); cursor: pointer; display: flex; padding: 4px; z-index: 2;" title="Delete Custom Preset" onmouseover="this.style.color='var(--error-color)'" onmouseout="this.style.color='var(--text-secondary)'">${ChatApp.Config.ICONS.DELETE}</button>` : ''}
+                </div>
             `).join('');
 
             const skillStatusNote = skillCatalogState.status === 'loading'
@@ -1097,6 +1116,19 @@ const ChatApp = {
                     </div>
                 `;
 
+            const customPresetsMarkup = `
+                <div class="custom-preset-form-container" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <h3 style="margin-bottom: 12px; font-size: 1rem;">Create Custom Preset</h3>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <input type="text" id="custom-preset-title" placeholder="Title (e.g. Code Review)" class="chat-input" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-primary);">
+                        <input type="text" id="custom-preset-desc" placeholder="Description" class="chat-input" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-primary);">
+                        <input type="text" id="custom-preset-category" placeholder="Category (e.g. Writing)" class="chat-input" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-primary);">
+                        <textarea id="custom-preset-template" placeholder="Prompt Template" class="chat-input" rows="3" style="padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--input-bg); color: var(--text-primary); resize: vertical;"></textarea>
+                        <button type="button" id="save-custom-preset-btn" class="btn-primary" style="align-self: flex-start; padding: 8px 16px;">Save Custom Preset</button>
+                    </div>
+                </div>
+            `;
+
             container.innerHTML = `
                 ${headerMarkup}
                 <div class="prompt-library-content">
@@ -1104,6 +1136,7 @@ const ChatApp = {
                     <div class="prompt-category-row">${categoryChips}</div>
                     ${filteredItems.length > 0 ? `<div class="prompt-grid">${cards}</div>` : skillStatusNote || '<div class="prompt-home-empty">No prompt cards match this category yet.</div>'}
                     ${filteredItems.length > 0 ? skillStatusNote : ''}
+                    ${customPresetsMarkup}
                 </div>
             `;
 
@@ -1118,6 +1151,39 @@ const ChatApp = {
                     ChatApp.Controller.prefillPromptTemplate(button.dataset.promptId);
                 });
             });
+
+            container.querySelectorAll('.delete-custom-preset-btn').forEach((button) => {
+                button.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    ChatApp.Controller.deleteCustomPreset(button.dataset.presetId);
+                });
+            });
+
+            const savePresetBtn = container.querySelector('#save-custom-preset-btn');
+            if (savePresetBtn) {
+                savePresetBtn.addEventListener('click', () => {
+                    const title = container.querySelector('#custom-preset-title').value.trim();
+                    const desc = container.querySelector('#custom-preset-desc').value.trim();
+                    const cat = container.querySelector('#custom-preset-category').value.trim();
+                    const tpl = container.querySelector('#custom-preset-template').value.trim();
+                    if (!title || !tpl) return;
+                    
+                    const newPreset = {
+                        id: 'custom-' + Date.now(),
+                        kind: 'custom',
+                        category: cat || 'Custom',
+                        title: title,
+                        description: desc || 'Custom preset prompt.',
+                        promptTemplate: tpl,
+                        providerHint: 'Local Custom Preset'
+                    };
+                    
+                    ChatApp.State.customPresets.push(newPreset);
+                    ChatApp.Store.saveCustomPresets(ChatApp.State.customPresets);
+                    ChatApp.UI.renderConversationSurface();
+                    ChatApp.UI.refreshPromptLibraryModal();
+                });
+            }
 
             container.querySelectorAll('[data-prompt-action]').forEach((button) => {
                 button.addEventListener('click', async () => {
@@ -2707,6 +2773,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
         init() {
             ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
             ChatApp.Store.loadAllConversations();
+            ChatApp.Store.loadCustomPresets();
             ChatApp.Store.getProviderSettings();
             ChatApp.Store.getToolsConfig();
             ChatApp.UI.cacheElements();
@@ -2868,6 +2935,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
         getPromptCatalogItems() {
             return [
                 ...ChatApp.Config.BUILTIN_PROMPT_PRESETS,
+                ...ChatApp.State.customPresets,
                 ...ChatApp.State.skillCatalog.items
             ];
         },
