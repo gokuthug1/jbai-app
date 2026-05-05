@@ -1,9 +1,17 @@
 import { MessageFormatter } from './formatter.js';
 import { SyntaxHighlighter } from './syntaxHighlighter.js';
 
+const getDefaultJbAiBaseUrl = () => {
+    const { protocol, hostname, origin } = window.location;
+    if (protocol === 'file:') return 'http://localhost:8000';
+    if (hostname === 'localhost' || hostname === '127.0.0.1') return 'http://localhost:8000';
+    return origin;
+};
+
 const ChatApp = {
     Config: {
         PROVIDERS: {
+            JBAI: 'jbai',
             GOOGLE: 'google',
             OPENAI: 'openai',
             ANTHROPIC: 'anthropic'
@@ -11,7 +19,9 @@ const ChatApp = {
         API_ENDPOINTS: {
             GOOGLE_BASE: 'https://generativelanguage.googleapis.com/v1beta/models',
             OPENAI_CHAT: 'https://api.openai.com/v1/chat/completions',
-            ANTHROPIC_MESSAGES: 'https://api.anthropic.com/v1/messages'
+            ANTHROPIC_MESSAGES: 'https://api.anthropic.com/v1/messages',
+            JBAI_SEARCH_PATH: '/v1/web-search',
+            JBAI_SEARCH_STREAM_PATH: '/v1/web-search/stream'
         },
         STORAGE_KEYS: {
             THEME: 'jbai_theme',
@@ -21,7 +31,10 @@ const ChatApp = {
         },
         DEFAULT_THEME: 'light',
         DEFAULT_PROVIDER_SETTINGS: {
-            provider: 'google',
+            provider: 'jbai',
+            baseUrls: {
+                jbai: getDefaultJbAiBaseUrl()
+            },
             models: {
                 google: 'gemini-2.5-flash',
                 openai: 'gpt-4.1-mini',
@@ -181,6 +194,23 @@ const ChatApp = {
                 lua: 'text/plain'
             };
             return mimeTypes[extension] || 'application/octet-stream';
+        },
+        deriveChatTitle(text) {
+            const sanitized = this.sanitizeTextForApi(text || '')
+                .replace(/[`*_#>\[\](){}]/g, ' ')
+                .replace(/[^\w\s-]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+
+            if (!sanitized) return 'New Chat';
+
+            const words = sanitized
+                .split(' ')
+                .filter(Boolean)
+                .slice(0, 4)
+                .map((word) => word.charAt(0).toUpperCase() + word.slice(1));
+
+            return words.join(' ').substring(0, 50) || 'Chat';
         },
         sanitizeGeneratedFilename(name, fallbackIndex = 0) {
             const raw = typeof name === 'string' ? name : '';
@@ -364,6 +394,10 @@ const ChatApp = {
 
             const sanitized = {
                 provider,
+                baseUrls: {
+                    ...defaultSettings.baseUrls,
+                    ...(settings?.baseUrls || {})
+                },
                 models: {
                     ...defaultSettings.models,
                     ...(settings?.models || {})
@@ -390,6 +424,10 @@ const ChatApp = {
 
                 const merged = {
                     provider,
+                    baseUrls: {
+                        ...defaultSettings.baseUrls,
+                        ...(parsed?.baseUrls || {})
+                    },
                     models: {
                         ...defaultSettings.models,
                         ...(parsed?.models || {})
@@ -417,6 +455,7 @@ const ChatApp = {
 
             return {
                 provider,
+                baseUrl: String(settings?.baseUrls?.[provider] || '').trim(),
                 model: String(settings?.models?.[provider] || '').trim(),
                 apiKey: String(settings?.apiKeys?.[provider] || '').trim()
             };
@@ -638,7 +677,14 @@ const ChatApp = {
 
             if (isTyping) {
                 messageEl.className = 'message bot thinking';
-                contentEl.innerHTML = `<span></span><span></span><span></span>`;
+                contentEl.innerHTML = `
+                    <div class="thinking-shell">
+                        <div class="thinking-dots" aria-hidden="true">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="thinking-label">Thinking...</div>
+                    </div>
+                `;
             } else {
                 const { content, attachments } = message;
                 const sender = content.role === 'model' ? 'bot' : 'user';
@@ -670,6 +716,14 @@ const ChatApp = {
             }
             this.scrollToBottom();
             return messageEl;
+        },
+        updateThinkingMessage(messageEl, label) {
+            if (!messageEl || !label) return;
+            const labelEl = messageEl.querySelector('.thinking-label');
+            if (labelEl) {
+                labelEl.textContent = label;
+                this.scrollToBottom();
+            }
         },
         _createAttachmentsContainer(attachments) {
             const container = document.createElement('div');
@@ -925,27 +979,32 @@ const ChatApp = {
                     </label>
                 </div>
                 <hr>
-                <h3>Provider & Model</h3>
+                <h3>Provider</h3>
                 <div class="settings-row">
                     <label for="provider-select">Provider</label>
                     <select id="provider-select">
+                        <option value="jbai">J.B.A.I</option>
                         <option value="google">Google</option>
                         <option value="openai">OpenAI</option>
                         <option value="anthropic">Anthropic</option>
                     </select>
                 </div>
-                <div class="settings-row settings-row-input">
+                <div class="settings-row settings-row-input" data-provider-base-url-row="true">
+                    <label for="provider-base-url-input">Backend URL</label>
+                    <input id="provider-base-url-input" type="text" autocomplete="off" spellcheck="false">
+                </div>
+                <div class="settings-row settings-row-input" data-provider-model-row="true">
                     <label for="provider-model-input">Model Name</label>
                     <input id="provider-model-input" type="text" autocomplete="off" spellcheck="false">
                 </div>
-                <div class="settings-row settings-row-input">
+                <div class="settings-row settings-row-input" data-provider-api-key-row="true">
                     <label for="provider-api-key-input">API Key</label>
                     <input id="provider-api-key-input" type="password" autocomplete="off" spellcheck="false">
                 </div>
                 <p id="provider-capability-note" style="font-size:0.85em; color:var(--text-secondary); margin-top:-10px; margin-bottom:16px;"></p>
                 <hr>
                 <h3>AI Capabilities</h3>
-                <div class="settings-row">
+                <div class="settings-row" data-agent-tool-row="true">
                     <label for="toggle-agent-mode" style="font-weight:bold; color:var(--focus-color);">Agent Mode (Autonomous)</label>
                     <label class="switch">
                         <input type="checkbox" id="toggle-agent-mode" ${tools.agentMode ? 'checked' : ''}>
@@ -988,28 +1047,58 @@ const ChatApp = {
             themeSelect.addEventListener('change', e => this.applyTheme(e.target.value));
 
             const providerSelect = overlay.querySelector('#provider-select');
+            const providerBaseUrlInput = overlay.querySelector('#provider-base-url-input');
             const providerModelInput = overlay.querySelector('#provider-model-input');
             const providerApiKeyInput = overlay.querySelector('#provider-api-key-input');
             const providerCapabilityNote = overlay.querySelector('#provider-capability-note');
             const googleToolRows = overlay.querySelectorAll('[data-google-tool-row="true"]');
+            const agentToolRows = overlay.querySelectorAll('[data-agent-tool-row="true"]');
+            const providerBaseUrlRow = overlay.querySelector('[data-provider-base-url-row="true"]');
+            const providerModelRow = overlay.querySelector('[data-provider-model-row="true"]');
+            const providerApiKeyRow = overlay.querySelector('[data-provider-api-key-row="true"]');
+            const agentModeToggle = overlay.querySelector('#toggle-agent-mode');
             const googleSearchToggle = overlay.querySelector('#toggle-google-search');
             const codeExecToggle = overlay.querySelector('#toggle-code-exec');
 
             const providerMetadata = {
+                jbai: {
+                    baseUrlPlaceholder: getDefaultJbAiBaseUrl(),
+                    supportsGoogleTools: false,
+                    supportsAgentMode: false,
+                    requiresBaseUrl: true,
+                    requiresModel: false,
+                    requiresApiKey: false,
+                    capabilityNote: 'J.B.A.I is the official web-grounded mode. It streams live web search, reads sources, and answers with citations through the backend service.'
+                },
                 google: {
                     modelPlaceholder: 'gemini-2.5-flash',
                     keyPlaceholder: 'AIza...',
-                    supportsGoogleTools: true
+                    supportsGoogleTools: true,
+                    supportsAgentMode: true,
+                    requiresBaseUrl: false,
+                    requiresModel: true,
+                    requiresApiKey: true,
+                    capabilityNote: 'Google direct mode runs fully in the browser with optional Google Search and Code Execution tools.'
                 },
                 openai: {
                     modelPlaceholder: 'gpt-4.1-mini',
                     keyPlaceholder: 'sk-...',
-                    supportsGoogleTools: false
+                    supportsGoogleTools: false,
+                    supportsAgentMode: true,
+                    requiresBaseUrl: false,
+                    requiresModel: true,
+                    requiresApiKey: true,
+                    capabilityNote: 'OpenAI direct mode sends requests from this browser using your saved API key.'
                 },
                 anthropic: {
                     modelPlaceholder: 'claude-3-5-haiku-latest',
                     keyPlaceholder: 'sk-ant-...',
-                    supportsGoogleTools: false
+                    supportsGoogleTools: false,
+                    supportsAgentMode: true,
+                    requiresBaseUrl: false,
+                    requiresModel: true,
+                    requiresApiKey: true,
+                    capabilityNote: 'Anthropic direct mode sends requests from this browser using your saved API key.'
                 }
             };
 
@@ -1020,12 +1109,18 @@ const ChatApp = {
 
             const refreshProviderUI = () => {
                 const provider = providerSelect.value;
-                const metadata = providerMetadata[provider] || providerMetadata.google;
+                const metadata = providerMetadata[provider] || providerMetadata.jbai;
 
+                providerBaseUrlInput.value = draftProviderSettings.baseUrls?.[provider] || '';
                 providerModelInput.value = draftProviderSettings.models?.[provider] || '';
                 providerApiKeyInput.value = draftProviderSettings.apiKeys?.[provider] || '';
-                providerModelInput.placeholder = metadata.modelPlaceholder;
-                providerApiKeyInput.placeholder = metadata.keyPlaceholder;
+                providerBaseUrlInput.placeholder = metadata.baseUrlPlaceholder || '';
+                providerModelInput.placeholder = metadata.modelPlaceholder || '';
+                providerApiKeyInput.placeholder = metadata.keyPlaceholder || '';
+
+                providerBaseUrlRow.hidden = metadata.requiresBaseUrl !== true;
+                providerModelRow.hidden = metadata.requiresModel !== true;
+                providerApiKeyRow.hidden = metadata.requiresApiKey !== true;
 
                 const disableGoogleTools = metadata.supportsGoogleTools !== true;
                 googleToolRows.forEach((row) => {
@@ -1034,9 +1129,13 @@ const ChatApp = {
                 googleSearchToggle.disabled = disableGoogleTools;
                 codeExecToggle.disabled = disableGoogleTools;
 
-                providerCapabilityNote.textContent = disableGoogleTools
-                    ? 'Google Search and Code Execution are only available when Provider is Google.'
-                    : 'Google Search and Code Execution are available for this provider.';
+                const disableAgentMode = metadata.supportsAgentMode !== true;
+                agentToolRows.forEach((row) => {
+                    row.classList.toggle('settings-row-disabled', disableAgentMode);
+                });
+                agentModeToggle.disabled = disableAgentMode;
+
+                providerCapabilityNote.textContent = metadata.capabilityNote;
             };
 
             providerSelect.value = draftProviderSettings.provider;
@@ -1046,6 +1145,12 @@ const ChatApp = {
                 draftProviderSettings.provider = providerSelect.value;
                 persistProviderSettings();
                 refreshProviderUI();
+            });
+
+            providerBaseUrlInput.addEventListener('input', () => {
+                const provider = providerSelect.value;
+                draftProviderSettings.baseUrls[provider] = providerBaseUrlInput.value;
+                persistProviderSettings();
             });
 
             providerModelInput.addEventListener('input', () => {
@@ -1114,6 +1219,8 @@ const ChatApp = {
     Api: {
         getProviderLabel(provider) {
             switch (provider) {
+                case ChatApp.Config.PROVIDERS.JBAI:
+                    return 'J.B.A.I';
                 case ChatApp.Config.PROVIDERS.OPENAI:
                     return 'OpenAI';
                 case ChatApp.Config.PROVIDERS.ANTHROPIC:
@@ -1123,8 +1230,14 @@ const ChatApp = {
             }
         },
         getActiveProviderConfig() {
-            const { provider, model, apiKey } = ChatApp.Store.getActiveProviderSettings();
+            const { provider, model, apiKey, baseUrl } = ChatApp.Store.getActiveProviderSettings();
             const providerLabel = this.getProviderLabel(provider);
+            if (provider === ChatApp.Config.PROVIDERS.JBAI) {
+                if (!baseUrl) {
+                    throw new Error('J.B.A.I backend URL is missing. Add it in Settings.');
+                }
+                return { provider, baseUrl };
+            }
             if (!apiKey) {
                 throw new Error(`${providerLabel} API key is missing. Add it in Settings.`);
             }
@@ -1132,6 +1245,14 @@ const ChatApp = {
                 throw new Error(`${providerLabel} model name is missing. Add it in Settings.`);
             }
             return { provider, model, apiKey };
+        },
+        extractTextFromParts(parts) {
+            if (!Array.isArray(parts)) return '';
+            return parts
+                .map((part) => (typeof part?.text === 'string' ? part.text.trim() : ''))
+                .filter(Boolean)
+                .join('\n\n')
+                .trim();
         },
         sanitizeApiContents(apiContents) {
             return apiContents.map((content) => {
@@ -1146,6 +1267,64 @@ const ChatApp = {
                     })
                 };
             });
+        },
+        inferJbAiSearchTopic(query) {
+            const lowered = String(query || '').toLowerCase();
+            if (/\b(stock|stocks|market|markets|earnings|revenue|valuation|nasdaq|nyse|s&p|bitcoin|btc|crypto|price target)\b/.test(lowered)) {
+                return 'finance';
+            }
+            if (/\b(latest|today|yesterday|this week|breaking|news|update|recent|current|live)\b/.test(lowered)) {
+                return 'news';
+            }
+            return 'general';
+        },
+        buildJbAiPayload(contents, toolsConfig) {
+            const textConversation = contents
+                .map((message) => {
+                    const text = this.extractTextFromParts(message.parts);
+                    if (!text) return null;
+                    return {
+                        role: message.role === 'model' ? 'assistant' : 'user',
+                        content: text
+                    };
+                })
+                .filter(Boolean);
+
+            const lastUserMessage = [...textConversation].reverse().find((message) => message.role === 'user');
+            const query = lastUserMessage?.content || '';
+
+            return {
+                query,
+                conversation: textConversation.slice(-8),
+                mode: toolsConfig?.agentMode ? 'deep' : 'balanced',
+                search_topic: this.inferJbAiSearchTopic(query),
+                max_search_queries: toolsConfig?.agentMode ? 4 : 3,
+                max_results_per_query: toolsConfig?.agentMode ? 6 : 5,
+                max_sources: toolsConfig?.agentMode ? 8 : 6
+            };
+        },
+        parseSseChunk(chunk) {
+            if (!chunk || typeof chunk !== 'string') return null;
+
+            const lines = chunk.split('\n');
+            let type = 'message';
+            let data = '';
+
+            lines.forEach((line) => {
+                if (line.startsWith('event:')) {
+                    type = line.slice(6).trim();
+                } else if (line.startsWith('data:')) {
+                    data += line.slice(5).trim();
+                }
+            });
+
+            if (!data) return null;
+
+            try {
+                return { type, data: JSON.parse(data) };
+            } catch {
+                return { type, data };
+            }
         },
         joinSystemInstruction(systemInstruction) {
             if (!systemInstruction || !Array.isArray(systemInstruction.parts)) return '';
@@ -1411,6 +1590,109 @@ const ChatApp = {
             if (!text) throw new Error('Anthropic returned an empty response.');
             return text;
         },
+        async requestJbAiText({ baseUrl, contents, signal, toolsConfig }) {
+            const payload = this.buildJbAiPayload(contents, toolsConfig);
+
+            if (!payload.query || payload.query.length < 2) {
+                throw new Error('J.B.A.I mode currently requires a text question. Attachments alone are not supported yet.');
+            }
+
+            const endpoint = `${baseUrl.replace(/\/$/, '')}${ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_PATH}`;
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json'
+                },
+                body: JSON.stringify(payload),
+                signal
+            });
+
+            if (!response.ok) {
+                throw new Error(await this.getErrorMessageFromResponse(response, 'J.B.A.I'));
+            }
+
+            const data = await response.json();
+            const text = typeof data?.answer === 'string' ? data.answer.trim() : '';
+            if (!text) throw new Error('J.B.A.I returned an empty response.');
+            return text;
+        },
+        async *streamJbAiResponse({ contents, signal, toolsConfig }) {
+            const { baseUrl } = this.getActiveProviderConfig();
+            const payload = this.buildJbAiPayload(contents, toolsConfig);
+
+            if (!payload.query || payload.query.length < 2) {
+                throw new Error('J.B.A.I mode currently requires a text question. Attachments alone are not supported yet.');
+            }
+
+            const endpoint = `${baseUrl.replace(/\/$/, '')}${ChatApp.Config.API_ENDPOINTS.JBAI_SEARCH_STREAM_PATH}`;
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'text/event-stream'
+                },
+                body: JSON.stringify(payload),
+                signal
+            });
+
+            if (!response.ok) {
+                throw new Error(await this.getErrorMessageFromResponse(response, 'J.B.A.I'));
+            }
+
+            if (!response.body) {
+                throw new Error('J.B.A.I backend did not return a readable stream.');
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+                buffer += decoder.decode(value, { stream: true });
+                let boundaryIndex = buffer.indexOf('\n\n');
+
+                while (boundaryIndex !== -1) {
+                    const rawChunk = buffer.slice(0, boundaryIndex);
+                    buffer = buffer.slice(boundaryIndex + 2);
+                    boundaryIndex = buffer.indexOf('\n\n');
+
+                    const event = this.parseSseChunk(rawChunk);
+                    if (!event) continue;
+
+                    if (event.type === 'status') {
+                        yield {
+                            type: 'status',
+                            phase: event.data?.phase || '',
+                            message: event.data?.message || 'Working...'
+                        };
+                        continue;
+                    }
+
+                    if (event.type === 'answer_delta') {
+                        const delta = typeof event.data?.delta === 'string' ? event.data.delta : '';
+                        if (delta) yield { type: 'text', delta };
+                        continue;
+                    }
+
+                    if (event.type === 'complete') {
+                        yield { type: 'complete', payload: event.data || {} };
+                        continue;
+                    }
+
+                    if (event.type === 'error') {
+                        const message = typeof event.data?.message === 'string'
+                            ? event.data.message
+                            : 'J.B.A.I backend error.';
+                        throw new Error(message);
+                    }
+                }
+            }
+        },
         splitTextForStreaming(text, chunkSize = 120) {
             const safeText = typeof text === 'string' ? text : '';
             const chunks = [];
@@ -1425,9 +1707,19 @@ const ChatApp = {
                 throw new Error('Invalid contents for generation.');
             }
 
-            const { provider, model, apiKey } = this.getActiveProviderConfig();
+            const { provider, model, apiKey, baseUrl } = this.getActiveProviderConfig();
             const sanitizedContents = this.sanitizeApiContents(apiContents);
             const systemInstructionText = this.joinSystemInstruction(systemInstruction);
+
+            if (provider === ChatApp.Config.PROVIDERS.JBAI) {
+                return this.requestJbAiText({
+                    baseUrl,
+                    contents: sanitizedContents,
+                    signal,
+                    toolsConfig,
+                    titleMode
+                });
+            }
 
             if (provider === ChatApp.Config.PROVIDERS.OPENAI) {
                 return this.requestOpenAiText({
@@ -1466,9 +1758,11 @@ const ChatApp = {
                 return this.getAgentSystemContext(provider);
             }
 
-            const providerNote = provider === ChatApp.Config.PROVIDERS.GOOGLE
-                ? '- Tool note: Google Search and Code Execution can be enabled from Settings.'
-                : `- Tool note: External Search/Code tools are unavailable on ${this.getProviderLabel(provider)} direct mode.`;
+            const providerNote = provider === ChatApp.Config.PROVIDERS.JBAI
+                ? '- Tool note: J.B.A.I mode is grounded by the backend web search pipeline.'
+                : provider === ChatApp.Config.PROVIDERS.GOOGLE
+                    ? '- Tool note: Google Search and Code Execution can be enabled from Settings.'
+                    : `- Tool note: External Search/Code tools are unavailable on ${this.getProviderLabel(provider)} direct mode.`;
 
             return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 --- Custom Commands ---
@@ -1546,6 +1840,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
             const prompt = `Based on this conversation, create a short, concise title (4 words max). Output only the title, no quotes, no markdown, no punctuation at the end.\n\nUser: ${userText}\nAI: ${aiText}`;
 
             try {
+                const { provider } = ChatApp.Store.getActiveProviderSettings();
+                if (provider === ChatApp.Config.PROVIDERS.JBAI) {
+                    return ChatApp.Utils.deriveChatTitle(userText);
+                }
+
                 const titleText = await this.generateText({
                     apiContents: [{ role: 'user', parts: [{ text: prompt }] }],
                     systemInstruction: null,
@@ -1567,6 +1866,16 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         async *streamTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
             try {
+                const { provider } = ChatApp.Store.getActiveProviderSettings();
+                if (provider === ChatApp.Config.PROVIDERS.JBAI) {
+                    yield* this.streamJbAiResponse({
+                        contents: apiContents,
+                        signal,
+                        toolsConfig
+                    });
+                    return;
+                }
+
                 const text = await this.generateText({
                     apiContents,
                     systemInstruction,
@@ -1577,7 +1886,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const chunks = this.splitTextForStreaming(text);
                 for (const chunk of chunks) {
                     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-                    yield chunk;
+                    yield { type: 'text', delta: chunk };
                 }
             } catch (error) {
                 if (error?.name === 'AbortError') {
@@ -1654,6 +1963,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
             if (!navigator.onLine) { ChatApp.UI.showToast('Cannot send message while offline. Please check your connection.', 'error'); return; }
             const userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = [...ChatApp.State.attachedFiles];
+            const { provider } = ChatApp.Store.getActiveProviderSettings();
             
             const validation = ChatApp.Utils.validateMessage(userInput, files);
             if (!validation.valid) { ChatApp.UI.showToast(validation.error, 'error'); return; }
@@ -1665,6 +1975,14 @@ You are a digital professional. Be concise, accurate, and effective.`;
             } catch (error) {
                 ChatApp.UI.showToast(error.message || 'Provider settings are incomplete.', 'error');
                 return;
+            }
+
+            if (provider === ChatApp.Config.PROVIDERS.JBAI && !userInput) {
+                ChatApp.UI.showToast('J.B.A.I mode currently requires a text question. Attachments alone are not supported yet.', 'error');
+                return;
+            }
+            if (provider === ChatApp.Config.PROVIDERS.JBAI && files.length > 0) {
+                ChatApp.UI.showToast('Attachments stay in the chat, but J.B.A.I mode currently sends only the text prompt to the web search backend.', 'info', 4500);
             }
 
             ChatApp.UI.elements.chatInput.value = "";
@@ -1753,6 +2071,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
             let fullTextAccumulator = "";
             let messageId = ChatApp.Utils.generateUUID();
             let hasRemovedThinking = false;
+            let completionPayload = null;
 
             try {
                 const toolsConfig = ChatApp.State.toolsConfig;
@@ -1766,9 +2085,33 @@ You are a digital professional. Be concise, accurate, and effective.`;
 
                 // 2. Start Stream
                 const stream = ChatApp.Api.streamTextResponse(apiContents, systemInstruction, ChatApp.State.abortController.signal, toolsConfig);
-                
+
                 // 3. Process Stream Chunks
-                for await (const chunk of stream) {
+                for await (const event of stream) {
+                    if (!event) continue;
+
+                    if (event.type === 'status') {
+                        ChatApp.UI.updateThinkingMessage(messageEl, event.message || 'Working...');
+                        continue;
+                    }
+
+                    if (event.type === 'complete') {
+                        completionPayload = event.payload || null;
+                        if (!fullTextAccumulator && typeof completionPayload?.answer === 'string' && completionPayload.answer.trim()) {
+                            if (!hasRemovedThinking) {
+                                messageEl.classList.remove('thinking');
+                                messageEl.dataset.messageId = messageId;
+                                hasRemovedThinking = true;
+                            }
+                            fullTextAccumulator = completionPayload.answer.trim();
+                            await ChatApp.UI.updateStreamingMessage(messageEl, fullTextAccumulator);
+                            ChatApp.UI.scrollToBottom();
+                        }
+                        continue;
+                    }
+
+                    if (event.type !== 'text') continue;
+                    const chunk = event.delta;
                     if (!chunk) continue;
                     
                     if (!hasRemovedThinking) {

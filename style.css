@@ -354,14 +354,17 @@ body.sidebar-open .close-icon { display: block; } body.sidebar-open .open-icon {
 .message { display: flex; align-items: flex-start; max-width: 100%; }
 .message.user { justify-content: flex-end; }
 .message.bot { justify-content: flex-start; }
-.message.thinking .message-content { display: inline-flex; align-items: center; gap: 4px; background-color: var(--message-bot-bg); }
-.message.thinking .message-content span {
+.message.thinking .message-content { display: inline-flex; align-items: center; background-color: var(--message-bot-bg); }
+.thinking-shell { display: inline-flex; align-items: center; gap: 10px; }
+.thinking-dots { display: inline-flex; align-items: center; gap: 4px; }
+.message.thinking .thinking-dots span {
     display: inline-block; width: 8px; height: 8px; background-color: var(--text-secondary);
     border-radius: 50%; animation: thinking-dot 1.4s infinite ease-in-out both;
 }
-.message.thinking .message-content span:nth-child(1) { animation-delay: -0.32s; }
-.message.thinking .message-content span:nth-child(2) { animation-delay: -0.16s; }
-.message.thinking .message-content span:nth-child(3) { animation-delay: 0s; }
+.message.thinking .thinking-dots span:nth-child(1) { animation-delay: -0.32s; }
+.message.thinking .thinking-dots span:nth-child(2) { animation-delay: -0.16s; }
+.message.thinking .thinking-dots span:nth-child(3) { animation-delay: 0s; }
+.thinking-label { color: var(--text-secondary); font-size: 0.95em; white-space: normal; }
 
 .message-content {
     position: relative; max-width: 800px; padding: 10px 16px;
