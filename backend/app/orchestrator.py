@@ -10,7 +10,7 @@ from .prompting import build_grounded_messages
 from .query_planner import QueryPlanner
 from .reranker import SourceReranker
 from .search_providers import TavilySearchProvider
-from .synthesizer import OpenAISynthesizer
+from .synthesizer import GeminiSynthesizer, OpenAISynthesizer
 from .token_budget import TokenBudgeter
 from .utils import format_sse, trim_text
 from .extraction import SourceExtractor
@@ -33,7 +33,10 @@ class WebSearchOrchestrator:
         self.extractor = SourceExtractor(settings, client)
         self.reranker = SourceReranker()
         self.budgeter = TokenBudgeter(settings)
-        self.synthesizer = OpenAISynthesizer(settings, client)
+        if settings.synthesis_provider.lower() == "openai":
+            self.synthesizer = OpenAISynthesizer(settings, client)
+        else:
+            self.synthesizer = GeminiSynthesizer(settings, client)
 
     async def execute(self, request: SearchModeRequest) -> SearchModeResponse:
         prepared = await self._prepare(request)
