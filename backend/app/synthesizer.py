@@ -292,11 +292,14 @@ class HuggingFaceSynthesizer:
       https://api-inference.huggingface.co/v1/chat/completions
     """
 
-    HF_CHAT_URL = "https://api-inference.huggingface.co/v1/chat/completions"
-
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
         self.settings = settings
         self.client = client
+
+    @property
+    def hf_chat_url(self) -> str:
+        # The free Inference API requires the model ID in the URL
+        return f"https://api-inference.huggingface.co/models/{self.settings.synthesis_model}/v1/chat/completions"
 
     def _headers(self) -> dict[str, str]:
         if not self.settings.hf_api_key:
@@ -318,7 +321,7 @@ class HuggingFaceSynthesizer:
     async def complete(self, messages: list[dict]) -> str:
         return await _complete_openai_compat(
             self.client,
-            self.HF_CHAT_URL,
+            self.hf_chat_url,
             self._headers(),
             self._payload(messages, stream=False),
             self.settings.request_timeout_seconds + 30,
@@ -327,9 +330,10 @@ class HuggingFaceSynthesizer:
     async def stream(self, messages: list[dict]):
         async for delta in _stream_openai_compat(
             self.client,
-            self.HF_CHAT_URL,
+            self.hf_chat_url,
             self._headers(),
             self._payload(messages, stream=True),
             self.settings.request_timeout_seconds + 30,
         ):
             yield delta
+
