@@ -25,6 +25,7 @@ def build_grounded_messages(
     query: str,
     conversation: list[ChatTurn],
     grounding: GroundingBundle,
+    skill_instructions: str | None = None,
 ) -> list[dict]:
     history_lines: list[str] = []
     for turn in conversation[-4:]:
@@ -49,7 +50,11 @@ Write the answer now. Remember:
 - If factual evidence is insufficient, state that clearly instead of guessing.
 """
 
+    system = SYSTEM_PROMPT
+    if skill_instructions:
+        system += f"\n\nActive Skill Instructions:\n{skill_instructions.strip()}\n\nPlease abide by these skill instructions above all else."
+
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": user_prompt},
     ]

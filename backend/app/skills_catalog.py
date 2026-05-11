@@ -43,6 +43,7 @@ def _build_skill_item(skill_file: Path, repo_root: Path) -> SkillCatalogItemOut 
         description=description,
         summary=summary,
         promptTemplate=_build_prompt_template(name, title),
+        instructions=body.strip(),
         sourcePath=skill_file.relative_to(repo_root).as_posix(),
     )
 

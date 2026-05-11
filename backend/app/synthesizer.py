@@ -298,8 +298,11 @@ class HuggingFaceSynthesizer:
 
     @property
     def hf_chat_url(self) -> str:
-        # Hugging Face provides a dedicated OpenAI-compatible router endpoint
-        return "https://router.huggingface.co/v1/chat/completions"
+        # Use the free Serverless Inference API instead of the paid Inference Providers router
+        model = self.settings.synthesis_model or "meta-llama/Llama-3.3-70B-Instruct"
+        if "llama-3.3-70b-versatile" in model.lower():
+            model = "meta-llama/Llama-3.3-70B-Instruct"
+        return f"https://api-inference.huggingface.co/models/{model}/v1/chat/completions"
 
     def _headers(self) -> dict[str, str]:
         if not self.settings.hf_api_key:

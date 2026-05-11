@@ -52,6 +52,7 @@ class WebSearchOrchestrator:
                 query=request.query,
                 conversation=request.conversation,
                 grounding=prepared.grounding,
+                skill_instructions=request.skill_instructions,
             )
             answer = await self.synthesizer.complete(messages)
 
@@ -98,6 +99,7 @@ class WebSearchOrchestrator:
                 query=request.query,
                 conversation=request.conversation,
                 grounding=prepared.grounding,
+                skill_instructions=request.skill_instructions,
             )
 
             answer_parts: list[str] = []

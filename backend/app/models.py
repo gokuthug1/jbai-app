@@ -24,6 +24,7 @@ class SearchModeRequest(BaseModel):
     max_results_per_query: int = Field(default=5, ge=1, le=10)
     max_sources: int = Field(default=6, ge=1, le=10)
     debug: bool = False
+    skill_instructions: str | None = None
 
 
 @dataclass(slots=True)
@@ -95,4 +96,5 @@ class SkillCatalogItemOut(BaseModel):
     description: str
     summary: str
     promptTemplate: str
+    instructions: str = ""
     sourcePath: str | None = None

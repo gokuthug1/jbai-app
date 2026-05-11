@@ -1467,3 +1467,54 @@ dd {
     background-color: transparent;
     color: var(--text-color);
 }
+
+
+/* Active Skill Badge */
+.active-skill-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background-color: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 8px;
+    margin-left: 12px;
+    margin-right: 12px;
+    width: max-content;
+    animation: fadeIn 0.2s ease;
+}
+
+.active-skill-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.active-skill-name {
+    font-size: 0.85rem;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.clear-skill-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.clear-skill-btn:hover {
+    color: var(--error, #ef4444);
+    background-color: var(--surface-3);
+}

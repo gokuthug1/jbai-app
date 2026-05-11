@@ -131,6 +131,7 @@ const ChatApp = {
             category: 'All'
         },
         customPresets: [],
+        activeSkill: null,
         setCurrentConversation(history) {
             this.currentConversation = Array.isArray(history)
                 ? history.map((msg, index) => ChatApp.Utils.normalizeMessage(msg, index)).filter(Boolean)
@@ -606,6 +607,9 @@ const ChatApp = {
                 fullscreenContent: document.getElementById('fullscreen-content'),
                 fullscreenCloseBtn: document.getElementById('fullscreen-close-btn'),
                 customTooltip: document.getElementById('custom-tooltip'),
+                activeSkillContainer: document.getElementById('active-skill-container'),
+                activeSkillName: document.getElementById('active-skill-name'),
+                clearSkillBtn: document.getElementById('clear-skill-btn'),
             };
         },
         hideTooltip() {
@@ -1780,6 +1784,7 @@ const ChatApp = {
                     description: String(item.description || item.summary || 'Shared skill'),
                     summary: String(item.summary || ''),
                     promptTemplate: String(item.promptTemplate || ''),
+                    instructions: String(item.instructions || ''),
                     providerHint: 'Best with J.B.A.I',
                     sourcePath: typeof item.sourcePath === 'string' ? item.sourcePath : undefined
                 }))
@@ -1898,7 +1903,9 @@ const ChatApp = {
                 search_topic: this.inferJbAiSearchTopic(query),
                 max_search_queries: toolsConfig?.agentMode ? 4 : 3,
                 max_results_per_query: toolsConfig?.agentMode ? 6 : 5,
-                max_sources: toolsConfig?.agentMode ? 8 : 6
+                max_sources: toolsConfig?.agentMode ? 8 : 6,
+                debug: false,
+                skill_instructions: ChatApp.State.activeSkill ? ChatApp.State.activeSkill.instructions : null
             };
         },
         parseSseChunk(chunk) {
@@ -2372,7 +2379,7 @@ const ChatApp = {
                     ? '- Tool note: Google Search and Code Execution can be enabled from Settings.'
                     : `- Tool note: External Search/Code tools are unavailable on ${this.getProviderLabel(provider)} direct mode.`;
 
-            return `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
+            let baseContext = `You are J.B.A.I., a helpful and context-aware assistant. You were created by Jeremiah (gokuthug1).
 --- Custom Commands ---
 /html -> Give a random HTML code that's interesting and fun.
 /profile -> List all custom commands and explain what each does.
@@ -2407,6 +2414,12 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
 
 - Current Date/Time: ${new Date().toLocaleString()}
 - For single-file HTML responses (without file requests), HTML must be self-contained in one markdown block. When using [FILES: {...}], you can include multiple files.`;
+
+            if (ChatApp.State.activeSkill && ChatApp.State.activeSkill.instructions) {
+                baseContext += `\n\n--- ACTIVE SKILL INSTRUCTIONS ---\n${ChatApp.State.activeSkill.instructions.trim()}\n\nPlease abide by these skill instructions above all else.`;
+            }
+            
+            return baseContext;
         },
         async getAgentSystemContext(provider = ChatApp.Config.PROVIDERS.GOOGLE) {
             const toolCapability = provider === ChatApp.Config.PROVIDERS.GOOGLE
@@ -2539,6 +2552,13 @@ You are a digital professional. Be concise, accurate, and effective.`;
             elements.promptLauncherButton.addEventListener('click', () => ChatApp.UI.openPromptLibrary());
             elements.attachFileButton.addEventListener('click', () => elements.fileInput.click());
             elements.fileInput.addEventListener('change', Controller.handleFileSelection.bind(Controller));
+            if (elements.clearSkillBtn) {
+                elements.clearSkillBtn.addEventListener('click', () => {
+                    ChatApp.State.activeSkill = null;
+                    elements.activeSkillContainer.style.display = 'none';
+                    ChatApp.UI.showToast('Active skill cleared');
+                });
+            }
             elements.sidebarToggle.addEventListener('click', () => { const isOpen = elements.body.classList.toggle('sidebar-open'); elements.sidebarToggle.setAttribute('aria-expanded', isOpen.toString()); });
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
             elements.messageArea.addEventListener('click', Controller.handleMessageAreaClick.bind(Controller));
@@ -2702,7 +2722,18 @@ You are a digital professional. Be concise, accurate, and effective.`;
         prefillPromptTemplate(promptId) {
             const item = this.getPromptCatalogItems().find((entry) => entry.id === promptId);
             if (!item) return;
-            ChatApp.UI.setChatInputValue(item.promptTemplate);
+            
+            if (item.kind === 'skill' && item.instructions) {
+                ChatApp.State.activeSkill = item;
+                if (ChatApp.UI.elements.activeSkillName) {
+                    ChatApp.UI.elements.activeSkillName.textContent = item.title || item.name;
+                    ChatApp.UI.elements.activeSkillContainer.style.display = 'flex';
+                }
+                ChatApp.UI.showToast(`Skill activated: ${item.title}`);
+            } else {
+                ChatApp.UI.setChatInputValue(item.promptTemplate);
+            }
+            
             const promptOverlay = document.querySelector('[data-prompt-library-body="true"]')?.closest('.modal-overlay');
             if (promptOverlay) promptOverlay.remove();
         },
