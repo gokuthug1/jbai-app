@@ -299,10 +299,7 @@ class HuggingFaceSynthesizer:
     @property
     def hf_chat_url(self) -> str:
         # Use the free Serverless Inference API instead of the paid Inference Providers router
-        model = self.settings.synthesis_model or "meta-llama/Llama-3.3-70B-Instruct"
-        if "llama-3.3-70b-versatile" in model.lower():
-            model = "meta-llama/Llama-3.3-70B-Instruct"
-        return f"https://api-inference.huggingface.co/models/{model}/v1/chat/completions"
+        return "https://api-inference.huggingface.co/v1/chat/completions"
 
     def _headers(self) -> dict[str, str]:
         if not self.settings.hf_api_key:
@@ -313,8 +310,11 @@ class HuggingFaceSynthesizer:
         }
 
     def _payload(self, messages: list[dict], stream: bool) -> dict:
+        model = self.settings.synthesis_model or "meta-llama/Llama-3.3-70B-Instruct"
+        if "llama-3.3-70b-versatile" in model.lower():
+            model = "meta-llama/Llama-3.3-70B-Instruct"
         return {
-            "model": self.settings.synthesis_model,
+            "model": model,
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": 2048,
