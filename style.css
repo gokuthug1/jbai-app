@@ -1518,3 +1518,8 @@ dd {
     color: var(--error, #ef4444);
     background-color: var(--surface-3);
 }
+
+/* Scrollbar & Previews display options */
+body.hide-scrollbar ::-webkit-scrollbar { display: none; }
+body.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+body.hide-previews .html-render-box, body.hide-previews .svg-render-box { display: none !important; }

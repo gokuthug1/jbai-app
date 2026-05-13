@@ -72,7 +72,9 @@ const ChatApp = {
         DEFAULT_TOOLS: {
             googleSearch: false,
             codeExecution: false,
-            agentMode: false
+            agentMode: false,
+            autoRunPreviews: true,
+            hideScrollbar: false
         },
         TYPING_SPEED_MS: 15,
         MAX_FILE_SIZE_BYTES: 4 * 1024 * 1024,
@@ -1344,11 +1346,11 @@ const ChatApp = {
                         <option value="anthropic">Anthropic</option>
                     </select>
                 </div>
-                <div class="settings-row settings-row-input" data-provider-base-url-row="true">
+                <div class="settings-row settings-row-input" data-provider-base-url-row="true" style="display: none;">
                     <label for="provider-base-url-input">Backend URL</label>
                     <input id="provider-base-url-input" type="text" autocomplete="off" spellcheck="false">
                 </div>
-                <div class="settings-row settings-row-input provider-status-row" data-provider-status-row="true">
+                <div class="settings-row settings-row-input provider-status-row" data-provider-status-row="true" style="display: none;">
                     <label for="provider-healthcheck-button">J.B.A.I Backend Status</label>
                     <div class="provider-status-card" id="jbai-provider-status-card">
                         <div class="provider-status-header">
@@ -1397,6 +1399,22 @@ const ChatApp = {
                     <label for="toggle-code-exec">Code Execution (Python)</label>
                     <label class="switch">
                         <input type="checkbox" id="toggle-code-exec" ${tools.codeExecution ? 'checked' : ''}>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <hr>
+                <h3>Display Options</h3>
+                <div class="settings-row">
+                    <label for="toggle-auto-previews">Auto-run HTML/SVG Previews</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-auto-previews" ${tools.autoRunPreviews !== false ? 'checked' : ''}>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="settings-row">
+                    <label for="toggle-hide-scrollbar">Hide Scrollbars</label>
+                    <label class="switch">
+                        <input type="checkbox" id="toggle-hide-scrollbar" ${tools.hideScrollbar ? 'checked' : ''}>
                         <span class="slider round"></span>
                     </label>
                 </div>
@@ -1605,13 +1623,18 @@ const ChatApp = {
                 const config = {
                     googleSearch: overlay.querySelector('#toggle-google-search').checked,
                     codeExecution: overlay.querySelector('#toggle-code-exec').checked,
-                    agentMode: overlay.querySelector('#toggle-agent-mode').checked
+                    agentMode: overlay.querySelector('#toggle-agent-mode').checked,
+                    autoRunPreviews: overlay.querySelector('#toggle-auto-previews').checked,
+                    hideScrollbar: overlay.querySelector('#toggle-hide-scrollbar').checked
                 };
                 ChatApp.Store.saveToolsConfig(config);
+                ChatApp.Controller.applyDisplaySettings();
             };
             overlay.querySelector('#toggle-google-search').addEventListener('change', updateTools);
             overlay.querySelector('#toggle-code-exec').addEventListener('change', updateTools);
             overlay.querySelector('#toggle-agent-mode').addEventListener('change', updateTools);
+            overlay.querySelector('#toggle-auto-previews').addEventListener('change', updateTools);
+            overlay.querySelector('#toggle-hide-scrollbar').addEventListener('change', updateTools);
             
             overlay.querySelector('#upload-data-btn').addEventListener('click', ChatApp.Controller.handleDataUpload);
             overlay.querySelector('#merge-data-btn').addEventListener('click', ChatApp.Controller.handleDataMerge);
@@ -2533,10 +2556,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
             ChatApp.UI.renderConversationSurface();
+            this.applyDisplaySettings();
             this.initOfflineDetection();
             this.markJbAiBackendStatusUnknown(ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
             if (ChatApp.Store.getActiveProviderSettings().provider === ChatApp.Config.PROVIDERS.JBAI) {
-                void this.refreshJbAiBackendStatus({ force: false, silent: true });
+                // void this.refreshJbAiBackendStatus({ force: false, silent: true });
             }
             
             const { elements } = ChatApp.UI;
@@ -3284,6 +3308,19 @@ You are a digital professional. Be concise, accurate, and effective.`;
             fullscreenOverlay.style.display = 'none';
             fullscreenContent.innerHTML = '';
             body.classList.remove('modal-open');
+        },
+        applyDisplaySettings() {
+            const config = ChatApp.Store.getToolsConfig();
+            if (config.hideScrollbar) {
+                document.body.classList.add('hide-scrollbar');
+            } else {
+                document.body.classList.remove('hide-scrollbar');
+            }
+            if (config.autoRunPreviews === false) {
+                document.body.classList.add('hide-previews');
+            } else {
+                document.body.classList.remove('hide-previews');
+            }
         },
         initOfflineDetection() {
             const updateOnlineStatus = () => {
