@@ -143,6 +143,10 @@ const ChatApp = {
         customPresets: [],
         activeSkill: null,
         activeCommand: null,
+        activeTab: 'chats',
+        folders: [],
+        profiles: [],
+        activeProfileId: 'default',
         setCurrentConversation(history) {
             this.currentConversation = Array.isArray(history)
                 ? history.map((msg, index) => ChatApp.Utils.normalizeMessage(msg, index)).filter(Boolean)
@@ -494,6 +498,11 @@ const ChatApp = {
 
             return merged;
         },
+        getProfileKey(key) {
+            const profileId = ChatApp.State.activeProfileId || 'default';
+            if (key === ChatApp.Config.STORAGE_KEYS.THEME) return key; // Theme remains global
+            return `${profileId}_${key}`;
+        },
         saveAllConversations() { 
             const leanConversations = ChatApp.State.allConversations.map(chat => ({
                 ...chat,
@@ -511,19 +520,19 @@ const ChatApp = {
             }));
 
             try {
-                localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS, JSON.stringify(leanConversations));
+                localStorage.setItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS), JSON.stringify(leanConversations));
             } catch (e) {
                 console.error("Storage limit reached", e);
                 ChatApp.UI.showToast("History full. Old chats may not save.", "error");
             }
         },
         saveCustomPresets(presets) {
-            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS, JSON.stringify(presets));
+            localStorage.setItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS), JSON.stringify(presets));
             ChatApp.State.customPresets = presets;
         },
         loadCustomPresets() {
             try {
-                const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS);
+                const stored = localStorage.getItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS));
                 ChatApp.State.customPresets = stored ? JSON.parse(stored) : [];
             } catch (e) {
                 ChatApp.State.customPresets = [];
@@ -531,7 +540,7 @@ const ChatApp = {
         },
         loadAllConversations() {
             try {
-                const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
+                const stored = localStorage.getItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS));
                 const parsed = stored ? JSON.parse(stored) : [];
                 ChatApp.State.allConversations = ChatApp.Utils.normalizeConversations(parsed);
             } catch (e) {
@@ -546,18 +555,18 @@ const ChatApp = {
 
             ChatApp.Utils.setJbAiConfirmationValue(sanitized.baseUrls?.jbai);
 
-            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS, JSON.stringify(sanitized));
+            localStorage.setItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS), JSON.stringify(sanitized));
             ChatApp.State.providerSettings = sanitized;
             return sanitized;
         },
         getProviderSettings() {
             try {
-                const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS);
+                const stored = localStorage.getItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS));
                 const parsed = stored ? JSON.parse(stored) : {};
                 const merged = this.normalizeProviderSettings(parsed);
                 ChatApp.State.providerSettings = merged;
                 if (JSON.stringify(parsed) !== JSON.stringify(merged)) {
-                    localStorage.setItem(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS, JSON.stringify(merged));
+                    localStorage.setItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS), JSON.stringify(merged));
                 }
                 return merged;
             } catch (error) {
@@ -581,12 +590,12 @@ const ChatApp = {
             };
         },
         saveToolsConfig(config) { 
-            localStorage.setItem(ChatApp.Config.STORAGE_KEYS.TOOLS, JSON.stringify(config)); 
+            localStorage.setItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.TOOLS), JSON.stringify(config)); 
             ChatApp.State.toolsConfig = config;
         },
         getToolsConfig() {
             try {
-                const stored = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.TOOLS);
+                const stored = localStorage.getItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.TOOLS));
                 const config = stored ? JSON.parse(stored) : ChatApp.Config.DEFAULT_TOOLS;
                 const finalConfig = { ...ChatApp.Config.DEFAULT_TOOLS, ...config };
                 ChatApp.State.toolsConfig = finalConfig;
@@ -594,6 +603,173 @@ const ChatApp = {
             } catch (e) {
                 ChatApp.State.toolsConfig = { ...ChatApp.Config.DEFAULT_TOOLS };
                 return ChatApp.Config.DEFAULT_TOOLS;
+            }
+        }
+    },
+
+    Profiles: {
+        init() {
+            try {
+                const storedProfiles = localStorage.getItem('jbai_profiles');
+                const activeId = localStorage.getItem('jbai_active_profile_id');
+                
+                let profiles = storedProfiles ? JSON.parse(storedProfiles) : [];
+                
+                if (profiles.length === 0) {
+                    profiles = [{
+                        id: 'default',
+                        name: 'Default User',
+                        avatarColor: '#4f46e5',
+                        avatarIcon: '👤'
+                    }];
+                    localStorage.setItem('jbai_profiles', JSON.stringify(profiles));
+                    localStorage.setItem('jbai_active_profile_id', 'default');
+                    
+                    this.migrateOldData('default');
+                }
+                
+                ChatApp.State.profiles = profiles;
+                ChatApp.State.activeProfileId = activeId && profiles.some(p => p.id === activeId) ? activeId : 'default';
+            } catch (e) {
+                console.error("Failed to initialize profiles:", e);
+                ChatApp.State.profiles = [{ id: 'default', name: 'Default User', avatarColor: '#4f46e5', avatarIcon: '👤' }];
+                ChatApp.State.activeProfileId = 'default';
+            }
+        },
+        migrateOldData(profileId) {
+            const keysToMigrate = [
+                ChatApp.Config.STORAGE_KEYS.CONVERSATIONS,
+                ChatApp.Config.STORAGE_KEYS.TOOLS,
+                ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS,
+                ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS
+            ];
+            keysToMigrate.forEach(key => {
+                const oldVal = localStorage.getItem(key);
+                if (oldVal !== null) {
+                    localStorage.setItem(`${profileId}_${key}`, oldVal);
+                }
+            });
+            localStorage.setItem(`${profileId}_jbai_folders`, JSON.stringify([]));
+        },
+        createProfile(name, color, icon = '👤') {
+            const id = 'p_' + Date.now();
+            const newProfile = { id, name, avatarColor: color, avatarIcon: icon };
+            ChatApp.State.profiles.push(newProfile);
+            localStorage.setItem('jbai_profiles', JSON.stringify(ChatApp.State.profiles));
+            
+            localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.CONVERSATIONS}`, JSON.stringify([]));
+            localStorage.setItem(`${id}_jbai_folders`, JSON.stringify([]));
+            localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS}`, JSON.stringify(ChatApp.Config.DEFAULT_PROVIDER_SETTINGS));
+            localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.TOOLS}`, JSON.stringify(ChatApp.Config.DEFAULT_TOOLS));
+            
+            return newProfile;
+        },
+        switchProfile(id) {
+            if (!ChatApp.State.profiles.some(p => p.id === id)) return;
+            
+            ChatApp.UI._revokeFilePreviewUrls();
+            ChatApp.State.revokeGeneratedDownloadUrls();
+            
+            localStorage.setItem('jbai_active_profile_id', id);
+            ChatApp.State.activeProfileId = id;
+            
+            ChatApp.Store.loadAllConversations();
+            ChatApp.Store.loadCustomPresets();
+            ChatApp.Store.getProviderSettings();
+            ChatApp.Store.getToolsConfig();
+            ChatApp.Folders.loadFolders();
+            
+            ChatApp.State.resetCurrentChat();
+            
+            ChatApp.UI.renderSidebar();
+            ChatApp.UI.renderProfileSection();
+            ChatApp.UI.applyDisplaySettings();
+            
+            if (ChatApp.State.activeTab === 'mystuff') {
+                ChatApp.UI.renderMyStuffDashboard();
+            } else {
+                ChatApp.UI.renderChatArea();
+            }
+            
+            ChatApp.UI.showToast(`Switched to profile: ${this.getActiveProfile().name}`);
+        },
+        deleteProfile(id) {
+            if (id === 'default' || id === ChatApp.State.activeProfileId) {
+                ChatApp.UI.showToast("Cannot delete active or default profile", "error");
+                return;
+            }
+            ChatApp.State.profiles = ChatApp.State.profiles.filter(p => p.id !== id);
+            localStorage.setItem('jbai_profiles', JSON.stringify(ChatApp.State.profiles));
+            
+            const keysToDelete = [
+                `${id}_${ChatApp.Config.STORAGE_KEYS.CONVERSATIONS}`,
+                `${id}_${ChatApp.Config.STORAGE_KEYS.TOOLS}`,
+                `${id}_${ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS}`,
+                `${id}_${ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS}`,
+                `${id}_jbai_folders`
+            ];
+            keysToDelete.forEach(k => localStorage.removeItem(k));
+            
+            ChatApp.UI.showToast("Profile deleted");
+        },
+        getActiveProfile() {
+            return ChatApp.State.profiles.find(p => p.id === ChatApp.State.activeProfileId) || ChatApp.State.profiles[0];
+        }
+    },
+
+    Folders: {
+        loadFolders() {
+            const key = `${ChatApp.State.activeProfileId || 'default'}_jbai_folders`;
+            try {
+                const stored = localStorage.getItem(key);
+                ChatApp.State.folders = stored ? JSON.parse(stored) : [];
+            } catch (e) {
+                console.error("Failed to load folders:", e);
+                ChatApp.State.folders = [];
+            }
+        },
+        saveFolders() {
+            const key = `${ChatApp.State.activeProfileId || 'default'}_jbai_folders`;
+            try {
+                localStorage.setItem(key, JSON.stringify(ChatApp.State.folders));
+            } catch (e) {
+                console.error("Failed to save folders:", e);
+            }
+        },
+        createFolder(name) {
+            const id = 'f_' + Date.now();
+            const newFolder = { id, name };
+            ChatApp.State.folders.push(newFolder);
+            this.saveFolders();
+            ChatApp.UI.renderSidebar();
+            return newFolder;
+        },
+        renameFolder(id, newName) {
+            const folder = ChatApp.State.folders.find(f => f.id === id);
+            if (folder) {
+                folder.name = newName;
+                this.saveFolders();
+                ChatApp.UI.renderSidebar();
+            }
+        },
+        deleteFolder(id) {
+            ChatApp.State.folders = ChatApp.State.folders.filter(f => f.id !== id);
+            this.saveFolders();
+            
+            ChatApp.State.allConversations.forEach(chat => {
+                if (chat.folderId === id) {
+                    chat.folderId = null;
+                }
+            });
+            ChatApp.Store.saveAllConversations();
+            ChatApp.UI.renderSidebar();
+        },
+        moveChatToFolder(chatId, folderId) {
+            const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
+            if (chat) {
+                chat.folderId = folderId || null;
+                ChatApp.Store.saveAllConversations();
+                ChatApp.UI.renderSidebar();
             }
         }
     },
@@ -625,6 +801,21 @@ const ChatApp = {
                 activeSkillName: document.getElementById('active-skill-name'),
                 clearSkillBtn: document.getElementById('clear-skill-btn'),
                 chatInputPillContainer: document.getElementById('chat-input-pill-container'),
+                
+                // Remastered features elements
+                tabChats: document.getElementById('tab-chats'),
+                tabMyStuff: document.getElementById('tab-mystuff'),
+                sidebarChatsContainer: document.getElementById('sidebar-chats-container'),
+                sidebarMyStuffContainer: document.getElementById('sidebar-mystuff-container'),
+                myStuffContainer: document.getElementById('my-stuff-container'),
+                chatContainer: document.querySelector('.chat-container'),
+                splitCanvasPanel: document.getElementById('split-canvas-panel'),
+                canvasCloseBtn: document.getElementById('canvas-close-btn'),
+                canvasCodeTextarea: document.getElementById('canvas-code-textarea'),
+                canvasPreviewIframe: document.getElementById('canvas-preview-iframe'),
+                canvasBrowserIframe: document.getElementById('canvas-browser-iframe'),
+                profileAvatar: document.getElementById('profile-avatar'),
+                profileName: document.getElementById('profile-name')
             };
         },
         hideTooltip() {
@@ -1299,51 +1490,674 @@ const ChatApp = {
         },
         renderSidebar() {
             const list = this.elements.conversationList;
+            const foldersList = document.getElementById('folders-list');
+            if (!list) return;
+            list.innerHTML = '';
+            if (foldersList) foldersList.innerHTML = '';
+            
+            if (ChatApp.State.activeTab === 'mystuff') {
+                this.renderMyStuffSidebar();
+                return;
+            }
+
+            let collapsed = [];
+            try {
+                const stored = localStorage.getItem(ChatApp.Store.getProfileKey('collapsed_folders'));
+                collapsed = stored ? JSON.parse(stored) : [];
+            } catch(e){}
+
+            if (foldersList && ChatApp.State.folders) {
+                ChatApp.State.folders.forEach(folder => {
+                    const isCollapsed = collapsed.includes(folder.id);
+                    const folderGroup = document.createElement('div');
+                    folderGroup.className = 'folder-group' + (isCollapsed ? ' collapsed' : '');
+                    
+                    const header = document.createElement('div');
+                    header.className = 'folder-header';
+                    
+                    const chevron = document.createElement('span');
+                    chevron.className = 'chevron';
+                    chevron.innerHTML = ChatApp.Config.ICONS.CHEVRON_DOWN || '▼';
+                    chevron.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        let collapsedList = [];
+                        try {
+                            const st = localStorage.getItem(ChatApp.Store.getProfileKey('collapsed_folders'));
+                            collapsedList = st ? JSON.parse(st) : [];
+                        } catch(e){}
+                        if (collapsedList.includes(folder.id)) {
+                            collapsedList = collapsedList.filter(id => id !== folder.id);
+                            folderGroup.classList.remove('collapsed');
+                        } else {
+                            collapsedList.push(folder.id);
+                            folderGroup.classList.add('collapsed');
+                        }
+                        localStorage.setItem(ChatApp.Store.getProfileKey('collapsed_folders'), JSON.stringify(collapsedList));
+                    });
+                    
+                    const folderIcon = document.createElement('span');
+                    folderIcon.className = 'folder-icon';
+                    folderIcon.textContent = '📁';
+                    
+                    const title = document.createElement('span');
+                    title.className = 'folder-title';
+                    title.textContent = folder.name;
+                    title.title = folder.name;
+                    
+                    title.addEventListener('dblclick', () => {
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.value = folder.name;
+                        input.className = 'folder-rename-input';
+                        input.style.width = '100%';
+                        input.addEventListener('blur', () => {
+                            const val = input.value.trim();
+                            if (val && val !== folder.name) ChatApp.Folders.renameFolder(folder.id, val);
+                            else title.textContent = folder.name;
+                        });
+                        input.addEventListener('keydown', (e) => {
+                            if (e.key === 'Enter') input.blur();
+                            if (e.key === 'Escape') { input.value = folder.name; input.blur(); }
+                        });
+                        title.innerHTML = '';
+                        title.appendChild(input);
+                        input.focus();
+                    });
+                    
+                    const controls = document.createElement('div');
+                    controls.className = 'folder-controls';
+                    
+                    const editBtn = document.createElement('button');
+                    editBtn.className = 'folder-control-btn';
+                    editBtn.textContent = '✏️';
+                    editBtn.title = 'Rename';
+                    editBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const newName = prompt("Rename folder to:", folder.name);
+                        if (newName && newName.trim()) ChatApp.Folders.renameFolder(folder.id, newName.trim());
+                    });
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'folder-control-btn';
+                    deleteBtn.textContent = '🗑️';
+                    deleteBtn.title = 'Delete Folder';
+                    deleteBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        if (confirm(`Delete folder "${folder.name}"? Chats inside won't be deleted.`)) ChatApp.Folders.deleteFolder(folder.id);
+                    });
+                    
+                    controls.appendChild(editBtn);
+                    controls.appendChild(deleteBtn);
+                    header.appendChild(chevron);
+                    header.appendChild(folderIcon);
+                    header.appendChild(title);
+                    header.appendChild(controls);
+                    
+                    const chatList = document.createElement('div');
+                    chatList.className = 'folder-chats';
+                    
+                    const folderChats = ChatApp.State.allConversations.filter(c => c.folderId === folder.id);
+                    if (folderChats.length === 0) {
+                        const emptyInfo = document.createElement('div');
+                        emptyInfo.className = 'conversation-empty';
+                        emptyInfo.textContent = 'Empty Folder';
+                        emptyInfo.style.paddingLeft = '12px';
+                        chatList.appendChild(emptyInfo);
+                    } else {
+                        folderChats.sort((a,b) => Number(b.id) - Number(a.id)).forEach(chat => {
+                            chatList.appendChild(this.createChatSidebarItem(chat));
+                        });
+                    }
+                    
+                    header.addEventListener('click', (e) => {
+                        if (e.target.closest('.folder-controls') || e.target.closest('.folder-rename-input')) return;
+                        chevron.click();
+                    });
+                    
+                    folderGroup.appendChild(header);
+                    folderGroup.appendChild(chatList);
+                    foldersList.appendChild(folderGroup);
+                });
+            }
+
+            const unassignedConversations = ChatApp.State.allConversations.filter(c => !c.folderId);
+            if (unassignedConversations.length === 0) {
+                const emptyState = document.createElement('div');
+                emptyState.className = 'conversation-empty';
+                emptyState.textContent = 'No recent chats';
+                list.appendChild(emptyState);
+            } else {
+                unassignedConversations.sort((a, b) => Number(b.id) - Number(a.id)).forEach(chat => {
+                    list.appendChild(this.createChatSidebarItem(chat));
+                });
+            }
+        },
+        createChatSidebarItem(chat) {
+            const item = document.createElement('div');
+            item.className = 'conversation-item';
+            item.dataset.chatId = chat.id;
+            item.setAttribute('role', 'menuitem');
+            if (chat.id === ChatApp.State.currentChatId) {
+                item.classList.add('active');
+                item.setAttribute('aria-current', 'true');
+            }
+            const title = chat.title || 'Untitled Chat';
+            item.setAttribute('aria-label', `Load conversation: ${title}`);
+
+            const titleSpan = document.createElement('span');
+            titleSpan.className = 'conversation-title';
+            titleSpan.setAttribute('data-tooltip', title);
+            titleSpan.textContent = title;
+
+            titleSpan.addEventListener('dblclick', (e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = title;
+                input.style.width = '100%';
+                input.style.background = 'var(--input-bg)';
+                input.style.color = 'var(--text-color)';
+                input.style.border = '1px solid var(--border-color)';
+                input.addEventListener('blur', () => {
+                    const val = input.value.trim();
+                    if (val && val !== title) {
+                        chat.title = val;
+                        ChatApp.Store.saveAllConversations();
+                        ChatApp.UI.renderSidebar();
+                    } else {
+                        titleSpan.textContent = title;
+                    }
+                });
+                input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') input.blur(); });
+                titleSpan.innerHTML = '';
+                titleSpan.appendChild(input);
+                input.focus();
+            });
+
+            const actions = document.createElement('div');
+            actions.className = 'conversation-actions-container';
+            actions.style.display = 'flex';
+            actions.style.gap = '4px';
+
+            const folderBtn = document.createElement('button');
+            folderBtn.type = 'button';
+            folderBtn.className = 'folder-btn icon-btn';
+            folderBtn.style.padding = '2px';
+            folderBtn.style.fontSize = '12px';
+            folderBtn.innerHTML = '📁';
+            folderBtn.title = 'Move to folder';
+            folderBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.showFolderAssignPopup(chat.id, folderBtn);
+            });
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.type = 'button';
+            deleteBtn.className = 'delete-btn icon-btn';
+            deleteBtn.setAttribute('data-tooltip', 'Delete Chat');
+            deleteBtn.innerHTML = ChatApp.Config.ICONS.DELETE;
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                ChatApp.Controller.deleteConversation(chat.id);
+            });
+
+            actions.appendChild(folderBtn);
+            actions.appendChild(deleteBtn);
+            item.appendChild(titleSpan);
+            item.appendChild(actions);
+
+            item.addEventListener('click', (e) => {
+                if (!e.target.closest('.delete-btn') && !e.target.closest('.folder-btn') && !e.target.closest('input')) {
+                    ChatApp.Controller.loadChat(chat.id);
+                }
+            });
+            return item;
+        },
+        showFolderAssignPopup(chatId, buttonEl) {
+            const oldPopup = document.querySelector('.folder-select-popup');
+            if (oldPopup) oldPopup.remove();
+
+            const popup = document.createElement('div');
+            popup.className = 'folder-select-popup';
+            
+            const noneOpt = document.createElement('button');
+            noneOpt.className = 'folder-select-item';
+            noneOpt.textContent = '❌ None';
+            noneOpt.addEventListener('click', () => { ChatApp.Folders.moveChatToFolder(chatId, null); popup.remove(); });
+            popup.appendChild(noneOpt);
+
+            ChatApp.State.folders.forEach(folder => {
+                const opt = document.createElement('button');
+                opt.className = 'folder-select-item';
+                opt.textContent = `📁 ${folder.name}`;
+                opt.addEventListener('click', () => { ChatApp.Folders.moveChatToFolder(chatId, folder.id); popup.remove(); });
+                popup.appendChild(opt);
+            });
+
+            document.body.appendChild(popup);
+            const rect = buttonEl.getBoundingClientRect();
+            popup.style.position = 'absolute';
+            popup.style.top = `${rect.bottom + window.scrollY}px`;
+            popup.style.left = `${rect.left + window.scrollX - 100}px`;
+
+            setTimeout(() => {
+                const closeHandler = (e) => {
+                    if (!popup.contains(e.target) && e.target !== buttonEl) {
+                        popup.remove();
+                        document.removeEventListener('click', closeHandler);
+                    }
+                };
+                document.addEventListener('click', closeHandler);
+            }, 0);
+        },
+        renderMyStuffSidebar() {
+            const list = this.elements.conversationList;
             if (!list) return;
             list.innerHTML = '';
             
-            if (ChatApp.State.allConversations.length === 0) {
-                const emptyState = document.createElement('div');
-                emptyState.className = 'conversation-empty';
-                emptyState.setAttribute('aria-label', 'No conversations yet');
-                emptyState.textContent = 'No conversations yet';
-                list.appendChild(emptyState);
+            const header = document.createElement('div');
+            header.className = 'chats-header';
+            header.innerHTML = '<h3>My Creations</h3>';
+            list.appendChild(header);
+            
+            const categories = [
+                { id: 'all', name: 'All Stuff', icon: '📦' },
+                { id: 'image', name: 'Generated Images', icon: '🖼️' },
+                { id: 'html', name: 'HTML Codes', icon: '🌐' },
+                { id: 'svg', name: 'SVGs', icon: '🎨' },
+                { id: 'script', name: 'Scripts', icon: '📜' }
+            ];
+            
+            const listContainer = document.createElement('div');
+            listContainer.className = 'mystuff-sidebar-list';
+            
+            const activeFilter = ChatApp.State.myStuffFilter || 'all';
+            categories.forEach(cat => {
+                const item = document.createElement('button');
+                item.className = 'mystuff-sidebar-item' + (activeFilter === cat.id ? ' active' : '');
+                item.innerHTML = `<span>${cat.icon}</span> <span>${cat.name}</span>`;
+                item.addEventListener('click', () => {
+                    ChatApp.State.myStuffFilter = cat.id;
+                    this.renderSidebar();
+                    this.renderMyStuffDashboard();
+                });
+                listContainer.appendChild(item);
+            });
+            list.appendChild(listContainer);
+        },
+        scanCreations() {
+            const creations = [];
+            ChatApp.State.allConversations.forEach(chat => {
+                chat.history.forEach(msg => {
+                    if (msg.content && msg.content.role === 'model') {
+                        const parts = msg.content.parts || [];
+                        const text = typeof parts === 'string' ? parts : (Array.isArray(parts) ? parts.map(p => p.text || '').join('') : '');
+                        
+                        const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+                        let match;
+                        while ((match = imgRegex.exec(text)) !== null) {
+                            if (match[1].startsWith('data:image/') || match[1].startsWith('blob:') || match[1].includes('tempmediaStorage')) {
+                                creations.push({ type: 'image', title: 'Generated Image', content: match[1], chatId: chat.id, date: chat.updatedAt || chat.id });
+                            }
+                        }
+                        
+                        const codeBlockRegex = /```(html|svg|javascript|css)\n([\s\S]*?)```/gi;
+                        let codeMatch;
+                        while ((codeMatch = codeBlockRegex.exec(text)) !== null) {
+                            const lang = codeMatch[1].toLowerCase();
+                            const code = codeMatch[2];
+                            
+                            let type = 'script';
+                            let title = 'Script File';
+                            if (lang === 'html') { type = 'html'; title = 'Webpage Prototype'; }
+                            else if (lang === 'svg') { type = 'svg'; title = 'SVG Graphic'; }
+                            else if (lang === 'css') { type = 'css'; title = 'Stylesheet'; }
+                            
+                            if (!creations.some(c => c.content === code && c.chatId === chat.id)) {
+                                creations.push({ type, title, content: code, chatId: chat.id, date: chat.updatedAt || chat.id });
+                            }
+                        }
+                    }
+                });
+            });
+            return creations;
+        },
+        renderMyStuffDashboard() {
+            const container = this.elements.myStuffContainer;
+            if (!container) return;
+            const chatMain = document.getElementById('chat-main-area');
+            if (chatMain) chatMain.style.display = 'none';
+            container.style.display = 'flex';
+            
+            const grid = document.getElementById('my-stuff-grid');
+            if (!grid) return;
+            grid.innerHTML = '';
+            
+            let items = this.scanCreations();
+            const sidebarFilter = ChatApp.State.myStuffFilter || 'all';
+            if (sidebarFilter !== 'all') items = items.filter(item => item.type === sidebarFilter);
+            
+            const searchInput = document.getElementById('my-stuff-search');
+            const query = searchInput ? searchInput.value.toLowerCase().trim() : '';
+            if (query) {
+                items = items.filter(item => item.title.toLowerCase().includes(query) || item.content.toLowerCase().includes(query));
+            }
+            
+            if (items.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'my-stuff-empty';
+                empty.innerHTML = `<div class="empty-icon">📦</div><h3>No creations found</h3><p>Generated images, web previews, and svgs will automatically appear here.</p>`;
+                grid.appendChild(empty);
                 return;
             }
             
-            const sortedConversations = [...ChatApp.State.allConversations].sort((a, b) => {
-                const aId = Number(a?.id);
-                const bId = Number(b?.id);
-                if (Number.isFinite(aId) && Number.isFinite(bId)) return bId - aId;
-                return 0;
+            items.sort((a, b) => Number(b.date) - Number(a.date)).forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'my-stuff-card';
+                
+                const preview = document.createElement('div');
+                preview.className = 'my-stuff-card-preview';
+                
+                if (item.type === 'image') {
+                    const img = document.createElement('img');
+                    img.src = item.content;
+                    img.alt = item.title;
+                    preview.appendChild(img);
+                } else if (item.type === 'svg') {
+                    const wrapper = document.createElement('div');
+                    wrapper.style.width = '100%'; wrapper.style.height = '100%';
+                    wrapper.style.display = 'flex'; wrapper.style.alignItems = 'center'; wrapper.style.justifyContent = 'center'; wrapper.style.padding = '8px';
+                    if (item.content.includes('<svg')) {
+                        wrapper.innerHTML = item.content;
+                        const svgEl = wrapper.querySelector('svg');
+                        if (svgEl) { svgEl.setAttribute('width', '100%'); svgEl.setAttribute('height', '100%'); }
+                    } else { wrapper.innerHTML = '<span class="code-icon">🎨</span>'; }
+                    preview.appendChild(wrapper);
+                } else if (item.type === 'html') preview.innerHTML = '<span class="code-icon">🌐</span>';
+                else preview.innerHTML = '<span class="code-icon">📜</span>';
+                
+                const info = document.createElement('div');
+                info.className = 'my-stuff-card-info';
+                
+                const title = document.createElement('div');
+                title.className = 'my-stuff-card-title';
+                title.textContent = item.title;
+                
+                const meta = document.createElement('div');
+                meta.className = 'my-stuff-card-meta';
+                const dateStr = new Date(Number(item.date)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                meta.innerHTML = `<span>${dateStr}</span><a href="#" class="convo-jump-link" style="color: var(--focus-color); font-weight:600; text-decoration:none;">Jump to chat</a>`;
+                meta.querySelector('.convo-jump-link').addEventListener('click', (e) => { e.preventDefault(); ChatApp.Controller.loadChat(item.chatId); });
+                
+                info.appendChild(title); info.appendChild(meta);
+                
+                const actions = document.createElement('div');
+                actions.className = 'my-stuff-card-actions';
+                
+                if (item.type === 'html' || item.type === 'svg') {
+                    const canvasBtn = document.createElement('button');
+                    canvasBtn.className = 'my-stuff-action-btn';
+                    canvasBtn.innerHTML = '⚡';
+                    canvasBtn.title = 'Open in Canvas';
+                    canvasBtn.addEventListener('click', (e) => { e.stopPropagation(); this.openCanvasPanel(item.content, item.type === 'html' ? 'preview' : 'code'); });
+                    actions.appendChild(canvasBtn);
+                } else if (item.type === 'image') {
+                    const viewBtn = document.createElement('button');
+                    viewBtn.className = 'my-stuff-action-btn';
+                    viewBtn.innerHTML = '🔍';
+                    viewBtn.title = 'Zoom Image';
+                    viewBtn.addEventListener('click', (e) => { e.stopPropagation(); this.showFullscreenPreview(item.content, 'image'); });
+                    actions.appendChild(viewBtn);
+                }
+                
+                card.appendChild(preview); card.appendChild(info); card.appendChild(actions);
+                grid.appendChild(card);
             });
-            sortedConversations.forEach((chat, index) => {
-                const item = document.createElement('button');
-                item.className = 'conversation-item';
-                item.dataset.chatId = chat.id;
-                item.setAttribute('role', 'menuitem');
-                if (chat.id === ChatApp.State.currentChatId) { item.classList.add('active'); item.setAttribute('aria-current', 'true'); }
-                const title = chat.title || 'Untitled Chat';
-                item.setAttribute('aria-label', `Load conversation: ${title}`);
-
-                const titleSpan = document.createElement('span');
-                titleSpan.className = 'conversation-title';
-                titleSpan.setAttribute('data-tooltip', title);
-                titleSpan.textContent = title;
-
-                const deleteBtn = document.createElement('button');
-                deleteBtn.type = 'button';
-                deleteBtn.className = 'delete-btn';
-                deleteBtn.setAttribute('data-tooltip', 'Delete Chat');
-                deleteBtn.setAttribute('aria-label', `Delete conversation: ${title}`);
-                deleteBtn.innerHTML = ChatApp.Config.ICONS.DELETE;
-
-                item.appendChild(titleSpan);
-                item.appendChild(deleteBtn);
-                item.addEventListener('click', (e) => { if (!e.target.closest('.delete-btn')) ChatApp.Controller.loadChat(chat.id); });
-                item.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ChatApp.Controller.loadChat(chat.id); } });
-                if (deleteBtn) { deleteBtn.addEventListener('click', (e) => { e.stopPropagation(); ChatApp.Controller.deleteConversation(chat.id); }); }
-                list.appendChild(item);
+        },
+        renderChatArea() {
+            const myStuff = this.elements.myStuffContainer;
+            if (myStuff) myStuff.style.display = 'none';
+            const chatMain = document.getElementById('chat-main-area');
+            if (chatMain) chatMain.style.display = 'flex';
+        },
+        renderProfileSection() {
+            const profile = ChatApp.Profiles.getActiveProfile();
+            const avatar = this.elements.profileAvatar;
+            const nameEl = this.elements.profileName;
+            if (avatar && nameEl) {
+                avatar.textContent = profile.name.substring(0, 2).toUpperCase();
+                avatar.style.backgroundColor = profile.avatarColor || '#4f46e5';
+                nameEl.textContent = profile.name;
+            }
+        },
+        showProfileManagerModal() {
+            const modal = document.createElement('div');
+            modal.className = 'modal-backdrop';
+            modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center'; modal.style.zIndex = '1000';
+            
+            const container = document.createElement('div');
+            container.className = 'modal-container';
+            container.style.width = '450px'; container.style.maxWidth = '90%'; container.style.padding = '24px';
+            container.style.borderRadius = '12px'; container.style.background = 'var(--modal-bg)';
+            container.style.boxShadow = '0 10px 25px var(--modal-shadow)'; container.style.color = 'var(--text-color)';
+            
+            const header = document.createElement('div');
+            header.className = 'modal-header';
+            header.style.display = 'flex'; header.style.justifyContent = 'space-between'; header.style.alignItems = 'center'; header.style.marginBottom = '16px';
+            
+            const title = document.createElement('h3');
+            title.textContent = 'Switch Profile';
+            title.style.fontSize = '18px'; title.style.fontWeight = 'bold';
+            
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'icon-btn';
+            closeBtn.innerHTML = '✕';
+            closeBtn.addEventListener('click', () => modal.remove());
+            
+            header.appendChild(title); header.appendChild(closeBtn);
+            
+            const grid = document.createElement('div');
+            grid.className = 'profile-modal-grid';
+            
+            const renderList = () => {
+                grid.innerHTML = '';
+                ChatApp.State.profiles.forEach(p => {
+                    const card = document.createElement('div');
+                    card.className = 'profile-card' + (p.id === ChatApp.State.activeProfileId ? ' active' : '');
+                    
+                    const avatar = document.createElement('div');
+                    avatar.className = 'profile-card-avatar';
+                    avatar.style.backgroundColor = p.avatarColor;
+                    avatar.textContent = p.name.substring(0, 2).toUpperCase();
+                    
+                    const name = document.createElement('div');
+                    name.className = 'profile-card-name';
+                    name.textContent = p.name;
+                    
+                    card.appendChild(avatar); card.appendChild(name);
+                    
+                    if (p.id !== 'default') {
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'profile-card-delete';
+                        deleteBtn.innerHTML = '✕';
+                        deleteBtn.title = 'Delete Profile';
+                        deleteBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            if (confirm(`Delete profile "${p.name}"? This deletes all history, configs, and folders for this profile.`)) {
+                                ChatApp.Profiles.deleteProfile(p.id); renderList();
+                            }
+                        });
+                        card.appendChild(deleteBtn);
+                    }
+                    
+                    card.addEventListener('click', () => { ChatApp.Profiles.switchProfile(p.id); modal.remove(); });
+                    grid.appendChild(card);
+                });
+            };
+            renderList();
+            
+            const creator = document.createElement('div');
+            creator.className = 'profile-creator';
+            
+            const creatorTitle = document.createElement('h4');
+            creatorTitle.textContent = 'Create New Profile';
+            creatorTitle.style.fontSize = '14px'; creatorTitle.style.fontWeight = 'bold'; creatorTitle.style.marginBottom = '12px';
+            
+            const form = document.createElement('div');
+            form.className = 'profile-creator-form';
+            
+            const input = document.createElement('input');
+            input.type = 'text'; input.placeholder = 'Profile Name'; input.className = 'modal-input';
+            input.style.width = '100%'; input.style.padding = '8px 12px'; input.style.borderRadius = '6px';
+            input.style.border = '1px solid var(--border-color)'; input.style.background = 'var(--input-bg)'; input.style.color = 'var(--text-color)';
+            
+            const colors = ['#4f46e5', '#0f766e', '#b91c1c', '#c2410c', '#15803d', '#701a75'];
+            let selectedColor = colors[0];
+            
+            const colorRow = document.createElement('div');
+            colorRow.className = 'profile-creator-row';
+            
+            const colorLabel = document.createElement('span');
+            colorLabel.textContent = 'Avatar Color:'; colorLabel.style.fontSize = '12px';
+            
+            const colorSelector = document.createElement('div');
+            colorSelector.className = 'color-dot-selector';
+            colors.forEach(col => {
+                const dot = document.createElement('div');
+                dot.className = 'color-dot' + (col === selectedColor ? ' selected' : '');
+                dot.style.backgroundColor = col;
+                dot.addEventListener('click', () => {
+                    selectedColor = col;
+                    colorSelector.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
+                    dot.classList.add('selected');
+                });
+                colorSelector.appendChild(dot);
+            });
+            colorRow.appendChild(colorLabel); colorRow.appendChild(colorSelector);
+            
+            const submitBtn = document.createElement('button');
+            submitBtn.className = 'primary-btn';
+            submitBtn.textContent = 'Add Profile';
+            submitBtn.addEventListener('click', () => {
+                const name = input.value.trim();
+                if (!name) return ChatApp.UI.showToast("Please enter a name", "error");
+                const newP = ChatApp.Profiles.createProfile(name, selectedColor);
+                input.value = ''; renderList();
+                ChatApp.UI.showToast(`Profile "${newP.name}" created`);
+            });
+            
+            form.appendChild(input); form.appendChild(colorRow); form.appendChild(submitBtn);
+            creator.appendChild(creatorTitle); creator.appendChild(form);
+            
+            container.appendChild(header); container.appendChild(grid); container.appendChild(creator);
+            modal.appendChild(container); document.body.appendChild(modal);
+            
+            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+        },
+        openCanvasPanel(code, tab = 'preview') {
+            const panel = this.elements.splitCanvasPanel;
+            if (!panel) return;
+            panel.style.display = 'flex';
+            if (this.elements.canvasCodeTextarea) this.elements.canvasCodeTextarea.value = code;
+            this.switchCanvasTab(tab);
+        },
+        closeCanvasPanel() {
+            const panel = this.elements.splitCanvasPanel;
+            if (panel) panel.style.display = 'none';
+        },
+        switchCanvasTab(tabName) {
+            const tabs = document.querySelectorAll('.canvas-tab');
+            tabs.forEach(btn => { if (btn.dataset.tab === tabName) btn.classList.add('active'); else btn.classList.remove('active'); });
+            const contents = document.querySelectorAll('.canvas-tab-content');
+            contents.forEach(cont => { if (cont.dataset.tab === tabName) cont.style.display = 'flex'; else cont.style.display = 'none'; });
+            if (tabName === 'preview') this.runCanvasCode();
+        },
+        runCanvasCode() {
+            const code = this.elements.canvasCodeTextarea ? this.elements.canvasCodeTextarea.value : '';
+            const iframe = this.elements.canvasPreviewIframe;
+            if (iframe && code) {
+                try {
+                    const doc = iframe.contentDocument || iframe.contentWindow.document;
+                    doc.open(); doc.write(code); doc.close();
+                } catch(e) { console.error("Iframe write failed", e); }
+            }
+        },
+        navigateBrowser(url) {
+            if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
+            const addressInput = document.getElementById('browser-address-input');
+            if (addressInput) addressInput.value = url;
+            const iframe = this.elements.canvasBrowserIframe;
+            if (iframe) iframe.src = url;
+        },
+        async scrapeCurrentBrowserPage() {
+            const addressInput = document.getElementById('browser-address-input');
+            const url = addressInput ? addressInput.value : '';
+            if (!url) return this.showToast("No page loaded to scrape", "error");
+            this.showToast("Scraping page content...");
+            try {
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error("Proxy error");
+                const data = await response.json();
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(data.contents, 'text/html');
+                doc.querySelectorAll('script, style, iframe, noscript').forEach(el => el.remove());
+                const text = doc.body ? doc.body.innerText.replace(/\s+/g, ' ').trim() : '';
+                const chatInput = this.elements.chatInput;
+                if (chatInput) {
+                    chatInput.value += `\n[Scraped Content from ${url}]:\n${text.substring(0, 2000)}\n`;
+                    chatInput.focus();
+                    this.showToast("Page scraped and appended to chat input!");
+                }
+            } catch(e) {
+                console.error("Scraping failed", e);
+                this.showToast("Failed to scrape page. Appending url to input.", "warning");
+                const chatInput = this.elements.chatInput;
+                if (chatInput) chatInput.value += `\n[URL to scrape]: ${url}\n`;
+            }
+        },
+        getSystemInfoData() {
+            const allowed = localStorage.getItem(ChatApp.Store.getProfileKey('system_info_allowed')) === 'true';
+            if (!allowed) return null;
+            return {
+                userAgent: navigator.userAgent, platform: navigator.platform, language: navigator.language,
+                screenResolution: `${window.screen.width}x${window.screen.height}`, cores: navigator.hardwareConcurrency || 'unknown',
+                memory: navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'unknown',
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, currentTime: new Date().toString()
+            };
+        },
+        async ensureSystemInfoPermission() {
+            const key = ChatApp.Store.getProfileKey('system_info_allowed');
+            const stored = localStorage.getItem(key);
+            if (stored !== null) return stored === 'true';
+            
+            return new Promise((resolve) => {
+                const modal = document.createElement('div');
+                modal.className = 'modal-backdrop';
+                modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center'; modal.style.zIndex = '1000';
+                
+                const container = document.createElement('div');
+                container.className = 'modal-container';
+                container.style.width = '400px'; container.style.padding = '24px'; container.style.borderRadius = '12px';
+                container.style.background = 'var(--modal-bg)'; container.style.boxShadow = '0 10px 25px var(--modal-shadow)';
+                container.style.color = 'var(--text-color)'; container.style.textAlign = 'center';
+                
+                container.innerHTML = `
+                    <div style="font-size: 32px; margin-bottom: 12px;">🖥️</div>
+                    <h3 style="margin-bottom: 12px; font-weight:bold;">Share System Information?</h3>
+                    <p style="font-size:13px; color:var(--text-secondary); margin-bottom: 20px; line-height: 1.4;">
+                        J.B.A.I wants permission to read your browser, OS, hardware, and timezone details to assist with system-specific questions.
+                    </p>
+                    <div style="display:flex; gap:8px; justify-content:center;">
+                        <button class="primary-btn" id="sys-allow-btn">Allow</button>
+                        <button class="secondary-btn" id="sys-deny-btn">Deny</button>
+                    </div>
+                `;
+                
+                modal.appendChild(container); document.body.appendChild(modal);
+                
+                modal.querySelector('#sys-allow-btn').addEventListener('click', () => { localStorage.setItem(key, 'true'); modal.remove(); resolve(true); });
+                modal.querySelector('#sys-deny-btn').addEventListener('click', () => { localStorage.setItem(key, 'false'); modal.remove(); resolve(false); });
             });
         },
         async renderMessage(message, isTyping = false) {
@@ -1552,6 +2366,16 @@ const ChatApp = {
                             }
                         });
                         actionsContainer.appendChild(toggleBtn);
+                    }
+
+                    if (wrapper.dataset.previewable === 'html' || wrapper.dataset.previewable === 'svg') {
+                        const canvasBtn = document.createElement('button');
+                        canvasBtn.className = 'code-canvas-badge icon-btn';
+                        canvasBtn.type = 'button';
+                        canvasBtn.dataset.lang = wrapper.dataset.previewable;
+                        canvasBtn.setAttribute('data-tooltip', 'Open in Canvas');
+                        canvasBtn.innerHTML = '⚡';
+                        actionsContainer.appendChild(canvasBtn);
                     }
 
                     const openBtn = document.createElement('button');
@@ -2989,6 +3813,54 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     ChatApp.UI.showToast('Active skill cleared');
                 });
             }
+
+            // New feature bindings
+            const profileBtn = document.getElementById('profile-selector-btn');
+            if (profileBtn) profileBtn.addEventListener('click', () => ChatApp.UI.showProfileManagerModal());
+
+            const addFolderBtn = document.getElementById('add-folder-btn');
+            if (addFolderBtn) addFolderBtn.addEventListener('click', () => {
+                const name = prompt("Enter new folder name:");
+                if (name && name.trim()) ChatApp.Folders.createFolder(name.trim());
+            });
+
+            const tabs = document.querySelectorAll('.sidebar-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    ChatApp.State.activeTab = tab.dataset.tab;
+                    const folderActions = document.querySelector('.folder-actions');
+                    if (folderActions) folderActions.style.display = ChatApp.State.activeTab === 'chats' ? 'flex' : 'none';
+                    ChatApp.UI.renderSidebar();
+                    if (ChatApp.State.activeTab === 'mystuff') ChatApp.UI.renderMyStuffDashboard();
+                    else ChatApp.UI.renderChatArea();
+                });
+            });
+
+            const canvasTabs = document.querySelectorAll('.canvas-tab');
+            canvasTabs.forEach(tab => {
+                tab.addEventListener('click', () => ChatApp.UI.switchCanvasTab(tab.dataset.tab));
+            });
+
+            const canvasCloseBtn = document.getElementById('canvas-close-btn');
+            if (canvasCloseBtn) canvasCloseBtn.addEventListener('click', () => ChatApp.UI.closeCanvasPanel());
+
+            const runBtn = document.getElementById('canvas-run-btn');
+            if (runBtn) runBtn.addEventListener('click', () => ChatApp.UI.runCanvasCode());
+
+            const browserGoBtn = document.getElementById('browser-go-btn');
+            if (browserGoBtn) browserGoBtn.addEventListener('click', () => ChatApp.UI.navigateBrowser(document.getElementById('browser-address-input')?.value || ''));
+
+            const browserAddressInput = document.getElementById('browser-address-input');
+            if (browserAddressInput) browserAddressInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') ChatApp.UI.navigateBrowser(browserAddressInput.value); });
+
+            const browserScrapeBtn = document.getElementById('browser-scrape-btn');
+            if (browserScrapeBtn) browserScrapeBtn.addEventListener('click', () => ChatApp.UI.scrapeCurrentBrowserPage());
+
+            const myStuffSearch = document.getElementById('my-stuff-search');
+            if (myStuffSearch) myStuffSearch.addEventListener('input', () => ChatApp.UI.renderMyStuffDashboard());
+
             elements.sidebarToggle.addEventListener('click', () => { const isOpen = elements.body.classList.toggle('sidebar-open'); elements.sidebarToggle.setAttribute('aria-expanded', isOpen.toString()); });
             elements.sidebarBackdrop.addEventListener('click', () => elements.body.classList.remove('sidebar-open'));
             elements.messageArea.addEventListener('click', Controller.handleMessageAreaClick.bind(Controller));
@@ -3537,6 +4409,32 @@ You are a digital professional. Be concise, accurate, and effective.`;
                         systemText = `Active Skill Rules for [${skill.title || skill.name || skill.id}]:\n${skillRules}\n\n${systemText}`;
                     }
                 }
+
+                // Check for time/system requests
+                const lastMsg = ChatApp.State.currentConversation[ChatApp.State.currentConversation.length - 1];
+                let systemContextOverride = '';
+                if (lastMsg && lastMsg.content && lastMsg.content.parts) {
+                    const textVal = typeof lastMsg.content.parts === 'string' 
+                        ? lastMsg.content.parts 
+                        : (Array.isArray(lastMsg.content.parts) ? lastMsg.content.parts.map(p => p.text || '').join('') : '');
+                    const textValLower = textVal.toLowerCase();
+                    if (textValLower.includes('time') || textValLower.includes('date today') || textValLower.includes('current date')) {
+                        systemContextOverride += `\n[Time Service]: The current user time is ${new Date().toString()}.`;
+                    }
+                    if (textValLower.includes('system info') || textValLower.includes('my specs') || textValLower.includes('browser info') || textValLower.includes('hardware specs') || textValLower.includes('screen resolution')) {
+                        const isAllowed = await ChatApp.UI.ensureSystemInfoPermission();
+                        if (isAllowed) {
+                            const info = ChatApp.UI.getSystemInfoData();
+                            systemContextOverride += `\n[System Info Service]: User System Info: ${JSON.stringify(info)}.`;
+                        } else {
+                            systemContextOverride += `\n[System Info Service]: Access Denied by User.`;
+                        }
+                    }
+                }
+                if (systemContextOverride) {
+                    systemText = systemText + "\n\n" + systemContextOverride;
+                }
+
                 const systemInstruction = { parts: [{ text: systemText }] };
                 
                 const apiContents = ChatApp.State.currentConversation.map(msg => ({ role: msg.content.role, parts: msg.content.parts }));
@@ -3922,7 +4820,20 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 return;
             }
 
-            const mediaTarget = event.target.closest('.attachment-media, .svg-render-box img');
+            // Handle Canvas Action Buttons
+            const canvasBtn = event.target.closest('.code-canvas-badge');
+            if (canvasBtn) {
+                event.preventDefault();
+                const wrapper = canvasBtn.closest('.code-block-wrapper');
+                if (wrapper) {
+                    const code = decodeURIComponent(wrapper.dataset.rawContent || '');
+                    const lang = canvasBtn.dataset.lang || 'html';
+                    ChatApp.UI.openCanvasPanel(code, lang === 'html' ? 'preview' : 'code');
+                }
+                return;
+            }
+
+            const mediaTarget = event.target.closest('.attachment-media, .svg-render-box img, .message-content img:not(.avatar)');
             const htmlBox = event.target.closest('.html-render-box');
             if (mediaTarget) {
                 event.preventDefault();

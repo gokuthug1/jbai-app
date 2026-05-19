@@ -17,14 +17,53 @@
     </button>
     <nav class="sidebar" role="navigation" aria-label="Chat history">
         <div class="sidebar-header">
-            <h2>History</h2>
-            <button id="new-chat-btn" type="button" aria-label="Start new chat" title="New Chat">New Chat</button>
+            <div class="sidebar-title-row">
+                <h2>J.B.A.I</h2>
+                <button id="new-chat-btn" type="button" aria-label="Start new chat" title="New Chat">New Chat</button>
+            </div>
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" id="tab-chats" type="button">Chats</button>
+                <button class="sidebar-tab" id="tab-mystuff" type="button">My Stuff</button>
+            </div>
         </div>
-        <div class="conversation-list" id="conversation-list" role="list" aria-label="Conversation history list"></div>
+
+        <!-- Chat History List Tab Content -->
+        <div class="sidebar-tab-content active" id="sidebar-chats-container">
+            <div class="folders-header">
+                <h3>Folders</h3>
+                <button id="add-folder-btn" class="icon-btn" title="Create Folder" type="button">+</button>
+            </div>
+            <div id="folders-list" class="folders-list"></div>
+            
+            <div class="chats-header">
+                <h3>Conversations</h3>
+            </div>
+            <div class="conversation-list" id="conversation-list" role="list" aria-label="Conversation history list"></div>
+        </div>
+
+        <!-- My Stuff Tab Content -->
+        <div class="sidebar-tab-content" id="sidebar-mystuff-container" style="display: none;">
+            <div class="mystuff-sidebar-list">
+                <button class="mystuff-sidebar-item active" data-filter="all">📂 All Creations</button>
+                <button class="mystuff-sidebar-item" data-filter="image">🖼️ Images</button>
+                <button class="mystuff-sidebar-item" data-filter="html">💻 HTML Previews</button>
+                <button class="mystuff-sidebar-item" data-filter="svg">📐 SVGs</button>
+            </div>
+        </div>
+
+        <!-- Profile Footer Widget -->
+        <div class="sidebar-footer">
+            <div class="profile-widget" id="profile-widget">
+                <div class="profile-avatar" id="profile-avatar">👤</div>
+                <div class="profile-info">
+                    <span class="profile-name" id="profile-display-name">Guest</span>
+                </div>
+            </div>
+        </div>
     </nav>
 
     <div class="main-content">
-        <div class="chat-container">
+        <div class="chat-container" id="chat-container">
             <div id="message-area" class="message-area"></div>
             <div class="chat-input-container">
                 <div id="file-previews-container"></div>
@@ -52,6 +91,74 @@
                     <button id="send-button" data-tooltip="Send Message" type="button" disabled aria-label="Send message">
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2,21L23,12L2,3V10L17,12L2,14V21Z"></path></svg>
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- My Stuff Creations Dashboard -->
+        <div class="my-stuff-container" id="my-stuff-container" style="display: none;">
+            <div class="my-stuff-header">
+                <h2>My Creations</h2>
+                <div class="my-stuff-controls">
+                    <input type="text" id="my-stuff-search" placeholder="Search creations...">
+                    <select id="my-stuff-filter">
+                        <option value="all">All Types</option>
+                        <option value="image">Images</option>
+                        <option value="html">HTML Pages</option>
+                        <option value="svg">SVGs</option>
+                    </select>
+                </div>
+            </div>
+            <div class="my-stuff-grid" id="my-stuff-grid"></div>
+        </div>
+
+        <!-- Canvas Split Panel -->
+        <div id="split-canvas-container" class="split-canvas-container" style="display: none;">
+            <div class="canvas-resize-handle" id="canvas-resize-handle"></div>
+            <div class="canvas-header">
+                <div class="canvas-tabs">
+                    <button class="canvas-tab active" data-tab="preview">👁️ Live Preview</button>
+                    <button class="canvas-tab" data-tab="editor">📝 Code Editor</button>
+                    <button class="canvas-tab" data-tab="browser">🌐 Mini Browser</button>
+                </div>
+                <div class="canvas-actions">
+                    <div class="responsive-controls" id="responsive-controls">
+                        <button class="responsive-btn active" data-width="100%" title="Desktop">🖥️</button>
+                        <button class="responsive-btn" data-width="768px" title="Tablet">📟</button>
+                        <button class="responsive-btn" data-width="375px" title="Mobile">📱</button>
+                    </div>
+                    <button class="canvas-close-btn" id="canvas-close-btn" title="Close Panel">&times;</button>
+                </div>
+            </div>
+            <div class="canvas-content">
+                <!-- Live Preview Tab -->
+                <div class="canvas-tab-content active" id="canvas-preview-tab">
+                    <div class="iframe-wrapper">
+                        <iframe id="canvas-preview-iframe" sandbox="allow-scripts allow-forms allow-modals allow-popups"></iframe>
+                    </div>
+                </div>
+                <!-- Code Editor Tab -->
+                <div class="canvas-tab-content" id="canvas-editor-tab" style="display: none;">
+                    <div class="editor-container">
+                        <textarea id="canvas-code-textarea" spellcheck="false"></textarea>
+                        <div class="editor-buttons">
+                            <button id="canvas-run-btn" class="primary-btn">▶ Run Code</button>
+                            <button id="canvas-send-chat-btn" class="secondary-btn">💬 Send to Chat</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- Mini Browser Tab -->
+                <div class="canvas-tab-content" id="canvas-browser-tab" style="display: none;">
+                    <div class="browser-navbar">
+                        <button id="browser-back-btn" class="browser-nav-btn">◀</button>
+                        <button id="browser-forward-btn" class="browser-nav-btn">▶</button>
+                        <button id="browser-refresh-btn" class="browser-nav-btn">🔄</button>
+                        <input type="text" id="browser-address-input" placeholder="Enter URL (e.g. https://wikipedia.org)...">
+                        <button id="browser-scrape-btn" class="primary-btn">✂ Scrape Page</button>
+                    </div>
+                    <div class="iframe-wrapper">
+                        <iframe id="canvas-browser-iframe" sandbox="allow-scripts allow-forms allow-same-origin allow-popups"></iframe>
+                    </div>
                 </div>
             </div>
         </div>
