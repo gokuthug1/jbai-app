@@ -289,7 +289,7 @@ class HuggingFaceSynthesizer:
     Get your token at https://huggingface.co/settings/tokens
 
     Uses the OpenAI-compatible endpoint:
-      https://api-inference.huggingface.co/v1/chat/completions
+      https://router.huggingface.co/v1/chat/completions
     """
 
     def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
@@ -298,8 +298,8 @@ class HuggingFaceSynthesizer:
 
     @property
     def hf_chat_url(self) -> str:
-        # Use the free Serverless Inference API instead of the paid Inference Providers router
-        return "https://api-inference.huggingface.co/v1/chat/completions"
+        # Use the serverless Inference Providers router
+        return "https://router.huggingface.co/v1/chat/completions"
 
     def _headers(self) -> dict[str, str]:
         if not self.settings.hf_api_key:
