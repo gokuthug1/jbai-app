@@ -22,12 +22,16 @@ const ChatApp = {
             JBAI: 'jbai',
             GOOGLE: 'google',
             OPENAI: 'openai',
-            ANTHROPIC: 'anthropic'
+            ANTHROPIC: 'anthropic',
+            GROQ: 'groq',
+            DEEPSEEK: 'deepseek'
         },
         API_ENDPOINTS: {
             GOOGLE_BASE: 'https://generativelanguage.googleapis.com/v1beta/models',
             OPENAI_CHAT: 'https://api.openai.com/v1/chat/completions',
             ANTHROPIC_MESSAGES: 'https://api.anthropic.com/v1/messages',
+            GROQ_CHAT: 'https://api.groq.com/openai/v1/chat/completions',
+            DEEPSEEK_CHAT: 'https://api.deepseek.com/v1/chat/completions',
             JBAI_HEALTH_PATH: '/healthz',
             JBAI_OPENAPI_PATH: '/openapi.json',
             JBAI_SEARCH_PATH: '/v1/web-search',
@@ -59,12 +63,16 @@ const ChatApp = {
             models: {
                 google: 'gemini-2.5-flash',
                 openai: 'gpt-4.1-mini',
-                anthropic: 'claude-3-5-haiku-latest'
+                anthropic: 'claude-3-5-haiku-latest',
+                groq: 'llama-3.3-70b-versatile',
+                deepseek: 'deepseek-chat'
             },
             apiKeys: {
                 google: '',
                 openai: '',
-                anthropic: ''
+                anthropic: '',
+                groq: '',
+                deepseek: ''
             }
         },
         PROMPT_LIBRARY_DEFAULT_CATEGORY: 'All',
@@ -733,6 +741,209 @@ const ChatApp = {
         toggleStopButton(isGenerating) {
             this.elements.stopButton.style.display = isGenerating ? 'flex' : 'none';
         },
+        initSlashAutocomplete() {
+            const inputContainer = document.querySelector('.chat-input-container');
+            if (!inputContainer) return;
+
+            // Create container
+            const container = document.createElement('div');
+            container.className = 'slash-autocomplete-container';
+            inputContainer.appendChild(container);
+            this.elements.slashAutocompleteContainer = container;
+
+            ChatApp.State.autocompleteSelectedIndex = 0;
+            ChatApp.State.autocompleteFilteredItems = [];
+            ChatApp.State.autocompleteIsOpen = false;
+
+            const chatInput = this.elements.chatInput;
+            if (!chatInput) return;
+
+            // Handle Input / Typing
+            chatInput.addEventListener('input', () => {
+                const text = chatInput.value;
+                if (text.startsWith('/') && !text.includes(' ')) {
+                    this.renderAutocompleteDropdown(text);
+                } else {
+                    this.hideAutocompleteDropdown();
+                }
+            });
+
+            // Handle keydown for navigation
+            chatInput.addEventListener('keydown', (e) => {
+                if (!ChatApp.State.autocompleteIsOpen) return;
+
+                const items = ChatApp.State.autocompleteFilteredItems;
+                if (items.length === 0) return;
+
+                if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    ChatApp.State.autocompleteSelectedIndex = (ChatApp.State.autocompleteSelectedIndex + 1) % items.length;
+                    this.updateAutocompleteSelection();
+                } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    ChatApp.State.autocompleteSelectedIndex = (ChatApp.State.autocompleteSelectedIndex - 1 + items.length) % items.length;
+                    this.updateAutocompleteSelection();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.selectAutocompleteItem(items[ChatApp.State.autocompleteSelectedIndex]);
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.hideAutocompleteDropdown();
+                }
+            }, true); // Use capture to intercept Enter before it submits the chat
+
+            // Close when clicking outside
+            document.addEventListener('click', (e) => {
+                if (ChatApp.State.autocompleteIsOpen && !inputContainer.contains(e.target)) {
+                    this.hideAutocompleteDropdown();
+                }
+            });
+        },
+
+        renderAutocompleteDropdown(text) {
+            const container = this.elements.slashAutocompleteContainer;
+            if (!container) return;
+
+            const query = text.toLowerCase();
+            const allItems = this.getAutocompleteItems();
+            
+            // Filter: match "/something" or "something"
+            const filtered = allItems.filter(item => {
+                return item.name.toLowerCase().includes(query) || 
+                       item.title.toLowerCase().includes(query);
+            });
+
+            ChatApp.State.autocompleteFilteredItems = filtered;
+
+            if (filtered.length === 0) {
+                this.hideAutocompleteDropdown();
+                return;
+            }
+
+            // Cap the index
+            if (ChatApp.State.autocompleteSelectedIndex >= filtered.length) {
+                ChatApp.State.autocompleteSelectedIndex = 0;
+            }
+
+            container.innerHTML = '';
+            filtered.forEach((item, index) => {
+                const itemEl = document.createElement('button');
+                itemEl.type = 'button';
+                itemEl.className = 'slash-autocomplete-item';
+                if (index === ChatApp.State.autocompleteSelectedIndex) {
+                    itemEl.classList.add('is-selected');
+                }
+
+                // Make nice icon
+                const firstChar = item.title.replace(/^\//, '').charAt(0).toUpperCase();
+
+                itemEl.innerHTML = `
+                    <div class="slash-autocomplete-icon">${firstChar}</div>
+                    <div class="slash-autocomplete-details">
+                        <div class="slash-autocomplete-name">${item.title}</div>
+                        <div class="slash-autocomplete-desc">${item.description}</div>
+                    </div>
+                    <span class="slash-autocomplete-badge">${item.badge}</span>
+                `;
+
+                itemEl.addEventListener('click', () => {
+                    this.selectAutocompleteItem(item);
+                });
+
+                container.appendChild(itemEl);
+            });
+
+            container.style.display = 'flex';
+            ChatApp.State.autocompleteIsOpen = true;
+            
+            // Scroll selected into view
+            const selectedEl = container.querySelector('.is-selected');
+            if (selectedEl) {
+                selectedEl.scrollIntoView({ block: 'nearest' });
+            }
+        },
+
+        updateAutocompleteSelection() {
+            const container = this.elements.slashAutocompleteContainer;
+            if (!container) return;
+
+            const items = container.querySelectorAll('.slash-autocomplete-item');
+            items.forEach((itemEl, index) => {
+                if (index === ChatApp.State.autocompleteSelectedIndex) {
+                    itemEl.classList.add('is-selected');
+                    itemEl.scrollIntoView({ block: 'nearest' });
+                } else {
+                    itemEl.classList.remove('is-selected');
+                }
+            });
+        },
+
+        selectAutocompleteItem(item) {
+            if (item.type === 'skill') {
+                ChatApp.State.activeSkill = item.data;
+                if (this.elements.activeSkillName) {
+                    this.elements.activeSkillName.textContent = item.title || item.name;
+                    this.elements.activeSkillContainer.style.display = 'flex';
+                }
+                this.setChatInputValue('');
+                this.showToast(`Skill activated: ${item.title}`);
+            } else if (item.type === 'command') {
+                this.setChatInputValue(item.name);
+            }
+            this.hideAutocompleteDropdown();
+        },
+
+        hideAutocompleteDropdown() {
+            const container = this.elements.slashAutocompleteContainer;
+            if (container) {
+                container.style.display = 'none';
+            }
+            ChatApp.State.autocompleteIsOpen = false;
+        },
+
+        getAutocompleteItems() {
+            const items = [];
+            
+            // 1. Add skills
+            const skills = ChatApp.State.skillCatalog?.items || [];
+            skills.forEach(skill => {
+                items.push({
+                    id: skill.id,
+                    name: skill.id.startsWith('/') ? skill.id : '/' + skill.id,
+                    title: skill.title || skill.name || skill.id,
+                    description: skill.description || 'Activate this skill',
+                    badge: 'Skill',
+                    type: 'skill',
+                    data: skill
+                });
+            });
+
+            // 2. Add built-in custom commands
+            const customCommands = [
+                { name: '/html', description: 'Give a random HTML code that\'s interesting and fun.' },
+                { name: '/profile', description: 'List all custom commands and explain what each does.' },
+                { name: '/concept', description: 'Ask what concept the user wants to create.' },
+                { name: '/song', description: 'Ask about the user\'s music taste, then recommend a song.' },
+                { name: '/word', description: 'Give a new word and its definition.' },
+                { name: '/tip', description: 'Share a useful lifehack or tip.' },
+                { name: '/invention', description: 'Generate a fictional, interesting invention idea.' },
+                { name: '/sp', description: 'Correct any text the user sends for spelling and grammar.' },
+                { name: '/art', description: 'Suggest a prompt or idea for a creative art project.' },
+                { name: '/bdw', description: 'Break down a word: pronunciation, definition, and more.' }
+            ];
+            customCommands.forEach(cmd => {
+                items.push({
+                    id: cmd.name,
+                    name: cmd.name,
+                    title: cmd.name,
+                    description: cmd.description,
+                    badge: 'Command',
+                    type: 'command'
+                });
+            });
+
+            return items;
+        },
         setChatInputValue(value) {
             this.elements.chatInput.value = value || '';
             this.elements.chatInput.dispatchEvent(new Event('input'));
@@ -1344,6 +1555,8 @@ const ChatApp = {
                         <option value="google">Google</option>
                         <option value="openai">OpenAI</option>
                         <option value="anthropic">Anthropic</option>
+                        <option value="groq">Groq</option>
+                        <option value="deepseek">DeepSeek</option>
                     </select>
                 </div>
                 <div class="settings-row settings-row-input" data-provider-base-url-row="true" style="display: none;">
@@ -1495,6 +1708,26 @@ const ChatApp = {
                     requiresModel: true,
                     requiresApiKey: true,
                     capabilityNote: 'Anthropic direct mode sends requests from this browser using your saved API key.'
+                },
+                groq: {
+                    modelPlaceholder: 'llama-3.3-70b-versatile',
+                    keyPlaceholder: 'gsk_...',
+                    supportsGoogleTools: false,
+                    supportsAgentMode: true,
+                    requiresBaseUrl: false,
+                    requiresModel: true,
+                    requiresApiKey: true,
+                    capabilityNote: 'Groq direct mode runs fast inference using your saved Groq API key.'
+                },
+                deepseek: {
+                    modelPlaceholder: 'deepseek-chat',
+                    keyPlaceholder: 'sk-...',
+                    supportsGoogleTools: false,
+                    supportsAgentMode: true,
+                    requiresBaseUrl: false,
+                    requiresModel: true,
+                    requiresApiKey: true,
+                    capabilityNote: 'DeepSeek direct mode runs OpenAI-compatible completions using your DeepSeek API key.'
                 }
             };
 
@@ -1850,6 +2083,10 @@ const ChatApp = {
                     return 'OpenAI';
                 case ChatApp.Config.PROVIDERS.ANTHROPIC:
                     return 'Anthropic';
+                case ChatApp.Config.PROVIDERS.GROQ:
+                    return 'Groq';
+                case ChatApp.Config.PROVIDERS.DEEPSEEK:
+                    return 'DeepSeek';
                 default:
                     return 'Google';
             }
@@ -2171,7 +2408,7 @@ const ChatApp = {
             if (!text) throw new Error('Google returned an empty response.');
             return text;
         },
-        async requestOpenAiText({ apiKey, model, contents, systemInstructionText, signal, titleMode = false }) {
+        async requestOpenAiCompatibleText({ apiKey, model, contents, systemInstructionText, signal, titleMode = false, endpoint, providerName }) {
             const payload = {
                 model,
                 messages: this.toOpenAiMessages(contents, systemInstructionText),
@@ -2179,7 +2416,7 @@ const ChatApp = {
                 ...(titleMode ? { max_tokens: 30 } : {})
             };
 
-            const response = await fetch(ChatApp.Config.API_ENDPOINTS.OPENAI_CHAT, {
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2190,13 +2427,34 @@ const ChatApp = {
             });
 
             if (!response.ok) {
-                throw new Error(await this.getErrorMessageFromResponse(response, 'OpenAI'));
+                throw new Error(await this.getErrorMessageFromResponse(response, providerName));
             }
 
             const data = await response.json();
             const text = this.extractOpenAiText(data).trim();
-            if (!text) throw new Error('OpenAI returned an empty response.');
+            if (!text) throw new Error(`${providerName} returned an empty response.`);
             return text;
+        },
+        async requestOpenAiText(args) {
+            return this.requestOpenAiCompatibleText({
+                ...args,
+                endpoint: ChatApp.Config.API_ENDPOINTS.OPENAI_CHAT,
+                providerName: 'OpenAI'
+            });
+        },
+        async requestGroqText(args) {
+            return this.requestOpenAiCompatibleText({
+                ...args,
+                endpoint: ChatApp.Config.API_ENDPOINTS.GROQ_CHAT,
+                providerName: 'Groq'
+            });
+        },
+        async requestDeepSeekText(args) {
+            return this.requestOpenAiCompatibleText({
+                ...args,
+                endpoint: ChatApp.Config.API_ENDPOINTS.DEEPSEEK_CHAT,
+                providerName: 'DeepSeek'
+            });
         },
         async requestAnthropicText({ apiKey, model, contents, systemInstructionText, signal, titleMode = false }) {
             const payload = {
@@ -2361,6 +2619,28 @@ const ChatApp = {
 
             if (provider === ChatApp.Config.PROVIDERS.OPENAI) {
                 return this.requestOpenAiText({
+                    apiKey,
+                    model,
+                    contents: sanitizedContents,
+                    systemInstructionText,
+                    signal,
+                    titleMode
+                });
+            }
+
+            if (provider === ChatApp.Config.PROVIDERS.GROQ) {
+                return this.requestGroqText({
+                    apiKey,
+                    model,
+                    contents: sanitizedContents,
+                    systemInstructionText,
+                    signal,
+                    titleMode
+                });
+            }
+
+            if (provider === ChatApp.Config.PROVIDERS.DEEPSEEK) {
+                return this.requestDeepSeekText({
                     apiKey,
                     model,
                     contents: sanitizedContents,
@@ -2553,15 +2833,14 @@ You are a digital professional. Be concise, accurate, and effective.`;
             ChatApp.Store.getToolsConfig();
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
+            ChatApp.UI.initSlashAutocomplete();
             ChatApp.UI.renderSidebar();
             ChatApp.UI.toggleSendButtonState();
             ChatApp.UI.renderConversationSurface();
             this.applyDisplaySettings();
             this.initOfflineDetection();
             this.markJbAiBackendStatusUnknown(ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
-            if (ChatApp.Store.getActiveProviderSettings().provider === ChatApp.Config.PROVIDERS.JBAI) {
-                // void this.refreshJbAiBackendStatus({ force: false, silent: true });
-            }
+            void this.refreshJbAiBackendStatus({ force: false, silent: true });
             
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
@@ -2925,7 +3204,14 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const isAgentMode = toolsConfig.agentMode === true;
                 const { provider } = ChatApp.Store.getActiveProviderSettings();
                 
-                const systemText = await ChatApp.Api.getSystemContext(isAgentMode, provider);
+                let systemText = await ChatApp.Api.getSystemContext(isAgentMode, provider);
+                if (ChatApp.State.activeSkill) {
+                    const skill = ChatApp.State.activeSkill;
+                    const skillRules = skill.instructions || skill.promptTemplate || '';
+                    if (skillRules) {
+                        systemText = `Active Skill Rules for [${skill.title || skill.name || skill.id}]:\n${skillRules}\n\n${systemText}`;
+                    }
+                }
                 const systemInstruction = { parts: [{ text: systemText }] };
                 
                 const apiContents = ChatApp.State.currentConversation.map(msg => ({ role: msg.content.role, parts: msg.content.parts }));

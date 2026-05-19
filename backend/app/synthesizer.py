@@ -340,3 +340,54 @@ class HuggingFaceSynthesizer:
         ):
             yield delta
 
+
+class DeepSeekSynthesizer:
+    """
+    Synthesis via DeepSeek API (free/low-cost tier at https://platform.deepseek.com).
+    DeepSeek uses an OpenAI-compatible API format — just a different base URL and key.
+    """
+
+    def __init__(self, settings: Settings, client: httpx.AsyncClient) -> None:
+        self.settings = settings
+        self.client = client
+
+    async def complete(self, messages: list[dict]) -> str:
+        return await _complete_openai_compat(
+            self.client,
+            self.settings.deepseek_chat_completions_url,
+            self._headers(),
+            self._payload(messages, stream=False),
+            self.settings.request_timeout_seconds + 30,
+        )
+
+    async def stream(self, messages: list[dict]):
+        async for delta in _stream_openai_compat(
+            self.client,
+            self.settings.deepseek_chat_completions_url,
+            self._headers(),
+            self._payload(messages, stream=True),
+            self.settings.request_timeout_seconds + 30,
+        ):
+            yield delta
+
+    def _headers(self) -> dict[str, str]:
+        if not self.settings.deepseek_api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY is not configured.")
+        return {
+            "Authorization": f"Bearer {self.settings.deepseek_api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def _payload(self, messages: list[dict], stream: bool) -> dict:
+        model = self.settings.synthesis_model or "deepseek-chat"
+        # If synthesis_model is a groq model default or other default, switch to deepseek-chat
+        if "llama" in model.lower() or "gemini" in model.lower() or "gpt" in model.lower():
+            model = "deepseek-chat"
+        return {
+            "model": model,
+            "messages": messages,
+            "temperature": 0.1,
+            "stream": stream,
+        }
+
+

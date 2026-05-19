@@ -1523,3 +1523,110 @@ dd {
 body.hide-scrollbar ::-webkit-scrollbar { display: none; }
 body.hide-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 body.hide-previews .html-render-box, body.hide-previews .svg-render-box { display: none !important; }
+
+/* Slash Autocomplete Menu (Claude-like) */
+.slash-autocomplete-container {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    left: 20px;
+    right: 20px;
+    max-width: 800px;
+    margin: 0 auto;
+    background-color: var(--modal-bg, #1a1a1a);
+    border: 1px solid var(--border-color, #333);
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+    z-index: 2000;
+    max-height: 280px;
+    overflow-y: auto;
+    display: none;
+    flex-direction: column;
+    padding: 6px 0;
+    animation: slideUpFade 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpFade {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.slash-autocomplete-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    gap: 12px;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    width: 100%;
+    text-align: left;
+    color: var(--text-color, #e0e0e0);
+    transition: background-color 0.15s ease, color 0.15s ease;
+    font-family: inherit;
+    font-size: 14px;
+}
+
+.slash-autocomplete-item:hover,
+.slash-autocomplete-item.is-selected {
+    background-color: var(--sidebar-hover, #2a2a2a);
+}
+
+.slash-autocomplete-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background-color: color-mix(in srgb, var(--focus-color, #4f46e5) 15%, var(--bg-color, #121212));
+    color: var(--focus-color, #4f46e5);
+    font-weight: bold;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.slash-autocomplete-details {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex-grow: 1;
+}
+
+.slash-autocomplete-name {
+    font-weight: 600;
+    color: var(--text-color, #e0e0e0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.slash-autocomplete-desc {
+    font-size: 12px;
+    color: var(--text-secondary, #a0a0a0);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.slash-autocomplete-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background-color: var(--border-color, #333);
+    color: var(--text-secondary, #a0a0a0);
+    text-transform: uppercase;
+    font-weight: bold;
+    flex-shrink: 0;
+}
+
+/* Make chat input container relative to position autocomplete absolute dropdown */
+.chat-input-container {
+    position: relative !important;
+}
+

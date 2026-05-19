@@ -10,7 +10,7 @@ from .prompting import build_grounded_messages
 from .query_planner import QueryPlanner
 from .reranker import SourceReranker
 from .search_providers import TavilySearchProvider
-from .synthesizer import GeminiSynthesizer, GroqSynthesizer, HuggingFaceSynthesizer, OpenAISynthesizer
+from .synthesizer import GeminiSynthesizer, GroqSynthesizer, HuggingFaceSynthesizer, OpenAISynthesizer, DeepSeekSynthesizer
 from .token_budget import TokenBudgeter
 from .utils import format_sse, trim_text
 from .extraction import SourceExtractor
@@ -40,6 +40,8 @@ class WebSearchOrchestrator:
             self.synthesizer = GeminiSynthesizer(settings, client)
         elif provider == "hf":
             self.synthesizer = HuggingFaceSynthesizer(settings, client)
+        elif provider == "deepseek":
+            self.synthesizer = DeepSeekSynthesizer(settings, client)
         else:
             self.synthesizer = GroqSynthesizer(settings, client)
 

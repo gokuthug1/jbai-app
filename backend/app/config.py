@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     groq_api_key: str | None = None
     hf_api_key: str | None = None
+    deepseek_api_key: str | None = None
 
     synthesis_model: str = "llama-3.3-70b-versatile"
     max_context_tokens: int = Field(default=10_000, ge=2_000, le=64_000)
@@ -35,8 +36,10 @@ class Settings(BaseSettings):
 
     tavily_search_url: str = "https://api.tavily.com/search"
     openai_chat_completions_url: str = "https://api.openai.com/v1/chat/completions"
+    deepseek_chat_completions_url: str = "https://api.deepseek.com/v1/chat/completions"
 
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
