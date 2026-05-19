@@ -2235,8 +2235,9 @@ const ChatApp = {
         sanitizeApiContents(apiContents) {
             return apiContents.map((content) => {
                 if (!content?.role || !Array.isArray(content.parts)) return content;
+                const mappedRole = content.role === 'assistant' ? 'model' : content.role;
                 return {
-                    role: content.role,
+                    role: mappedRole,
                     parts: content.parts.map((part) => {
                         if (part?.text) {
                             return { text: ChatApp.Utils.sanitizeTextForApi(part.text) };
@@ -2814,6 +2815,15 @@ const ChatApp = {
 - Use standard Markdown in your responses (including tables).
 ${providerNote}
 
+--- IMAGE GENERATION SYSTEM ---
+If the user explicitly asks you to generate, create, make, draw, paint, or design an image/picture, you can trigger our automatic image generation engine by writing exactly this block in your response:
+[IMAGE_GEN: detailed prompt describing the image in English]
+
+Rules for Image Generation:
+1. ONLY trigger image generation when the user explicitly asks for an image/picture. Never generate one randomly or unsolicited.
+2. The prompt inside the [IMAGE_GEN: ...] tag should be highly detailed, descriptive, and written in English (e.g., [IMAGE_GEN: A beautiful oil painting of a cat playing with a red ball of yarn on a wooden floor, soft lighting, detailed texture]).
+3. You can write normal conversational text before or after the tag.
+
 --- MULTIPLE FILES & DOWNLOAD (CRITICAL) ---
 When users ask for multiple files, separate files, or a download link, you MUST use this format:
 \`[FILES: { "files": [{"name": "file1.ext", "content": "content here"}, {"name": "file2.ext", "content": "content here"}] }]\`
@@ -3223,7 +3233,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const helpMsg = {
                     id: ChatApp.Utils.generateUUID(),
                     content: {
-                        role: "assistant",
+                        role: "model",
                         parts: [{ text: `### J.B.A.I Slash Commands & Skills Help\n\nHere are the available commands:\n- **/image <prompt>** - Generate an AI image (uses FLUX.1 / Pollinations fallback)\n- **/clear** - Clear the conversation history\n- **/help** - Show this help menu\n- **/skills** - List all discovered skills from the catalog\n- **/<skill-name>** - Activate a custom skill (e.g., **/skill-creator**)` }]
                     }
                 };
@@ -3250,7 +3260,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const skillsMsg = {
                     id: ChatApp.Utils.generateUUID(),
                     content: {
-                        role: "assistant",
+                        role: "model",
                         parts: [{ text: msgText }]
                     }
                 };
@@ -3377,8 +3387,6 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
 
         async generateImage(prompt) {
-            ChatApp.State.setGenerating(true);
-            
             const userMsg = {
                 id: ChatApp.Utils.generateUUID(),
                 content: {
@@ -3389,6 +3397,11 @@ You are a digital professional. Be concise, accurate, and effective.`;
             ChatApp.State.addMessage(userMsg);
             await ChatApp.UI.renderMessage(userMsg);
             
+            await this.generateImageInline(prompt);
+        },
+
+        async generateImageInline(prompt) {
+            ChatApp.State.setGenerating(true);
             const placeholderEl = await ChatApp.UI.renderMessage({ id: null }, true);
             ChatApp.UI.updateThinkingMessage(placeholderEl, "Generating image...");
             ChatApp.UI.scrollToBottom();
@@ -3437,7 +3450,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const assistantMessage = {
                     id: assistantMsgId,
                     content: {
-                        role: "assistant",
+                        role: "model",
                         parts: [{ text: assistantText }]
                     }
                 };
@@ -3445,18 +3458,16 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 placeholderEl.innerHTML = '';
                 ChatApp.State.addMessage(assistantMessage);
                 
-                const formattedHtml = ChatApp.Formatter.formatMarkdown(assistantText);
+                const formattedHtml = await MessageFormatter.format(assistantText);
                 
                 placeholderEl.innerHTML = `
-                    <div class="message-bubble assistant">
-                        <div class="message-content">
-                            ${formattedHtml}
-                            <div class="image-actions" style="margin-top: 12px; display: flex; gap: 8px;">
-                                <a href="${imageData}" download="generated-image.jpg" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; background-color: var(--sidebar-hover); color: var(--text-color); border: 1px solid var(--border-color);">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                                    Download Image
-                                </a>
-                            </div>
+                    <div class="message-content">
+                        ${formattedHtml}
+                        <div class="image-actions" style="margin-top: 12px; display: flex; gap: 8px;">
+                            <a href="${imageData}" download="generated-image.jpg" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; background-color: var(--sidebar-hover); color: var(--text-color); border: 1px solid var(--border-color);">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                Download Image
+                            </a>
                         </div>
                     </div>
                 `;
@@ -3465,10 +3476,8 @@ You are a digital professional. Be concise, accurate, and effective.`;
             } catch (error) {
                 placeholderEl.classList.remove('thinking');
                 placeholderEl.innerHTML = `
-                    <div class="message-bubble assistant error-message">
-                        <div class="message-content">
-                            Failed to generate image: ${error.message}
-                        </div>
+                    <div class="message-content error-message">
+                        Failed to generate image: ${error.message}
                     </div>
                 `;
                 ChatApp.UI.scrollToBottom();
@@ -3590,17 +3599,34 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const processedModelText = await this.processResponseForFiles(rawModelText);
 
                 // 5. Finalize
-                const contentObj = { role: "model", parts: [{ text: rawModelText }] };
+                let contentObj = { role: "model", parts: [{ text: rawModelText }] };
                 const jbAiMetadata = completionPayload ? ChatApp.Api.mapJbAiCompletionPayload(completionPayload) : null;
                 if (jbAiMetadata?.groundingMetadata) {
                     contentObj.groundingMetadata = jbAiMetadata.groundingMetadata;
                 }
-                const botMessageForState = { id: messageId, content: contentObj };
+                let botMessageForState = { id: messageId, content: contentObj };
                 if (jbAiMetadata?.searchMetadata) {
                     botMessageForState.searchMetadata = jbAiMetadata.searchMetadata;
                 }
                 
-                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: processedModelText }], messageId, botMessageForState);
+                // Check if the assistant wants to generate an image
+                const imageGenMatch = rawModelText.match(/\[IMAGE_GEN:\s*([\s\S]+?)\]/i);
+                let finalProcessed = processedModelText;
+                let triggerImagePrompt = null;
+                if (imageGenMatch) {
+                    triggerImagePrompt = imageGenMatch[1].trim();
+                    const cleanRaw = rawModelText.replace(/\[IMAGE_GEN:\s*([\s\S]+?)\]/gi, '').trim();
+                    finalProcessed = processedModelText.replace(/\[IMAGE_GEN:\s*([\s\S]+?)\]/gi, '').trim();
+                    
+                    contentObj.parts[0].text = cleanRaw;
+                    botMessageForState.content = contentObj;
+                }
+
+                await ChatApp.UI.finalizeBotMessage(messageEl, [{ text: finalProcessed }], messageId, botMessageForState);
+
+                if (triggerImagePrompt) {
+                    void this.generateImageInline(triggerImagePrompt);
+                }
 
             } catch (error) {
                 // If checking for abort
