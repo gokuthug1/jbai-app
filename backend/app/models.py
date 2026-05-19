@@ -98,3 +98,13 @@ class SkillCatalogItemOut(BaseModel):
     promptTemplate: str
     instructions: str = ""
     sourcePath: str | None = None
+
+
+class ImageGenerationRequest(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=1000)
+    model: str | None = None
+
+
+class ImageGenerationResponse(BaseModel):
+    image_data: str
+

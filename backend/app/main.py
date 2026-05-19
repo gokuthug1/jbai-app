@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import base64
+import urllib.parse
 import httpx
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .config import Settings, get_settings
-from .models import SearchModeRequest, SearchModeResponse, SkillCatalogItemOut
+from .models import SearchModeRequest, SearchModeResponse, SkillCatalogItemOut, ImageGenerationRequest, ImageGenerationResponse
 from .orchestrator import WebSearchOrchestrator
 from .skills_catalog import discover_skill_catalog
+
 
 
 app = FastAPI(
@@ -79,3 +82,41 @@ async def web_search_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.post("/v1/images/generate", response_model=ImageGenerationResponse)
+async def generate_image(
+    payload: ImageGenerationRequest,
+    settings: Settings = Depends(get_settings),
+) -> ImageGenerationResponse:
+    client: httpx.AsyncClient = app.state.http_client
+    prompt = payload.prompt
+
+    # 1. Try Hugging Face FLUX if api key exists
+    if settings.hf_api_key:
+        try:
+            url = "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell"
+            headers = {"Authorization": f"Bearer {settings.hf_api_key}"}
+            res = await client.post(url, headers=headers, json={"inputs": prompt}, timeout=60.0)
+            if res.status_code == 200 and res.content:
+                content_type = res.headers.get("content-type", "image/jpeg")
+                b64_data = base64.b64encode(res.content).decode("utf-8")
+                return ImageGenerationResponse(image_data=f"data:{content_type};base64,{b64_data}")
+        except Exception:
+            # Fall back to Pollinations if HF fails
+            pass
+
+    # 2. Fallback to Pollinations AI
+    try:
+        encoded_prompt = urllib.parse.quote(prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
+        res = await client.get(url, timeout=30.0)
+        if res.status_code == 200 and res.content:
+            content_type = res.headers.get("content-type", "image/jpeg")
+            b64_data = base64.b64encode(res.content).decode("utf-8")
+            return ImageGenerationResponse(image_data=f"data:{content_type};base64,{b64_data}")
+        else:
+            raise HTTPException(status_code=500, detail="Failed to fetch image from Pollinations AI")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Image generation failed: {str(e)}")
+

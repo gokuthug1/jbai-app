@@ -142,6 +142,7 @@ const ChatApp = {
         },
         customPresets: [],
         activeSkill: null,
+        activeCommand: null,
         setCurrentConversation(history) {
             this.currentConversation = Array.isArray(history)
                 ? history.map((msg, index) => ChatApp.Utils.normalizeMessage(msg, index)).filter(Boolean)
@@ -185,6 +186,9 @@ const ChatApp = {
             this.attachedFiles = [];
             ChatApp.UI.renderFilePreviews();
             this.setGenerating(false);
+            this.activeSkill = null;
+            this.activeCommand = null;
+            ChatApp.UI.renderActiveCommandPill();
         }
     },
 
@@ -620,6 +624,7 @@ const ChatApp = {
                 activeSkillContainer: document.getElementById('active-skill-container'),
                 activeSkillName: document.getElementById('active-skill-name'),
                 clearSkillBtn: document.getElementById('clear-skill-btn'),
+                chatInputPillContainer: document.getElementById('chat-input-pill-container'),
             };
         },
         hideTooltip() {
@@ -768,8 +773,19 @@ const ChatApp = {
                 }
             });
 
-            // Handle keydown for navigation
+            // Handle keydown for navigation and badge deletion
             chatInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Backspace' && chatInput.value === '') {
+                    if (ChatApp.State.activeSkill || ChatApp.State.activeCommand) {
+                        e.preventDefault();
+                        ChatApp.State.activeSkill = null;
+                        ChatApp.State.activeCommand = null;
+                        this.renderActiveCommandPill();
+                        this.showToast('Pill cleared');
+                        return;
+                    }
+                }
+
                 if (!ChatApp.State.autocompleteIsOpen) return;
 
                 const items = ChatApp.State.autocompleteFilteredItems;
@@ -807,7 +823,6 @@ const ChatApp = {
             const query = text.toLowerCase();
             const allItems = this.getAutocompleteItems();
             
-            // Filter: match "/something" or "something"
             const filtered = allItems.filter(item => {
                 return item.name.toLowerCase().includes(query) || 
                        item.title.toLowerCase().includes(query);
@@ -820,12 +835,18 @@ const ChatApp = {
                 return;
             }
 
-            // Cap the index
             if (ChatApp.State.autocompleteSelectedIndex >= filtered.length) {
                 ChatApp.State.autocompleteSelectedIndex = 0;
             }
 
             container.innerHTML = '';
+
+            const listEl = document.createElement('div');
+            listEl.className = 'slash-autocomplete-list';
+
+            const detailsCardEl = document.createElement('div');
+            detailsCardEl.className = 'slash-autocomplete-details-card';
+
             filtered.forEach((item, index) => {
                 const itemEl = document.createElement('button');
                 itemEl.type = 'button';
@@ -834,7 +855,6 @@ const ChatApp = {
                     itemEl.classList.add('is-selected');
                 }
 
-                // Make nice icon
                 const firstChar = item.title.replace(/^\//, '').charAt(0).toUpperCase();
 
                 itemEl.innerHTML = `
@@ -846,21 +866,25 @@ const ChatApp = {
                     <span class="slash-autocomplete-badge">${item.badge}</span>
                 `;
 
+                itemEl.addEventListener('mouseover', () => {
+                    ChatApp.State.autocompleteSelectedIndex = index;
+                    this.updateAutocompleteSelection();
+                });
+
                 itemEl.addEventListener('click', () => {
                     this.selectAutocompleteItem(item);
                 });
 
-                container.appendChild(itemEl);
+                listEl.appendChild(itemEl);
             });
+
+            container.appendChild(listEl);
+            container.appendChild(detailsCardEl);
 
             container.style.display = 'flex';
             ChatApp.State.autocompleteIsOpen = true;
             
-            // Scroll selected into view
-            const selectedEl = container.querySelector('.is-selected');
-            if (selectedEl) {
-                selectedEl.scrollIntoView({ block: 'nearest' });
-            }
+            this.updateAutocompleteSelection();
         },
 
         updateAutocompleteSelection() {
@@ -868,6 +892,11 @@ const ChatApp = {
             if (!container) return;
 
             const items = container.querySelectorAll('.slash-autocomplete-item');
+            const detailsCard = container.querySelector('.slash-autocomplete-details-card');
+            
+            const filtered = ChatApp.State.autocompleteFilteredItems;
+            const selectedItem = filtered[ChatApp.State.autocompleteSelectedIndex];
+
             items.forEach((itemEl, index) => {
                 if (index === ChatApp.State.autocompleteSelectedIndex) {
                     itemEl.classList.add('is-selected');
@@ -876,21 +905,105 @@ const ChatApp = {
                     itemEl.classList.remove('is-selected');
                 }
             });
+
+            if (detailsCard && selectedItem) {
+                const titleText = selectedItem.title || selectedItem.name;
+                const descText = selectedItem.description || 'Activate this skill/command.';
+                const badgeText = selectedItem.badge || 'Item';
+                
+                detailsCard.innerHTML = `
+                    <div class="slash-autocomplete-details-header">
+                        <div class="slash-autocomplete-details-title">${titleText}</div>
+                        <span class="slash-autocomplete-details-badge">${badgeText}</span>
+                    </div>
+                    <div class="slash-autocomplete-details-desc">${descText}</div>
+                `;
+            }
         },
 
         selectAutocompleteItem(item) {
             if (item.type === 'skill') {
                 ChatApp.State.activeSkill = item.data;
-                if (this.elements.activeSkillName) {
-                    this.elements.activeSkillName.textContent = item.title || item.name;
-                    this.elements.activeSkillContainer.style.display = 'flex';
-                }
+                ChatApp.State.activeCommand = null;
+                this.renderActiveCommandPill();
                 this.setChatInputValue('');
                 this.showToast(`Skill activated: ${item.title}`);
             } else if (item.type === 'command') {
-                this.setChatInputValue(item.name);
+                if (item.name === '/image') {
+                    ChatApp.State.activeCommand = '/image';
+                    ChatApp.State.activeSkill = null;
+                    this.renderActiveCommandPill();
+                    this.setChatInputValue('');
+                } else if (item.name === '/clear' || item.name === '/help' || item.name === '/skills') {
+                    ChatApp.State.activeCommand = item.name;
+                    ChatApp.State.activeSkill = null;
+                    this.renderActiveCommandPill();
+                    this.setChatInputValue('');
+                } else {
+                    this.setChatInputValue(item.name);
+                }
             }
             this.hideAutocompleteDropdown();
+        },
+
+        renderActiveCommandPill() {
+            const container = this.elements.chatInputPillContainer;
+            if (!container) return;
+
+            const activeSkill = ChatApp.State.activeSkill;
+            const activeCommand = ChatApp.State.activeCommand;
+
+            if (activeSkill) {
+                container.innerHTML = `
+                    <div class="chat-command-pill">
+                        /${activeSkill.id}
+                        <button class="chat-input-pill-close" type="button" aria-label="Clear skill">&times;</button>
+                    </div>
+                `;
+                container.style.display = 'flex';
+                if (this.elements.chatInput) {
+                    this.elements.chatInput.placeholder = "Type instructions...";
+                }
+                
+                const clearBtn = container.querySelector('.chat-input-pill-close');
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', () => {
+                        ChatApp.State.activeSkill = null;
+                        this.renderActiveCommandPill();
+                        this.showToast('Active skill cleared');
+                    });
+                }
+            } else if (activeCommand) {
+                container.innerHTML = `
+                    <div class="chat-command-pill">
+                        ${activeCommand}
+                        <button class="chat-input-pill-close" type="button" aria-label="Clear command">&times;</button>
+                    </div>
+                `;
+                container.style.display = 'flex';
+                if (this.elements.chatInput) {
+                    this.elements.chatInput.placeholder = "Type prompt details...";
+                }
+                
+                const clearBtn = container.querySelector('.chat-input-pill-close');
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', () => {
+                        ChatApp.State.activeCommand = null;
+                        this.renderActiveCommandPill();
+                        this.showToast('Active command cleared');
+                    });
+                }
+            } else {
+                container.innerHTML = '';
+                container.style.display = 'none';
+                if (this.elements.chatInput) {
+                    this.elements.chatInput.placeholder = "Type your message...";
+                }
+            }
+            
+            if (this.elements.chatInput) {
+                this.elements.chatInput.dispatchEvent(new Event('input'));
+            }
         },
 
         hideAutocompleteDropdown() {
@@ -904,7 +1017,6 @@ const ChatApp = {
         getAutocompleteItems() {
             const items = [];
             
-            // 1. Add skills
             const skills = ChatApp.State.skillCatalog?.items || [];
             skills.forEach(skill => {
                 items.push({
@@ -918,8 +1030,11 @@ const ChatApp = {
                 });
             });
 
-            // 2. Add built-in custom commands
             const customCommands = [
+                { name: '/image', description: 'Generate an AI image from a text prompt. Usage: /image <prompt>' },
+                { name: '/clear', description: 'Clear all conversation history and start a new chat.' },
+                { name: '/help', description: 'Show all available J.B.A.I slash commands.' },
+                { name: '/skills', description: 'List all custom skills currently loaded in the J.B.A.I catalog.' },
                 { name: '/html', description: 'Give a random HTML code that\'s interesting and fun.' },
                 { name: '/profile', description: 'List all custom commands and explain what each does.' },
                 { name: '/concept', description: 'Ask what concept the user wants to create.' },
@@ -2165,7 +2280,7 @@ const ChatApp = {
                 max_results_per_query: toolsConfig?.agentMode ? 6 : 5,
                 max_sources: toolsConfig?.agentMode ? 8 : 6,
                 debug: false,
-                skill_instructions: ChatApp.State.activeSkill ? ChatApp.State.activeSkill.instructions : null
+                skill_instructions: (ChatApp.State.activeSkillForGeneration || ChatApp.State.activeSkill) ? (ChatApp.State.activeSkillForGeneration || ChatApp.State.activeSkill).instructions : null
             };
         },
         parseSseChunk(chunk) {
@@ -2718,8 +2833,9 @@ This creates an automatic ZIP download button. JSZip is integrated. DO NOT say y
 - Current Date/Time: ${new Date().toLocaleString()}
 - For single-file HTML responses (without file requests), HTML must be self-contained in one markdown block. When using [FILES: {...}], you can include multiple files.`;
 
-            if (ChatApp.State.activeSkill && ChatApp.State.activeSkill.instructions) {
-                baseContext += `\n\n--- ACTIVE SKILL INSTRUCTIONS ---\n${ChatApp.State.activeSkill.instructions.trim()}\n\nPlease abide by these skill instructions above all else.`;
+            const currentSkill = ChatApp.State.activeSkillForGeneration || ChatApp.State.activeSkill;
+            if (currentSkill && currentSkill.instructions) {
+                baseContext += `\n\n--- ACTIVE SKILL INSTRUCTIONS ---\n${currentSkill.instructions.trim()}\n\nPlease abide by these skill instructions above all else.`;
             }
             
             return baseContext;
@@ -2859,6 +2975,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 elements.clearSkillBtn.addEventListener('click', () => {
                     ChatApp.State.activeSkill = null;
                     elements.activeSkillContainer.style.display = 'none';
+                    ChatApp.UI.renderActiveCommandPill();
                     ChatApp.UI.showToast('Active skill cleared');
                 });
             }
@@ -3028,13 +3145,10 @@ You are a digital professional. Be concise, accurate, and effective.`;
             
             if (item.kind === 'skill' && item.instructions) {
                 ChatApp.State.activeSkill = item;
-                if (ChatApp.UI.elements.activeSkillName) {
-                    ChatApp.UI.elements.activeSkillName.textContent = item.title || item.name;
-                    ChatApp.UI.elements.activeSkillContainer.style.display = 'flex';
-                }
-                ChatApp.UI.showToast(`Skill activated: ${item.title}`);
+                ChatApp.UI.renderActiveCommandPill();
+                ChatApp.UI.showToast(`Skill activated: ${item.title || item.name}`);
             } else {
-                ChatApp.UI.setChatInputValue(item.promptTemplate);
+                ChatApp.UI.setChatInputValue(item.promptTemplate || '');
             }
             
             const promptOverlay = document.querySelector('[data-prompt-library-body="true"]')?.closest('.modal-overlay');
@@ -3075,13 +3189,98 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         async handleChatSubmission() {
             if (!navigator.onLine) { ChatApp.UI.showToast('Cannot send message while offline. Please check your connection.', 'error'); return; }
-            const userInput = ChatApp.UI.elements.chatInput.value.trim();
+            let userInput = ChatApp.UI.elements.chatInput.value.trim();
             const files = [...ChatApp.State.attachedFiles];
             const { provider } = ChatApp.Store.getActiveProviderSettings();
             
+            // Detect active command from pill or text prefix
+            let activeCommandName = null;
+            if (ChatApp.State.activeCommand) {
+                activeCommandName = ChatApp.State.activeCommand;
+            } else if (userInput.startsWith('/')) {
+                const spaceIdx = userInput.indexOf(' ');
+                activeCommandName = spaceIdx !== -1 ? userInput.substring(0, spaceIdx) : userInput;
+            }
+
+            // Handle non-generation slash commands first
+            if (activeCommandName === '/clear') {
+                ChatApp.UI.elements.chatInput.value = "";
+                ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+                ChatApp.State.activeCommand = null;
+                ChatApp.State.activeSkill = null;
+                ChatApp.UI.renderActiveCommandPill();
+                this.startNewChat();
+                ChatApp.UI.showToast('Conversation cleared', 'info');
+                return;
+            }
+
+            if (activeCommandName === '/help') {
+                ChatApp.UI.elements.chatInput.value = "";
+                ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+                ChatApp.State.activeCommand = null;
+                ChatApp.State.activeSkill = null;
+                ChatApp.UI.renderActiveCommandPill();
+                const helpMsg = {
+                    id: ChatApp.Utils.generateUUID(),
+                    content: {
+                        role: "assistant",
+                        parts: [{ text: `### J.B.A.I Slash Commands & Skills Help\n\nHere are the available commands:\n- **/image <prompt>** - Generate an AI image (uses FLUX.1 / Pollinations fallback)\n- **/clear** - Clear the conversation history\n- **/help** - Show this help menu\n- **/skills** - List all discovered skills from the catalog\n- **/<skill-name>** - Activate a custom skill (e.g., **/skill-creator**)` }]
+                    }
+                };
+                ChatApp.State.addMessage(helpMsg);
+                await ChatApp.UI.renderMessage(helpMsg);
+                return;
+            }
+
+            if (activeCommandName === '/skills') {
+                ChatApp.UI.elements.chatInput.value = "";
+                ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+                ChatApp.State.activeCommand = null;
+                ChatApp.State.activeSkill = null;
+                ChatApp.UI.renderActiveCommandPill();
+                const skills = ChatApp.State.skillCatalog?.items || [];
+                let msgText = "### Discovered Skills Catalog\n\n";
+                if (skills.length === 0) {
+                    msgText += "_No skills found in the catalog._";
+                } else {
+                    skills.forEach(s => {
+                        msgText += `- **/${s.id}** - ${s.title || s.name}: ${s.description}\n`;
+                    });
+                }
+                const skillsMsg = {
+                    id: ChatApp.Utils.generateUUID(),
+                    content: {
+                        role: "assistant",
+                        parts: [{ text: msgText }]
+                    }
+                };
+                ChatApp.State.addMessage(skillsMsg);
+                await ChatApp.UI.renderMessage(skillsMsg);
+                return;
+            }
+
+            if (activeCommandName === '/image') {
+                let prompt = userInput;
+                if (prompt.startsWith('/image')) {
+                    prompt = prompt.replace(/^\/image\s*/, '').trim();
+                }
+                if (!prompt) {
+                    ChatApp.UI.showToast('Please provide a prompt for image generation, e.g., /image a cute cat.', 'error');
+                    return;
+                }
+                ChatApp.UI.elements.chatInput.value = "";
+                ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+                ChatApp.State.activeCommand = null;
+                ChatApp.State.activeSkill = null;
+                ChatApp.UI.renderActiveCommandPill();
+                
+                await this.generateImage(prompt);
+                return;
+            }
+
+            // Normal chat submission
             const validation = ChatApp.Utils.validateMessage(userInput, files);
             if (!validation.valid) { ChatApp.UI.showToast(validation.error, 'error'); return; }
-            
             if (ChatApp.State.isGenerating) return;
 
             try {
@@ -3111,8 +3310,24 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 ChatApp.UI.showToast('Attachments stay in the chat, but J.B.A.I mode currently sends only the text prompt to the web search backend.', 'info', 4500);
             }
 
+            // Capture active skill for text generation context, prepend tag
+            const activeSkill = ChatApp.State.activeSkill;
+            if (activeSkill) {
+                const prefix = `/${activeSkill.id} `;
+                if (!userInput.startsWith(prefix)) {
+                    userInput = prefix + userInput;
+                }
+                ChatApp.State.activeSkillForGeneration = activeSkill;
+            } else {
+                ChatApp.State.activeSkillForGeneration = null;
+            }
+
+            // Clear input and pills immediately
             ChatApp.UI.elements.chatInput.value = "";
             ChatApp.UI.elements.chatInput.dispatchEvent(new Event('input'));
+            ChatApp.State.activeCommand = null;
+            ChatApp.State.activeSkill = null;
+            ChatApp.UI.renderActiveCommandPill();
             
             ChatApp.State.abortController = new AbortController();
             ChatApp.State.setGenerating(true);
@@ -3157,6 +3372,107 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 await this._generateText();
             } catch (error) {
                 ChatApp.UI.showToast(`Error processing files: ${error.message}`, 'error');
+                ChatApp.State.setGenerating(false);
+            }
+        },
+
+        async generateImage(prompt) {
+            ChatApp.State.setGenerating(true);
+            
+            const userMsg = {
+                id: ChatApp.Utils.generateUUID(),
+                content: {
+                    role: "user",
+                    parts: [{ text: `/image ${prompt}` }]
+                }
+            };
+            ChatApp.State.addMessage(userMsg);
+            await ChatApp.UI.renderMessage(userMsg);
+            
+            const placeholderEl = await ChatApp.UI.renderMessage({ id: null }, true);
+            ChatApp.UI.updateThinkingMessage(placeholderEl, "Generating image...");
+            ChatApp.UI.scrollToBottom();
+            
+            try {
+                let imageData = null;
+                const isJbAiConnected = ChatApp.State.jbAiBackend && ChatApp.State.jbAiBackend.status === ChatApp.Config.JBAI_BACKEND_STATES.CONNECTED;
+                
+                if (isJbAiConnected) {
+                    try {
+                        const backendUrl = ChatApp.State.jbAiBackend.baseUrl || 'http://localhost:8000';
+                        const response = await fetch(`${backendUrl}/v1/images/generate`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ prompt: prompt })
+                        });
+                        
+                        if (response.ok) {
+                            const data = await response.json();
+                            imageData = data.image_data;
+                        }
+                    } catch (err) {
+                        console.warn("Backend image generation failed, falling back to direct Pollinations request:", err);
+                    }
+                }
+                
+                if (!imageData) {
+                    const encodedPrompt = encodeURIComponent(prompt);
+                    const fallbackUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true`;
+                    
+                    const res = await fetch(fallbackUrl);
+                    if (res.ok) {
+                        const blob = await res.blob();
+                        imageData = await ChatApp.Utils.blobToBase64(blob);
+                    } else {
+                        throw new Error("Failed to load image from Pollinations AI");
+                    }
+                }
+                
+                placeholderEl.classList.remove('thinking');
+                placeholderEl.dataset.messageId = ChatApp.Utils.generateUUID();
+                
+                const assistantMsgId = ChatApp.Utils.generateUUID();
+                const assistantText = `Here is your generated image for: **${ChatApp.Utils.escapeHTML(prompt)}**\n\n![${ChatApp.Utils.escapeHTML(prompt)}](${imageData})`;
+                
+                const assistantMessage = {
+                    id: assistantMsgId,
+                    content: {
+                        role: "assistant",
+                        parts: [{ text: assistantText }]
+                    }
+                };
+                
+                placeholderEl.innerHTML = '';
+                ChatApp.State.addMessage(assistantMessage);
+                
+                const formattedHtml = ChatApp.Formatter.formatMarkdown(assistantText);
+                
+                placeholderEl.innerHTML = `
+                    <div class="message-bubble assistant">
+                        <div class="message-content">
+                            ${formattedHtml}
+                            <div class="image-actions" style="margin-top: 12px; display: flex; gap: 8px;">
+                                <a href="${imageData}" download="generated-image.jpg" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px; font-weight: 500; background-color: var(--sidebar-hover); color: var(--text-color); border: 1px solid var(--border-color);">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                                    Download Image
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                ChatApp.UI.scrollToBottom();
+            } catch (error) {
+                placeholderEl.classList.remove('thinking');
+                placeholderEl.innerHTML = `
+                    <div class="message-bubble assistant error-message">
+                        <div class="message-content">
+                            Failed to generate image: ${error.message}
+                        </div>
+                    </div>
+                `;
+                ChatApp.UI.scrollToBottom();
+            } finally {
                 ChatApp.State.setGenerating(false);
             }
         },
@@ -3205,8 +3521,8 @@ You are a digital professional. Be concise, accurate, and effective.`;
                 const { provider } = ChatApp.Store.getActiveProviderSettings();
                 
                 let systemText = await ChatApp.Api.getSystemContext(isAgentMode, provider);
-                if (ChatApp.State.activeSkill) {
-                    const skill = ChatApp.State.activeSkill;
+                const skill = ChatApp.State.activeSkillForGeneration || ChatApp.State.activeSkill;
+                if (skill) {
                     const skillRules = skill.instructions || skill.promptTemplate || '';
                     if (skillRules) {
                         systemText = `Active Skill Rules for [${skill.title || skill.name || skill.id}]:\n${skillRules}\n\n${systemText}`;
@@ -3316,6 +3632,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
                     ChatApp.UI.showToast(errorMsg, 'error', 5000);
                 }
             } finally {
+                 ChatApp.State.activeSkillForGeneration = null;
                  ChatApp.State.setGenerating(false);
             }
         },

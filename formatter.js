@@ -397,10 +397,12 @@ export const MessageFormatter = {
                 // 4. RESTORE BLOCKS
                 html = await this._reinsertBlocks(html, blocks);
                 
-                // 5. RESTORE CITATIONS
-                html = html.replace(/&lt;a href=(?:&quot;|&#39;|"|')([^"'>]+?)(?:&quot;|&#39;|"|') class=(?:&quot;|&#39;|"|')citation-ref(?:&quot;|&#39;|"|')&gt;([^&lt;&gt;]+?)&lt;\/a&gt;/g, (match, url, label) => {
-                    const cleanUrl = url.replace(/&amp;amp;/g, '&amp;');
-                    return `<a href="${cleanUrl}" class="citation-ref" target="_blank" rel="noopener noreferrer">${label}</a>`;
+                // 5. RESTORE CITATIONS & GENERAL HTML LINKS
+                html = html.replace(/&lt;a\s+([\s\S]*?)href=(?:&quot;|&#39;|"|')([\s\S]*?)(?:&quot;|&#39;|"|')([\s\S]*?)&gt;([\s\S]*?)&lt;\/a&gt;/gi, (match, before, url, after, label) => {
+                    const cleanUrl = url.replace(/&amp;amp;/g, '&').replace(/&amp;/g, '&').trim();
+                    const isCitation = match.includes('citation-ref') || before.includes('citation-ref') || after.includes('citation-ref');
+                    const className = isCitation ? 'class="citation-ref" ' : '';
+                    return `<a href="${escapeHtml(cleanUrl)}" ${className}target="_blank" rel="noopener noreferrer">${label}</a>`;
                 });
 
                 finalHtml += html;
