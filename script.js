@@ -624,8 +624,17 @@ const ChatApp = {
                     }];
                     localStorage.setItem('jbai_profiles', JSON.stringify(profiles));
                     localStorage.setItem('jbai_active_profile_id', 'default');
-                    
-                    this.migrateOldData('default');
+                }
+                
+                // Fallback migration to recover data if it wasn't migrated
+                const oldData = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
+                if (oldData && oldData !== '[]') {
+                    const migratedData = localStorage.getItem('default_' + ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
+                    if (!migratedData || migratedData === '[]') {
+                        this.migrateOldData('default');
+                        // Mark as migrated
+                        localStorage.setItem('legacy_migrated', 'true');
+                    }
                 }
                 
                 ChatApp.State.profiles = profiles;
