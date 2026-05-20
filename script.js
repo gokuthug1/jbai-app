@@ -666,81 +666,10 @@ const ChatApp = {
     Accounts: {
         async init() {
             try {
-                let storedAccounts = localStorage.getItem('jbai_accounts');
+                // Auto-login as default user (no auth overlay)
+                ChatApp.State.activeAccountId = 'default';
+                ChatApp.State.accounts = [{ id: 'default', username: 'User', pfp: null, themeColor: '#4f46e5' }];
                 
-                // MIGRATION FROM PROFILES TO ACCOUNTS
-                if (!storedAccounts) {
-                    const oldProfiles = localStorage.getItem('jbai_profiles');
-                    if (oldProfiles) {
-                        const parsedProfiles = JSON.parse(oldProfiles);
-                        const migrated = parsedProfiles.map(p => ({
-                            id: p.id,
-                            username: p.name,
-                            password: 'password', // Default fallback password for old profiles
-                            pfp: null,
-                            themeColor: p.avatarColor || '#4f46e5'
-                        }));
-                        localStorage.setItem('jbai_accounts', JSON.stringify(migrated));
-                        storedAccounts = JSON.stringify(migrated);
-                    } else {
-                        // Migrate legacy 'all_conversations' if no profiles ever existed
-                        const oldData = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
-                        if (oldData && oldData !== '[]') {
-                            const defaultAcc = { id: 'default', username: 'Default User', password: 'password', pfp: null, themeColor: '#4f46e5' };
-                            localStorage.setItem('jbai_accounts', JSON.stringify([defaultAcc]));
-                            storedAccounts = JSON.stringify([defaultAcc]);
-                            
-                            const keysToMigrate = [
-                                ChatApp.Config.STORAGE_KEYS.CONVERSATIONS,
-                                ChatApp.Config.STORAGE_KEYS.TOOLS,
-                                ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS,
-                                ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS
-                            ];
-                            keysToMigrate.forEach(key => {
-                                const oldVal = localStorage.getItem(key);
-                                if (oldVal !== null) {
-                                    localStorage.setItem(`default_${key}`, oldVal);
-                                }
-                            });
-                        }
-                    }
-                }
-                
-                const accounts = storedAccounts ? JSON.parse(storedAccounts) : [];
-                ChatApp.State.accounts = accounts;
-                
-                // Always show auth overlay on start
-                ChatApp.UI.showAuthOverlay(accounts);
-            } catch (e) {
-                console.error("Failed to initialize accounts:", e);
-                ChatApp.UI.showAuthOverlay([]);
-            }
-        },
-        createAccount(username, password, pfpDataUrl = null) {
-            const id = 'a_' + Date.now();
-            const newAccount = { id, username, password, pfp: pfpDataUrl, themeColor: '#4f46e5' };
-            const accounts = JSON.parse(localStorage.getItem('jbai_accounts')) || [];
-            accounts.push(newAccount);
-            localStorage.setItem('jbai_accounts', JSON.stringify(accounts));
-            ChatApp.State.accounts = accounts;
-            
-            localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.CONVERSATIONS}`, JSON.stringify([]));
-            localStorage.setItem(`${id}_jbai_folders`, JSON.stringify([]));
-            localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS}`, JSON.stringify(ChatApp.Config.DEFAULT_PROVIDER_SETTINGS));
-            localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.TOOLS}`, JSON.stringify(ChatApp.Config.DEFAULT_TOOLS));
-            
-            return newAccount;
-        },
-        async login(id, password) {
-            const accounts = JSON.parse(localStorage.getItem('jbai_accounts')) || [];
-            const acc = accounts.find(a => a.id === id);
-            if (acc && acc.password === password) {
-                localStorage.setItem('jbai_active_account_id', id);
-                ChatApp.State.accounts = accounts;
-                ChatApp.State.activeAccountId = id;
-                ChatApp.UI.hideAuthOverlay();
-                
-                // Load UI for Account
                 ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
                 await ChatApp.Store.loadAllConversations();
                 ChatApp.Store.loadCustomPresets();
@@ -756,30 +685,12 @@ const ChatApp = {
                 ChatApp.Controller.applyDisplaySettings();
                 ChatApp.Controller.markJbAiBackendStatusUnknown(ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
                 void ChatApp.Controller.refreshJbAiBackendStatus({ force: false, silent: true });
-                
-                return true;
+            } catch (e) {
+                console.error("Failed to initialize:", e);
             }
-            return false;
-        },
-        logout() {
-            localStorage.removeItem('jbai_active_account_id');
-            ChatApp.State.activeAccountId = null;
-            location.reload();
-        },
-        deleteAccount(id) {
-            ChatApp.State.accounts = ChatApp.State.accounts.filter(a => a.id !== id);
-            localStorage.setItem('jbai_accounts', JSON.stringify(ChatApp.State.accounts));
-            const keysToRemove = [
-                `${id}_${ChatApp.Config.STORAGE_KEYS.CONVERSATIONS}`,
-                `${id}_${ChatApp.Config.STORAGE_KEYS.TOOLS}`,
-                `${id}_${ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS}`,
-                `${id}_${ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS}`,
-                `${id}_jbai_folders`
-            ];
-            keysToRemove.forEach(k => localStorage.removeItem(k));
         },
         getActiveAccount() {
-            return ChatApp.State.accounts.find(a => a.id === ChatApp.State.activeAccountId) || null;
+            return ChatApp.State.accounts.find(a => a.id === ChatApp.State.activeAccountId) || { id: 'default', username: 'User', pfp: null, themeColor: '#4f46e5' };
         }
     },
 
@@ -876,22 +787,6 @@ const ChatApp = {
                 myStuffContainer: document.getElementById('my-stuff-container'),
                 chatContainer: document.querySelector('.chat-container'),
                 
-                // Auth elements
-                authOverlay: document.getElementById('auth-overlay'),
-                authLoginBtn: document.getElementById('auth-login-btn'),
-                authRegisterBtn: document.getElementById('auth-register-btn'),
-                loginUsername: document.getElementById('login-username'),
-                loginPass: document.getElementById('login-password'),
-                regUsername: document.getElementById('register-username'),
-                regPass: document.getElementById('register-password'),
-                showRegLink: document.getElementById('show-register-link'),
-                showLoginLink: document.getElementById('show-login-link'),
-                loginForm: document.getElementById('auth-login-form'),
-                regForm: document.getElementById('auth-register-form'),
-                regAvatarBtn: document.getElementById('register-avatar-btn'),
-                regAvatarUpload: document.getElementById('register-avatar-upload'),
-                regAvatarPreview: document.getElementById('register-avatar-preview'),
-                
                 profileWidget: document.getElementById('profile-widget'),
                 profileAvatar: document.getElementById('profile-avatar'),
                 profileName: document.getElementById('profile-display-name'),
@@ -903,58 +798,7 @@ const ChatApp = {
                 profileName: document.getElementById('profile-name')
             };
         },
-        showAuthOverlay(accounts) {
-            this.elements.authOverlay.style.display = 'flex';
-            
-            this.elements.showRegLink.onclick = (e) => { e.preventDefault(); this.elements.loginForm.style.display = 'none'; this.elements.regForm.style.display = 'block'; };
-            this.elements.showLoginLink.onclick = (e) => { e.preventDefault(); this.elements.regForm.style.display = 'none'; this.elements.loginForm.style.display = 'block'; };
-            
-            if (accounts.length === 0) {
-                this.elements.loginForm.style.display = 'none';
-                this.elements.regForm.style.display = 'block';
-            } else {
-                this.elements.loginForm.style.display = 'block';
-                this.elements.regForm.style.display = 'none';
-            }
-            
-            let pfpDataUrl = null;
-            this.elements.regAvatarBtn.onclick = () => this.elements.regAvatarUpload.click();
-            this.elements.regAvatarUpload.onchange = (e) => {
-                const file = e.target.files[0];
-                if (file) {
-                    const reader = new FileReader();
-                    reader.onload = (ev) => {
-                        pfpDataUrl = ev.target.result;
-                        this.elements.regAvatarPreview.innerHTML = `<img src="${pfpDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
-                    };
-                    reader.readAsDataURL(file);
-                }
-            };
-            
-            this.elements.authRegisterBtn.onclick = async () => {
-                const user = this.elements.regUsername.value.trim();
-                const pass = this.elements.regPass.value;
-                if (!user || !pass) { ChatApp.UI.showToast("Username and Password required", "error"); return; }
-                const acc = ChatApp.Accounts.createAccount(user, pass, pfpDataUrl);
-                await ChatApp.Accounts.login(acc.id, pass);
-            };
-            
-            this.elements.authLoginBtn.onclick = async () => {
-                const user = this.elements.loginUsername.value.trim();
-                const pass = this.elements.loginPass.value;
-                if (!user || !pass) { ChatApp.UI.showToast("Username and Password required", "error"); return; }
-                const acc = accounts.find(a => a.username === user);
-                if (!acc) { ChatApp.UI.showToast("Account not found", "error"); return; }
-                const success = await ChatApp.Accounts.login(acc.id, pass);
-                if (!success) { ChatApp.UI.showToast("Incorrect password", "error"); }
-            };
-            
-            this.elements.loginPass.onkeyup = (e) => { if (e.key === 'Enter') this.elements.authLoginBtn.click(); };
-            this.elements.regPass.onkeyup = (e) => { if (e.key === 'Enter') this.elements.authRegisterBtn.click(); };
-        },
-        hideAuthOverlay() {
-            this.elements.authOverlay.style.display = 'none';
-        },
+
         hideTooltip() {
             if(this.elements.customTooltip) this.elements.customTooltip.classList.remove('visible');
         },
@@ -982,11 +826,11 @@ const ChatApp = {
         },
         initTooltips() {
             let tooltipTimeout;
+            let activeTooltipTarget = null;
             const tooltip = this.elements.customTooltip;
             if (!tooltip) return;
-            const showTooltip = (e) => {
-                const target = e.target.closest('[data-tooltip]');
-                if (!target) return;
+            const showTooltip = (target) => {
+                if (!target || !document.body.contains(target)) return;
                 const tooltipText = target.getAttribute('data-tooltip');
                 if (!tooltipText) return;
                 tooltip.textContent = tooltipText;
@@ -1000,20 +844,37 @@ const ChatApp = {
                 if (left + tooltipRect.width > window.innerWidth - 10) { left = window.innerWidth - tooltipRect.width - 10; }
                 tooltip.style.top = `${top}px`;
                 tooltip.style.left = `${left}px`;
+                activeTooltipTarget = target;
+            };
+            const hideTooltipFn = () => {
+                clearTimeout(tooltipTimeout);
+                activeTooltipTarget = null;
+                this.hideTooltip();
             };
             document.body.addEventListener('mouseover', (e) => {
-                if (e.target.closest('[data-tooltip]')) {
+                const target = e.target.closest('[data-tooltip]');
+                if (target) {
                     clearTimeout(tooltipTimeout);
-                    tooltipTimeout = setTimeout(() => showTooltip(e), 300);
+                    tooltipTimeout = setTimeout(() => showTooltip(target), 300);
+                } else {
+                    hideTooltipFn();
                 }
             });
             document.body.addEventListener('mouseout', (e) => {
-                 if (e.target.closest('[data-tooltip]')) {
-                    clearTimeout(tooltipTimeout);
-                    this.hideTooltip();
+                const target = e.target.closest('[data-tooltip]');
+                const related = e.relatedTarget;
+                if (target) {
+                    // Only hide if we're truly leaving the tooltip target
+                    if (!related || !target.contains(related)) {
+                        hideTooltipFn();
+                    }
                 }
             });
-            document.addEventListener('scroll', () => this.hideTooltip(), { capture: true, passive: true });
+            // Hide tooltip on any click or mousedown
+            document.addEventListener('mousedown', () => hideTooltipFn(), { capture: true });
+            document.addEventListener('scroll', () => hideTooltipFn(), { capture: true, passive: true });
+            // Hide tooltip when window loses focus
+            window.addEventListener('blur', () => hideTooltipFn());
         },
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
@@ -1894,30 +1755,41 @@ const ChatApp = {
             const noneOpt = document.createElement('button');
             noneOpt.className = 'folder-select-item';
             noneOpt.textContent = '❌ None';
-            noneOpt.addEventListener('click', () => { ChatApp.Folders.moveChatToFolder(chatId, null); popup.remove(); });
+            noneOpt.addEventListener('click', () => { ChatApp.Folders.moveChatToFolder(chatId, null); popup.remove(); document.removeEventListener('click', closeHandler); });
             popup.appendChild(noneOpt);
 
             ChatApp.State.folders.forEach(folder => {
                 const opt = document.createElement('button');
                 opt.className = 'folder-select-item';
-                opt.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ${folder.name}`;
-                opt.addEventListener('click', () => { ChatApp.Folders.moveChatToFolder(chatId, folder.id); popup.remove(); });
+                opt.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ${ChatApp.Utils.escapeHTML(folder.name)}`;
+                opt.addEventListener('click', () => { ChatApp.Folders.moveChatToFolder(chatId, folder.id); popup.remove(); document.removeEventListener('click', closeHandler); });
                 popup.appendChild(opt);
             });
 
             document.body.appendChild(popup);
             const rect = buttonEl.getBoundingClientRect();
+            const popupRect = popup.getBoundingClientRect();
+            
+            // Position above the button by default, flip below if not enough space
+            let top = rect.top + window.scrollY - popupRect.height - 4;
+            if (top < window.scrollY + 10) {
+                top = rect.bottom + window.scrollY + 4;
+            }
+            let left = rect.left + window.scrollX - popupRect.width / 2 + rect.width / 2;
+            if (left < 10) left = 10;
+            if (left + popupRect.width > window.innerWidth - 10) left = window.innerWidth - popupRect.width - 10;
+            
             popup.style.position = 'absolute';
-            popup.style.top = `${rect.bottom + window.scrollY}px`;
-            popup.style.left = `${rect.left + window.scrollX - 100}px`;
+            popup.style.top = `${top}px`;
+            popup.style.left = `${left}px`;
 
+            const closeHandler = (e) => {
+                if (!popup.contains(e.target) && e.target !== buttonEl) {
+                    popup.remove();
+                    document.removeEventListener('click', closeHandler);
+                }
+            };
             setTimeout(() => {
-                const closeHandler = (e) => {
-                    if (!popup.contains(e.target) && e.target !== buttonEl) {
-                        popup.remove();
-                        document.removeEventListener('click', closeHandler);
-                    }
-                };
                 document.addEventListener('click', closeHandler);
             }, 0);
         },
@@ -2092,97 +1964,18 @@ const ChatApp = {
             if (chatMain) chatMain.style.display = 'flex';
         },
         renderProfileWidget() {
-            const acc = ChatApp.Accounts.getActiveAccount();
             const avatar = this.elements.profileAvatar;
             const nameEl = this.elements.profileName;
-            if (avatar && nameEl && acc) {
-                if (acc.pfp) {
-                    avatar.innerHTML = `<img src="${acc.pfp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
-                    avatar.style.backgroundColor = 'transparent';
-                } else {
-                    avatar.innerHTML = '';
-                    avatar.textContent = acc.username.substring(0, 2).toUpperCase();
-                    avatar.style.backgroundColor = acc.themeColor || '#4f46e5';
-                }
-                nameEl.textContent = acc.username;
+            if (avatar && nameEl) {
+                avatar.innerHTML = '';
+                avatar.textContent = 'U';
+                avatar.style.backgroundColor = '#4f46e5';
+                nameEl.textContent = 'User';
             }
         },
         showAccountManagerModal() {
-            const acc = ChatApp.Accounts.getActiveAccount();
-            const modal = document.createElement('div');
-            modal.className = 'modal-backdrop';
-            modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center'; modal.style.zIndex = '1000';
-            
-            const container = document.createElement('div');
-            container.className = 'modal-container';
-            container.style.width = '350px'; container.style.maxWidth = '90%'; container.style.padding = '24px';
-            container.style.borderRadius = '12px'; container.style.background = 'var(--modal-bg)';
-            container.style.boxShadow = '0 10px 25px var(--modal-shadow)'; container.style.color = 'var(--text-color)';
-            
-            const header = document.createElement('div');
-            header.style.display = 'flex'; header.style.justifyContent = 'space-between'; header.style.alignItems = 'center'; header.style.marginBottom = '20px';
-            
-            const title = document.createElement('h3');
-            title.textContent = 'Account Settings';
-            title.style.margin = '0';
-            
-            const closeBtn = document.createElement('button');
-            closeBtn.className = 'icon-btn';
-            closeBtn.innerHTML = '✕';
-            closeBtn.addEventListener('click', () => modal.remove());
-            
-            header.appendChild(title); header.appendChild(closeBtn);
-            
-            const infoBox = document.createElement('div');
-            infoBox.style.display = 'flex'; infoBox.style.alignItems = 'center'; infoBox.style.gap = '15px'; infoBox.style.marginBottom = '20px';
-            infoBox.style.padding = '15px'; infoBox.style.background = 'var(--bg-color)'; infoBox.style.borderRadius = '8px';
-            
-            const pfp = document.createElement('div');
-            pfp.style.width = '48px'; pfp.style.height = '48px'; pfp.style.borderRadius = '50%';
-            pfp.style.display = 'flex'; pfp.style.alignItems = 'center'; pfp.style.justifyContent = 'center';
-            pfp.style.overflow = 'hidden'; pfp.style.fontWeight = 'bold';
-            
-            if (acc.pfp) {
-                pfp.innerHTML = `<img src="${acc.pfp}" style="width:100%;height:100%;object-fit:cover;">`;
-            } else {
-                pfp.style.backgroundColor = acc.themeColor || '#4f46e5';
-                pfp.textContent = acc.username.substring(0,2).toUpperCase();
-                pfp.style.color = 'white';
-            }
-            
-            const nameEl = document.createElement('div');
-            nameEl.style.fontWeight = 'bold'; nameEl.style.fontSize = '16px';
-            nameEl.textContent = acc.username;
-            
-            infoBox.appendChild(pfp); infoBox.appendChild(nameEl);
-            
-            const btnGroup = document.createElement('div');
-            btnGroup.style.display = 'flex'; btnGroup.style.flexDirection = 'column'; btnGroup.style.gap = '10px';
-            
-            const logoutBtn = document.createElement('button');
-            logoutBtn.className = 'primary-btn';
-            logoutBtn.style.width = '100%';
-            logoutBtn.textContent = 'Lock / Logout';
-            logoutBtn.addEventListener('click', () => { ChatApp.Accounts.logout(); });
-            
-            const delBtn = document.createElement('button');
-            delBtn.className = 'secondary-btn';
-            delBtn.style.width = '100%';
-            delBtn.style.color = 'var(--error-color)';
-            delBtn.style.borderColor = 'var(--error-color)';
-            delBtn.textContent = 'Delete Account';
-            delBtn.addEventListener('click', () => {
-                if (confirm('Are you sure you want to delete this account? All local data will be wiped.')) {
-                    ChatApp.Accounts.deleteAccount(acc.id);
-                    ChatApp.Accounts.logout();
-                }
-            });
-            
-            btnGroup.appendChild(logoutBtn); btnGroup.appendChild(delBtn);
-            
-            container.appendChild(header); container.appendChild(infoBox); container.appendChild(btnGroup);
-            modal.appendChild(container); document.body.appendChild(modal);
-            modal.addEventListener('click', (e) => { if(e.target === modal) modal.remove(); });
+            // Open settings modal instead of account manager
+            this.renderSettingsModal();
         },
         openCanvasPanel(code, tab = 'preview') {
             const panel = this.elements.splitCanvasPanel;
@@ -3936,7 +3729,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
 
             // New feature bindings
             const profileBtn = document.getElementById('profile-widget');
-            if (profileBtn) profileBtn.addEventListener('click', () => ChatApp.UI.showAccountManagerModal());
+            if (profileBtn) profileBtn.addEventListener('click', () => ChatApp.UI.renderSettingsModal());
 
             const addFolderBtn = document.getElementById('add-folder-btn');
             if (addFolderBtn) addFolderBtn.addEventListener('click', () => {

@@ -8,47 +8,8 @@
     <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div id="auth-overlay" class="auth-overlay" style="display: none;">
-        <div class="auth-container">
-            <h1 class="auth-title">J.B.A.I</h1>
-            <p class="auth-subtitle">Login to your workspace</p>
-            
-            <div id="auth-forms">
-                <div id="auth-login-form" class="auth-form active">
-                    <div class="input-group">
-                        <label for="login-username">Username</label>
-                        <input type="text" id="login-username" placeholder="Enter username" />
-                    </div>
-                    <div class="input-group">
-                        <label for="login-password">Password</label>
-                        <input type="password" id="login-password" placeholder="Enter password" />
-                    </div>
-                    <button id="auth-login-btn" class="primary-btn">Login</button>
-                    <p class="auth-switch">No account? <a href="#" id="show-register-link">Create one</a></p>
-                </div>
 
-                <div id="auth-register-form" class="auth-form" style="display: none;">
-                    <div class="avatar-upload">
-                        <div class="avatar-preview" id="register-avatar-preview">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                        </div>
-                        <input type="file" id="register-avatar-upload" accept="image/*" style="display: none;">
-                        <button id="register-avatar-btn" class="secondary-btn">Upload Photo</button>
-                    </div>
-                    <div class="input-group">
-                        <label for="register-username">Username</label>
-                        <input type="text" id="register-username" placeholder="Choose username" />
-                    </div>
-                    <div class="input-group">
-                        <label for="register-password">Password</label>
-                        <input type="password" id="register-password" placeholder="Choose password" />
-                    </div>
-                    <button id="auth-register-btn" class="primary-btn">Create Account</button>
-                    <p class="auth-switch">Already have an account? <a href="#" id="show-login-link">Login</a></p>
-                </div>
-            </div>
-        </div>
-    </div>
+
 
     <div id="custom-context-menu" class="custom-context-menu" style="display: none;">
         <!-- Dynamically populated by JS -->

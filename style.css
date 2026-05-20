@@ -1942,8 +1942,6 @@ body.hide-previews .html-render-box, body.hide-previews .svg-render-box { displa
 
 .folder-select-popup {
     position: absolute;
-    bottom: 100%;
-    right: 0;
     background: var(--modal-bg);
     border: 1px solid var(--sidebar-border);
     box-shadow: 0 4px 12px var(--modal-shadow);
