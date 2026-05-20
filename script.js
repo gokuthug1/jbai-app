@@ -109,6 +109,43 @@ const ChatApp = {
             AGENT_ACTIVITY: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z"></path><path d="M12 6v6l4 2"></path></svg>`
         }
     },
+    DB: {
+        dbName: 'JBAI_Database',
+        storeName: 'conversations',
+        async init() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(this.dbName, 1);
+                request.onupgradeneeded = (event) => {
+                    const db = event.target.result;
+                    if (!db.objectStoreNames.contains(this.storeName)) {
+                        db.createObjectStore(this.storeName, { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = () => { this.db = request.result; resolve(); };
+                request.onerror = () => reject(request.error);
+            });
+        },
+        async saveConversations(accountId, conversations) {
+            if (!this.db) await this.init();
+            return new Promise((resolve, reject) => {
+                const tx = this.db.transaction(this.storeName, 'readwrite');
+                const store = tx.objectStore(this.storeName);
+                const req = store.put({ id: accountId, data: conversations });
+                req.onsuccess = () => resolve();
+                req.onerror = () => reject(req.error);
+            });
+        },
+        async getConversations(accountId) {
+            if (!this.db) await this.init();
+            return new Promise((resolve, reject) => {
+                const tx = this.db.transaction(this.storeName, 'readonly');
+                const store = tx.objectStore(this.storeName);
+                const req = store.get(accountId);
+                req.onsuccess = () => resolve(req.result ? req.result.data : null);
+                req.onerror = () => reject(req.error);
+            });
+        }
+    },
 
     State: {
         currentConversation: [],
@@ -499,11 +536,12 @@ const ChatApp = {
             return merged;
         },
         getProfileKey(key) {
-            const profileId = ChatApp.State.activeProfileId || 'default';
+            const accountId = ChatApp.State.activeAccountId || 'default';
             if (key === ChatApp.Config.STORAGE_KEYS.THEME) return key; // Theme remains global
-            return `${profileId}_${key}`;
+            return `${accountId}_${key}`;
         },
-        saveAllConversations() { 
+        async saveAllConversations() { 
+            // Save to local storage without attachments to act as a lightweight backup
             const leanConversations = ChatApp.State.allConversations.map(chat => ({
                 ...chat,
                 history: chat.history.map(msg => {
@@ -522,8 +560,15 @@ const ChatApp = {
             try {
                 localStorage.setItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS), JSON.stringify(leanConversations));
             } catch (e) {
-                console.error("Storage limit reached", e);
-                ChatApp.UI.showToast("History full. Old chats may not save.", "error");
+                console.warn("Storage limit reached for lightweight history", e);
+            }
+            
+            // Save to IndexedDB with full attachments and base64 images
+            const accountId = ChatApp.State.activeAccountId || 'default';
+            try {
+                await ChatApp.DB.saveConversations(accountId, ChatApp.State.allConversations);
+            } catch(e) {
+                console.error("Failed to save to IndexedDB", e);
             }
         },
         saveCustomPresets(presets) {
@@ -538,14 +583,25 @@ const ChatApp = {
                 ChatApp.State.customPresets = [];
             }
         },
-        loadAllConversations() {
+        async loadAllConversations() {
+            const accountId = ChatApp.State.activeAccountId || 'default';
             try {
-                const stored = localStorage.getItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS));
-                const parsed = stored ? JSON.parse(stored) : [];
-                ChatApp.State.allConversations = ChatApp.Utils.normalizeConversations(parsed);
+                let parsed = await ChatApp.DB.getConversations(accountId);
+                
+                // If IndexedDB is empty, fallback to LocalStorage Migration
+                if (!parsed || parsed.length === 0) {
+                    const stored = localStorage.getItem(this.getProfileKey(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS));
+                    parsed = stored ? JSON.parse(stored) : [];
+                    if (parsed.length > 0) {
+                        await ChatApp.DB.saveConversations(accountId, parsed);
+                    }
+                }
+                
+                ChatApp.State.allConversations = ChatApp.Utils.normalizeConversations(parsed || []);
             } catch (e) {
-                console.error("Failed to parse conversations, resetting.", e);
+                console.error("Failed to load conversations from IndexedDB", e);
                 ChatApp.State.allConversations = [];
+
             }
         },
         saveTheme(themeName) { localStorage.setItem(ChatApp.Config.STORAGE_KEYS.THEME, themeName); },
@@ -607,128 +663,129 @@ const ChatApp = {
         }
     },
 
-    Profiles: {
-        init() {
+    Accounts: {
+        async init() {
             try {
-                const storedProfiles = localStorage.getItem('jbai_profiles');
-                const activeId = localStorage.getItem('jbai_active_profile_id');
+                let storedAccounts = localStorage.getItem('jbai_accounts');
                 
-                let profiles = storedProfiles ? JSON.parse(storedProfiles) : [];
-                
-                if (profiles.length === 0) {
-                    profiles = [{
-                        id: 'default',
-                        name: 'Default User',
-                        avatarColor: '#4f46e5',
-                        avatarIcon: '👤'
-                    }];
-                    localStorage.setItem('jbai_profiles', JSON.stringify(profiles));
-                    localStorage.setItem('jbai_active_profile_id', 'default');
-                }
-                
-                // Fallback migration to recover data if it wasn't migrated
-                const oldData = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
-                if (oldData && oldData !== '[]') {
-                    const migratedData = localStorage.getItem('default_' + ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
-                    if (!migratedData || migratedData === '[]') {
-                        this.migrateOldData('default');
-                        // Mark as migrated
-                        localStorage.setItem('legacy_migrated', 'true');
+                // MIGRATION FROM PROFILES TO ACCOUNTS
+                if (!storedAccounts) {
+                    const oldProfiles = localStorage.getItem('jbai_profiles');
+                    if (oldProfiles) {
+                        const parsedProfiles = JSON.parse(oldProfiles);
+                        const migrated = parsedProfiles.map(p => ({
+                            id: p.id,
+                            username: p.name,
+                            password: 'password', // Default fallback password for old profiles
+                            pfp: null,
+                            themeColor: p.avatarColor || '#4f46e5'
+                        }));
+                        localStorage.setItem('jbai_accounts', JSON.stringify(migrated));
+                        storedAccounts = JSON.stringify(migrated);
+                    } else {
+                        // Migrate legacy 'all_conversations' if no profiles ever existed
+                        const oldData = localStorage.getItem(ChatApp.Config.STORAGE_KEYS.CONVERSATIONS);
+                        if (oldData && oldData !== '[]') {
+                            const defaultAcc = { id: 'default', username: 'Default User', password: 'password', pfp: null, themeColor: '#4f46e5' };
+                            localStorage.setItem('jbai_accounts', JSON.stringify([defaultAcc]));
+                            storedAccounts = JSON.stringify([defaultAcc]);
+                            
+                            const keysToMigrate = [
+                                ChatApp.Config.STORAGE_KEYS.CONVERSATIONS,
+                                ChatApp.Config.STORAGE_KEYS.TOOLS,
+                                ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS,
+                                ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS
+                            ];
+                            keysToMigrate.forEach(key => {
+                                const oldVal = localStorage.getItem(key);
+                                if (oldVal !== null) {
+                                    localStorage.setItem(`default_${key}`, oldVal);
+                                }
+                            });
+                        }
                     }
                 }
                 
-                ChatApp.State.profiles = profiles;
-                ChatApp.State.activeProfileId = activeId && profiles.some(p => p.id === activeId) ? activeId : 'default';
+                const accounts = storedAccounts ? JSON.parse(storedAccounts) : [];
+                ChatApp.State.accounts = accounts;
+                
+                // Always show auth overlay on start
+                ChatApp.UI.showAuthOverlay(accounts);
             } catch (e) {
-                console.error("Failed to initialize profiles:", e);
-                ChatApp.State.profiles = [{ id: 'default', name: 'Default User', avatarColor: '#4f46e5', avatarIcon: '👤' }];
-                ChatApp.State.activeProfileId = 'default';
+                console.error("Failed to initialize accounts:", e);
+                ChatApp.UI.showAuthOverlay([]);
             }
         },
-        migrateOldData(profileId) {
-            const keysToMigrate = [
-                ChatApp.Config.STORAGE_KEYS.CONVERSATIONS,
-                ChatApp.Config.STORAGE_KEYS.TOOLS,
-                ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS,
-                ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS
-            ];
-            keysToMigrate.forEach(key => {
-                const oldVal = localStorage.getItem(key);
-                if (oldVal !== null) {
-                    localStorage.setItem(`${profileId}_${key}`, oldVal);
-                }
-            });
-            localStorage.setItem(`${profileId}_jbai_folders`, JSON.stringify([]));
-        },
-        createProfile(name, color, icon = '👤') {
-            const id = 'p_' + Date.now();
-            const newProfile = { id, name, avatarColor: color, avatarIcon: icon };
-            ChatApp.State.profiles.push(newProfile);
-            localStorage.setItem('jbai_profiles', JSON.stringify(ChatApp.State.profiles));
+        createAccount(username, password, pfpDataUrl = null) {
+            const id = 'a_' + Date.now();
+            const newAccount = { id, username, password, pfp: pfpDataUrl, themeColor: '#4f46e5' };
+            const accounts = JSON.parse(localStorage.getItem('jbai_accounts')) || [];
+            accounts.push(newAccount);
+            localStorage.setItem('jbai_accounts', JSON.stringify(accounts));
+            ChatApp.State.accounts = accounts;
             
             localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.CONVERSATIONS}`, JSON.stringify([]));
             localStorage.setItem(`${id}_jbai_folders`, JSON.stringify([]));
             localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS}`, JSON.stringify(ChatApp.Config.DEFAULT_PROVIDER_SETTINGS));
             localStorage.setItem(`${id}_${ChatApp.Config.STORAGE_KEYS.TOOLS}`, JSON.stringify(ChatApp.Config.DEFAULT_TOOLS));
             
-            return newProfile;
+            return newAccount;
         },
-        switchProfile(id) {
-            if (!ChatApp.State.profiles.some(p => p.id === id)) return;
-            
-            ChatApp.UI._revokeFilePreviewUrls();
-            ChatApp.State.revokeGeneratedDownloadUrls();
-            
-            localStorage.setItem('jbai_active_profile_id', id);
-            ChatApp.State.activeProfileId = id;
-            
-            ChatApp.Store.loadAllConversations();
-            ChatApp.Store.loadCustomPresets();
-            ChatApp.Store.getProviderSettings();
-            ChatApp.Store.getToolsConfig();
-            ChatApp.Folders.loadFolders();
-            
-            ChatApp.State.resetCurrentChat();
-            
-            ChatApp.UI.renderSidebar();
-            ChatApp.UI.renderProfileSection();
-            ChatApp.UI.applyDisplaySettings();
-            
-            if (ChatApp.State.activeTab === 'mystuff') {
-                ChatApp.UI.renderMyStuffDashboard();
-            } else {
-                ChatApp.UI.renderChatArea();
+        async login(id, password) {
+            const accounts = JSON.parse(localStorage.getItem('jbai_accounts')) || [];
+            const acc = accounts.find(a => a.id === id);
+            if (acc && acc.password === password) {
+                localStorage.setItem('jbai_active_account_id', id);
+                ChatApp.State.accounts = accounts;
+                ChatApp.State.activeAccountId = id;
+                ChatApp.UI.hideAuthOverlay();
+                
+                // Load UI for Account
+                ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
+                await ChatApp.Store.loadAllConversations();
+                ChatApp.Store.loadCustomPresets();
+                ChatApp.Store.getProviderSettings();
+                ChatApp.Store.getToolsConfig();
+                ChatApp.Folders.loadFolders();
+                ChatApp.State.resetCurrentChat();
+                ChatApp.UI.renderSidebar();
+                ChatApp.UI.renderProfileWidget();
+                
+                ChatApp.UI.toggleSendButtonState();
+                ChatApp.UI.renderConversationSurface();
+                ChatApp.Controller.applyDisplaySettings();
+                ChatApp.Controller.markJbAiBackendStatusUnknown(ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
+                void ChatApp.Controller.refreshJbAiBackendStatus({ force: false, silent: true });
+                
+                return true;
             }
-            
-            ChatApp.UI.showToast(`Switched to profile: ${this.getActiveProfile().name}`);
+            return false;
         },
-        deleteProfile(id) {
-            if (id === 'default' || id === ChatApp.State.activeProfileId) {
-                ChatApp.UI.showToast("Cannot delete active or default profile", "error");
-                return;
-            }
-            ChatApp.State.profiles = ChatApp.State.profiles.filter(p => p.id !== id);
-            localStorage.setItem('jbai_profiles', JSON.stringify(ChatApp.State.profiles));
-            
-            const keysToDelete = [
+        logout() {
+            localStorage.removeItem('jbai_active_account_id');
+            ChatApp.State.activeAccountId = null;
+            location.reload();
+        },
+        deleteAccount(id) {
+            ChatApp.State.accounts = ChatApp.State.accounts.filter(a => a.id !== id);
+            localStorage.setItem('jbai_accounts', JSON.stringify(ChatApp.State.accounts));
+            const keysToRemove = [
                 `${id}_${ChatApp.Config.STORAGE_KEYS.CONVERSATIONS}`,
                 `${id}_${ChatApp.Config.STORAGE_KEYS.TOOLS}`,
                 `${id}_${ChatApp.Config.STORAGE_KEYS.PROVIDER_SETTINGS}`,
                 `${id}_${ChatApp.Config.STORAGE_KEYS.CUSTOM_PRESETS}`,
                 `${id}_jbai_folders`
             ];
-            keysToDelete.forEach(k => localStorage.removeItem(k));
-            
-            ChatApp.UI.showToast("Profile deleted");
+            keysToRemove.forEach(k => localStorage.removeItem(k));
         },
-        getActiveProfile() {
-            return ChatApp.State.profiles.find(p => p.id === ChatApp.State.activeProfileId) || ChatApp.State.profiles[0];
+        getActiveAccount() {
+            return ChatApp.State.accounts.find(a => a.id === ChatApp.State.activeAccountId) || null;
         }
     },
 
     Folders: {
         loadFolders() {
-            const key = `${ChatApp.State.activeProfileId || 'default'}_jbai_folders`;
+            const key = ChatApp.Store.getProfileKey('jbai_folders');
             try {
                 const stored = localStorage.getItem(key);
                 ChatApp.State.folders = stored ? JSON.parse(stored) : [];
@@ -738,7 +795,7 @@ const ChatApp = {
             }
         },
         saveFolders() {
-            const key = `${ChatApp.State.activeProfileId || 'default'}_jbai_folders`;
+            const key = ChatApp.Store.getProfileKey('jbai_folders');
             try {
                 localStorage.setItem(key, JSON.stringify(ChatApp.State.folders));
             } catch (e) {
@@ -818,14 +875,85 @@ const ChatApp = {
                 sidebarMyStuffContainer: document.getElementById('sidebar-mystuff-container'),
                 myStuffContainer: document.getElementById('my-stuff-container'),
                 chatContainer: document.querySelector('.chat-container'),
+                
+                // Auth elements
+                authOverlay: document.getElementById('auth-overlay'),
+                authLoginBtn: document.getElementById('auth-login-btn'),
+                authRegisterBtn: document.getElementById('auth-register-btn'),
+                loginUsername: document.getElementById('login-username'),
+                loginPass: document.getElementById('login-password'),
+                regUsername: document.getElementById('register-username'),
+                regPass: document.getElementById('register-password'),
+                showRegLink: document.getElementById('show-register-link'),
+                showLoginLink: document.getElementById('show-login-link'),
+                loginForm: document.getElementById('auth-login-form'),
+                regForm: document.getElementById('auth-register-form'),
+                regAvatarBtn: document.getElementById('register-avatar-btn'),
+                regAvatarUpload: document.getElementById('register-avatar-upload'),
+                regAvatarPreview: document.getElementById('register-avatar-preview'),
+                
+                profileWidget: document.getElementById('profile-widget'),
+                profileAvatar: document.getElementById('profile-avatar'),
+                profileName: document.getElementById('profile-display-name'),
+                
                 splitCanvasPanel: document.getElementById('split-canvas-panel'),
                 canvasCloseBtn: document.getElementById('canvas-close-btn'),
                 canvasCodeTextarea: document.getElementById('canvas-code-textarea'),
                 canvasPreviewIframe: document.getElementById('canvas-preview-iframe'),
-                canvasBrowserIframe: document.getElementById('canvas-browser-iframe'),
-                profileAvatar: document.getElementById('profile-avatar'),
                 profileName: document.getElementById('profile-name')
             };
+        },
+        showAuthOverlay(accounts) {
+            this.elements.authOverlay.style.display = 'flex';
+            
+            this.elements.showRegLink.onclick = (e) => { e.preventDefault(); this.elements.loginForm.style.display = 'none'; this.elements.regForm.style.display = 'block'; };
+            this.elements.showLoginLink.onclick = (e) => { e.preventDefault(); this.elements.regForm.style.display = 'none'; this.elements.loginForm.style.display = 'block'; };
+            
+            if (accounts.length === 0) {
+                this.elements.loginForm.style.display = 'none';
+                this.elements.regForm.style.display = 'block';
+            } else {
+                this.elements.loginForm.style.display = 'block';
+                this.elements.regForm.style.display = 'none';
+            }
+            
+            let pfpDataUrl = null;
+            this.elements.regAvatarBtn.onclick = () => this.elements.regAvatarUpload.click();
+            this.elements.regAvatarUpload.onchange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => {
+                        pfpDataUrl = ev.target.result;
+                        this.elements.regAvatarPreview.innerHTML = `<img src="${pfpDataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                    };
+                    reader.readAsDataURL(file);
+                }
+            };
+            
+            this.elements.authRegisterBtn.onclick = async () => {
+                const user = this.elements.regUsername.value.trim();
+                const pass = this.elements.regPass.value;
+                if (!user || !pass) { ChatApp.UI.showToast("Username and Password required", "error"); return; }
+                const acc = ChatApp.Accounts.createAccount(user, pass, pfpDataUrl);
+                await ChatApp.Accounts.login(acc.id, pass);
+            };
+            
+            this.elements.authLoginBtn.onclick = async () => {
+                const user = this.elements.loginUsername.value.trim();
+                const pass = this.elements.loginPass.value;
+                if (!user || !pass) { ChatApp.UI.showToast("Username and Password required", "error"); return; }
+                const acc = accounts.find(a => a.username === user);
+                if (!acc) { ChatApp.UI.showToast("Account not found", "error"); return; }
+                const success = await ChatApp.Accounts.login(acc.id, pass);
+                if (!success) { ChatApp.UI.showToast("Incorrect password", "error"); }
+            };
+            
+            this.elements.loginPass.onkeyup = (e) => { if (e.key === 'Enter') this.elements.authLoginBtn.click(); };
+            this.elements.regPass.onkeyup = (e) => { if (e.key === 'Enter') this.elements.authRegisterBtn.click(); };
+        },
+        hideAuthOverlay() {
+            this.elements.authOverlay.style.display = 'none';
         },
         hideTooltip() {
             if(this.elements.customTooltip) this.elements.customTooltip.classList.remove('visible');
@@ -1502,7 +1630,22 @@ const ChatApp = {
             const foldersList = document.getElementById('folders-list');
             if (!list) return;
             list.innerHTML = '';
-            if (foldersList) foldersList.innerHTML = '';
+            
+            if (!list._dragBound) {
+                list._dragBound = true;
+                list.addEventListener('dragover', (e) => { e.preventDefault(); list.classList.add('drag-over'); });
+                list.addEventListener('dragleave', () => { list.classList.remove('drag-over'); });
+                list.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    list.classList.remove('drag-over');
+                    const chatId = e.dataTransfer.getData('text/plain');
+                    if (chatId) ChatApp.Folders.moveChatToFolder(chatId, null);
+                });
+            }
+            
+            if (foldersList) {
+                foldersList.innerHTML = '';
+            }
             
             if (ChatApp.State.activeTab === 'mystuff') {
                 this.renderMyStuffSidebar();
@@ -1520,6 +1663,15 @@ const ChatApp = {
                     const isCollapsed = collapsed.includes(folder.id);
                     const folderGroup = document.createElement('div');
                     folderGroup.className = 'folder-group' + (isCollapsed ? ' collapsed' : '');
+                    
+                    folderGroup.addEventListener('dragover', (e) => { e.preventDefault(); folderGroup.classList.add('drag-over'); });
+                    folderGroup.addEventListener('dragleave', () => { folderGroup.classList.remove('drag-over'); });
+                    folderGroup.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        folderGroup.classList.remove('drag-over');
+                        const chatId = e.dataTransfer.getData('text/plain');
+                        if (chatId) ChatApp.Folders.moveChatToFolder(chatId, folder.id);
+                    });
                     
                     const header = document.createElement('div');
                     header.className = 'folder-header';
@@ -1546,7 +1698,7 @@ const ChatApp = {
                     
                     const folderIcon = document.createElement('span');
                     folderIcon.className = 'folder-icon';
-                    folderIcon.textContent = '📁';
+                    folderIcon.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>';
                     
                     const title = document.createElement('span');
                     title.className = 'folder-title';
@@ -1578,7 +1730,7 @@ const ChatApp = {
                     
                     const editBtn = document.createElement('button');
                     editBtn.className = 'folder-control-btn';
-                    editBtn.textContent = '✏️';
+                    editBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
                     editBtn.title = 'Rename';
                     editBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -1588,7 +1740,7 @@ const ChatApp = {
                     
                     const deleteBtn = document.createElement('button');
                     deleteBtn.className = 'folder-control-btn';
-                    deleteBtn.textContent = '🗑️';
+                    deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
                     deleteBtn.title = 'Delete Folder';
                     deleteBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -1646,12 +1798,22 @@ const ChatApp = {
             item.className = 'conversation-item';
             item.dataset.chatId = chat.id;
             item.setAttribute('role', 'menuitem');
+            item.setAttribute('draggable', 'true');
             if (chat.id === ChatApp.State.currentChatId) {
                 item.classList.add('active');
                 item.setAttribute('aria-current', 'true');
             }
             const title = chat.title || 'Untitled Chat';
             item.setAttribute('aria-label', `Load conversation: ${title}`);
+            
+            item.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', chat.id);
+                e.dataTransfer.effectAllowed = 'move';
+                item.classList.add('dragging');
+            });
+            item.addEventListener('dragend', () => {
+                item.classList.remove('dragging');
+            });
 
             const titleSpan = document.createElement('span');
             titleSpan.className = 'conversation-title';
@@ -1693,7 +1855,7 @@ const ChatApp = {
             folderBtn.className = 'folder-btn icon-btn';
             folderBtn.style.padding = '2px';
             folderBtn.style.fontSize = '12px';
-            folderBtn.innerHTML = '📁';
+            folderBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>';
             folderBtn.title = 'Move to folder';
             folderBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -1738,7 +1900,7 @@ const ChatApp = {
             ChatApp.State.folders.forEach(folder => {
                 const opt = document.createElement('button');
                 opt.className = 'folder-select-item';
-                opt.textContent = `📁 ${folder.name}`;
+                opt.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ${folder.name}`;
                 opt.addEventListener('click', () => { ChatApp.Folders.moveChatToFolder(chatId, folder.id); popup.remove(); });
                 popup.appendChild(opt);
             });
@@ -1770,11 +1932,11 @@ const ChatApp = {
             list.appendChild(header);
             
             const categories = [
-                { id: 'all', name: 'All Stuff', icon: '📦' },
-                { id: 'image', name: 'Generated Images', icon: '🖼️' },
-                { id: 'html', name: 'HTML Codes', icon: '🌐' },
-                { id: 'svg', name: 'SVGs', icon: '🎨' },
-                { id: 'script', name: 'Scripts', icon: '📜' }
+                { id: 'all', name: 'All Stuff', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>' },
+                { id: 'image', name: 'Generated Images', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>' },
+                { id: 'html', name: 'HTML Codes', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>' },
+                { id: 'svg', name: 'SVGs', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg>' },
+                { id: 'script', name: 'Scripts', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg>' }
             ];
             
             const listContainer = document.createElement('div');
@@ -1855,7 +2017,7 @@ const ChatApp = {
             if (items.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'my-stuff-empty';
-                empty.innerHTML = `<div class="empty-icon">📦</div><h3>No creations found</h3><p>Generated images, web previews, and svgs will automatically appear here.</p>`;
+                empty.innerHTML = `<div class="empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg></div><h3>No creations found</h3><p>Generated images, web previews, and svgs will automatically appear here.</p>`;
                 grid.appendChild(empty);
                 return;
             }
@@ -1880,10 +2042,10 @@ const ChatApp = {
                         wrapper.innerHTML = item.content;
                         const svgEl = wrapper.querySelector('svg');
                         if (svgEl) { svgEl.setAttribute('width', '100%'); svgEl.setAttribute('height', '100%'); }
-                    } else { wrapper.innerHTML = '<span class="code-icon">🎨</span>'; }
+                    } else { wrapper.innerHTML = '<span class="code-icon"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg></span>'; }
                     preview.appendChild(wrapper);
-                } else if (item.type === 'html') preview.innerHTML = '<span class="code-icon">🌐</span>';
-                else preview.innerHTML = '<span class="code-icon">📜</span>';
+                } else if (item.type === 'html') preview.innerHTML = '<span class="code-icon"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg></span>';
+                else preview.innerHTML = '<span class="code-icon"><svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"></polyline><line x1="9" y1="20" x2="15" y2="20"></line><line x1="12" y1="4" x2="12" y2="20"></line></svg></span>';
                 
                 const info = document.createElement('div');
                 info.className = 'my-stuff-card-info';
@@ -1906,14 +2068,14 @@ const ChatApp = {
                 if (item.type === 'html' || item.type === 'svg') {
                     const canvasBtn = document.createElement('button');
                     canvasBtn.className = 'my-stuff-action-btn';
-                    canvasBtn.innerHTML = '⚡';
+                    canvasBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>';
                     canvasBtn.title = 'Open in Canvas';
                     canvasBtn.addEventListener('click', (e) => { e.stopPropagation(); this.openCanvasPanel(item.content, item.type === 'html' ? 'preview' : 'code'); });
                     actions.appendChild(canvasBtn);
                 } else if (item.type === 'image') {
                     const viewBtn = document.createElement('button');
                     viewBtn.className = 'my-stuff-action-btn';
-                    viewBtn.innerHTML = '🔍';
+                    viewBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>';
                     viewBtn.title = 'Zoom Image';
                     viewBtn.addEventListener('click', (e) => { e.stopPropagation(); this.showFullscreenPreview(item.content, 'image'); });
                     actions.appendChild(viewBtn);
@@ -1929,34 +2091,40 @@ const ChatApp = {
             const chatMain = document.getElementById('chat-main-area');
             if (chatMain) chatMain.style.display = 'flex';
         },
-        renderProfileSection() {
-            const profile = ChatApp.Profiles.getActiveProfile();
+        renderProfileWidget() {
+            const acc = ChatApp.Accounts.getActiveAccount();
             const avatar = this.elements.profileAvatar;
             const nameEl = this.elements.profileName;
-            if (avatar && nameEl) {
-                avatar.textContent = profile.name.substring(0, 2).toUpperCase();
-                avatar.style.backgroundColor = profile.avatarColor || '#4f46e5';
-                nameEl.textContent = profile.name;
+            if (avatar && nameEl && acc) {
+                if (acc.pfp) {
+                    avatar.innerHTML = `<img src="${acc.pfp}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                    avatar.style.backgroundColor = 'transparent';
+                } else {
+                    avatar.innerHTML = '';
+                    avatar.textContent = acc.username.substring(0, 2).toUpperCase();
+                    avatar.style.backgroundColor = acc.themeColor || '#4f46e5';
+                }
+                nameEl.textContent = acc.username;
             }
         },
-        showProfileManagerModal() {
+        showAccountManagerModal() {
+            const acc = ChatApp.Accounts.getActiveAccount();
             const modal = document.createElement('div');
             modal.className = 'modal-backdrop';
             modal.style.display = 'flex'; modal.style.alignItems = 'center'; modal.style.justifyContent = 'center'; modal.style.zIndex = '1000';
             
             const container = document.createElement('div');
             container.className = 'modal-container';
-            container.style.width = '450px'; container.style.maxWidth = '90%'; container.style.padding = '24px';
+            container.style.width = '350px'; container.style.maxWidth = '90%'; container.style.padding = '24px';
             container.style.borderRadius = '12px'; container.style.background = 'var(--modal-bg)';
             container.style.boxShadow = '0 10px 25px var(--modal-shadow)'; container.style.color = 'var(--text-color)';
             
             const header = document.createElement('div');
-            header.className = 'modal-header';
-            header.style.display = 'flex'; header.style.justifyContent = 'space-between'; header.style.alignItems = 'center'; header.style.marginBottom = '16px';
+            header.style.display = 'flex'; header.style.justifyContent = 'space-between'; header.style.alignItems = 'center'; header.style.marginBottom = '20px';
             
             const title = document.createElement('h3');
-            title.textContent = 'Switch Profile';
-            title.style.fontSize = '18px'; title.style.fontWeight = 'bold';
+            title.textContent = 'Account Settings';
+            title.style.margin = '0';
             
             const closeBtn = document.createElement('button');
             closeBtn.className = 'icon-btn';
@@ -1965,103 +2133,56 @@ const ChatApp = {
             
             header.appendChild(title); header.appendChild(closeBtn);
             
-            const grid = document.createElement('div');
-            grid.className = 'profile-modal-grid';
+            const infoBox = document.createElement('div');
+            infoBox.style.display = 'flex'; infoBox.style.alignItems = 'center'; infoBox.style.gap = '15px'; infoBox.style.marginBottom = '20px';
+            infoBox.style.padding = '15px'; infoBox.style.background = 'var(--bg-color)'; infoBox.style.borderRadius = '8px';
             
-            const renderList = () => {
-                grid.innerHTML = '';
-                ChatApp.State.profiles.forEach(p => {
-                    const card = document.createElement('div');
-                    card.className = 'profile-card' + (p.id === ChatApp.State.activeProfileId ? ' active' : '');
-                    
-                    const avatar = document.createElement('div');
-                    avatar.className = 'profile-card-avatar';
-                    avatar.style.backgroundColor = p.avatarColor;
-                    avatar.textContent = p.name.substring(0, 2).toUpperCase();
-                    
-                    const name = document.createElement('div');
-                    name.className = 'profile-card-name';
-                    name.textContent = p.name;
-                    
-                    card.appendChild(avatar); card.appendChild(name);
-                    
-                    if (p.id !== 'default') {
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.className = 'profile-card-delete';
-                        deleteBtn.innerHTML = '✕';
-                        deleteBtn.title = 'Delete Profile';
-                        deleteBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            if (confirm(`Delete profile "${p.name}"? This deletes all history, configs, and folders for this profile.`)) {
-                                ChatApp.Profiles.deleteProfile(p.id); renderList();
-                            }
-                        });
-                        card.appendChild(deleteBtn);
-                    }
-                    
-                    card.addEventListener('click', () => { ChatApp.Profiles.switchProfile(p.id); modal.remove(); });
-                    grid.appendChild(card);
-                });
-            };
-            renderList();
+            const pfp = document.createElement('div');
+            pfp.style.width = '48px'; pfp.style.height = '48px'; pfp.style.borderRadius = '50%';
+            pfp.style.display = 'flex'; pfp.style.alignItems = 'center'; pfp.style.justifyContent = 'center';
+            pfp.style.overflow = 'hidden'; pfp.style.fontWeight = 'bold';
             
-            const creator = document.createElement('div');
-            creator.className = 'profile-creator';
+            if (acc.pfp) {
+                pfp.innerHTML = `<img src="${acc.pfp}" style="width:100%;height:100%;object-fit:cover;">`;
+            } else {
+                pfp.style.backgroundColor = acc.themeColor || '#4f46e5';
+                pfp.textContent = acc.username.substring(0,2).toUpperCase();
+                pfp.style.color = 'white';
+            }
             
-            const creatorTitle = document.createElement('h4');
-            creatorTitle.textContent = 'Create New Profile';
-            creatorTitle.style.fontSize = '14px'; creatorTitle.style.fontWeight = 'bold'; creatorTitle.style.marginBottom = '12px';
+            const nameEl = document.createElement('div');
+            nameEl.style.fontWeight = 'bold'; nameEl.style.fontSize = '16px';
+            nameEl.textContent = acc.username;
             
-            const form = document.createElement('div');
-            form.className = 'profile-creator-form';
+            infoBox.appendChild(pfp); infoBox.appendChild(nameEl);
             
-            const input = document.createElement('input');
-            input.type = 'text'; input.placeholder = 'Profile Name'; input.className = 'modal-input';
-            input.style.width = '100%'; input.style.padding = '8px 12px'; input.style.borderRadius = '6px';
-            input.style.border = '1px solid var(--border-color)'; input.style.background = 'var(--input-bg)'; input.style.color = 'var(--text-color)';
+            const btnGroup = document.createElement('div');
+            btnGroup.style.display = 'flex'; btnGroup.style.flexDirection = 'column'; btnGroup.style.gap = '10px';
             
-            const colors = ['#4f46e5', '#0f766e', '#b91c1c', '#c2410c', '#15803d', '#701a75'];
-            let selectedColor = colors[0];
+            const logoutBtn = document.createElement('button');
+            logoutBtn.className = 'primary-btn';
+            logoutBtn.style.width = '100%';
+            logoutBtn.textContent = 'Lock / Logout';
+            logoutBtn.addEventListener('click', () => { ChatApp.Accounts.logout(); });
             
-            const colorRow = document.createElement('div');
-            colorRow.className = 'profile-creator-row';
-            
-            const colorLabel = document.createElement('span');
-            colorLabel.textContent = 'Avatar Color:'; colorLabel.style.fontSize = '12px';
-            
-            const colorSelector = document.createElement('div');
-            colorSelector.className = 'color-dot-selector';
-            colors.forEach(col => {
-                const dot = document.createElement('div');
-                dot.className = 'color-dot' + (col === selectedColor ? ' selected' : '');
-                dot.style.backgroundColor = col;
-                dot.addEventListener('click', () => {
-                    selectedColor = col;
-                    colorSelector.querySelectorAll('.color-dot').forEach(d => d.classList.remove('selected'));
-                    dot.classList.add('selected');
-                });
-                colorSelector.appendChild(dot);
-            });
-            colorRow.appendChild(colorLabel); colorRow.appendChild(colorSelector);
-            
-            const submitBtn = document.createElement('button');
-            submitBtn.className = 'primary-btn';
-            submitBtn.textContent = 'Add Profile';
-            submitBtn.addEventListener('click', () => {
-                const name = input.value.trim();
-                if (!name) return ChatApp.UI.showToast("Please enter a name", "error");
-                const newP = ChatApp.Profiles.createProfile(name, selectedColor);
-                input.value = ''; renderList();
-                ChatApp.UI.showToast(`Profile "${newP.name}" created`);
+            const delBtn = document.createElement('button');
+            delBtn.className = 'secondary-btn';
+            delBtn.style.width = '100%';
+            delBtn.style.color = 'var(--error-color)';
+            delBtn.style.borderColor = 'var(--error-color)';
+            delBtn.textContent = 'Delete Account';
+            delBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to delete this account? All local data will be wiped.')) {
+                    ChatApp.Accounts.deleteAccount(acc.id);
+                    ChatApp.Accounts.logout();
+                }
             });
             
-            form.appendChild(input); form.appendChild(colorRow); form.appendChild(submitBtn);
-            creator.appendChild(creatorTitle); creator.appendChild(form);
+            btnGroup.appendChild(logoutBtn); btnGroup.appendChild(delBtn);
             
-            container.appendChild(header); container.appendChild(grid); container.appendChild(creator);
+            container.appendChild(header); container.appendChild(infoBox); container.appendChild(btnGroup);
             modal.appendChild(container); document.body.appendChild(modal);
-            
-            modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+            modal.addEventListener('click', (e) => { if(e.target === modal) modal.remove(); });
         },
         openCanvasPanel(code, tab = 'preview') {
             const panel = this.elements.splitCanvasPanel;
@@ -2152,7 +2273,9 @@ const ChatApp = {
                 container.style.color = 'var(--text-color)'; container.style.textAlign = 'center';
                 
                 container.innerHTML = `
-                    <div style="font-size: 32px; margin-bottom: 12px;">🖥️</div>
+                    <div style="margin-bottom: 12px; color: var(--focus-color);">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+                    </div>
                     <h3 style="margin-bottom: 12px; font-weight:bold;">Share System Information?</h3>
                     <p style="font-size:13px; color:var(--text-secondary); margin-bottom: 20px; line-height: 1.4;">
                         J.B.A.I wants permission to read your browser, OS, hardware, and timezone details to assist with system-specific questions.
@@ -2383,7 +2506,7 @@ const ChatApp = {
                         canvasBtn.type = 'button';
                         canvasBtn.dataset.lang = wrapper.dataset.previewable;
                         canvasBtn.setAttribute('data-tooltip', 'Open in Canvas');
-                        canvasBtn.innerHTML = '⚡';
+                        canvasBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>';
                         actionsContainer.appendChild(canvasBtn);
                     }
 
@@ -3785,22 +3908,10 @@ You are a digital professional. Be concise, accurate, and effective.`;
 
     Controller: {
         init() {
-            ChatApp.UI.applyTheme(ChatApp.Store.getTheme());
-            ChatApp.Store.loadAllConversations();
-            ChatApp.Store.loadCustomPresets();
-            ChatApp.Store.getProviderSettings();
-            ChatApp.Store.getToolsConfig();
             ChatApp.UI.cacheElements();
             ChatApp.UI.initTooltips();
             ChatApp.UI.initSlashAutocomplete();
-            ChatApp.UI.renderSidebar();
-            ChatApp.UI.toggleSendButtonState();
-            ChatApp.UI.renderConversationSurface();
-            this.applyDisplaySettings();
             this.initOfflineDetection();
-            this.markJbAiBackendStatusUnknown(ChatApp.Store.getProviderSettings().baseUrls?.jbai || '');
-            void this.refreshJbAiBackendStatus({ force: false, silent: true });
-            
             const { elements } = ChatApp.UI;
             const { Controller } = ChatApp;
             
@@ -3824,8 +3935,8 @@ You are a digital professional. Be concise, accurate, and effective.`;
             }
 
             // New feature bindings
-            const profileBtn = document.getElementById('profile-selector-btn');
-            if (profileBtn) profileBtn.addEventListener('click', () => ChatApp.UI.showProfileManagerModal());
+            const profileBtn = document.getElementById('profile-widget');
+            if (profileBtn) profileBtn.addEventListener('click', () => ChatApp.UI.showAccountManagerModal());
 
             const addFolderBtn = document.getElementById('add-folder-btn');
             if (addFolderBtn) addFolderBtn.addEventListener('click', () => {
@@ -3879,10 +3990,132 @@ You are a digital professional. Be concise, accurate, and effective.`;
             elements.body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.add('drag-over'); });
             elements.body.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) { elements.body.classList.remove('drag-over'); } });
             elements.body.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.remove('drag-over'); if (e.dataTransfer?.files?.length > 0) { Controller.addFilesToState(e.dataTransfer.files); } });
+            // Custom Context Menu
+            this.initCustomContextMenu();
+            
             window.addEventListener('beforeunload', () => {
                 ChatApp.UI._revokeFilePreviewUrls();
                 ChatApp.State.revokeGeneratedDownloadUrls();
             });
+        },
+        initCustomContextMenu() {
+            const menu = document.getElementById('custom-context-menu');
+            if (!menu) return;
+            
+            document.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                menu.innerHTML = '';
+                
+                const items = this.getContextMenuItems(e.target);
+                items.forEach(item => {
+                    if (item.divider) {
+                        const div = document.createElement('div');
+                        div.className = 'context-menu-divider';
+                        menu.appendChild(div);
+                        return;
+                    }
+                    const el = document.createElement('div');
+                    el.className = 'context-menu-item' + (item.danger ? ' danger' : '');
+                    el.innerHTML = `<span class="context-menu-icon">${item.icon}</span><span>${item.label}</span>`;
+                    el.addEventListener('click', () => { menu.style.display = 'none'; item.action(); });
+                    menu.appendChild(el);
+                });
+                
+                menu.style.display = 'block';
+                
+                // Position: ensure it doesn't go off-screen
+                const x = Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 8);
+                const y = Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 8);
+                menu.style.left = `${x}px`;
+                menu.style.top = `${y}px`;
+            });
+            
+            document.addEventListener('click', () => { menu.style.display = 'none'; });
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape') menu.style.display = 'none'; });
+            window.addEventListener('blur', () => { menu.style.display = 'none'; });
+        },
+        getContextMenuItems(target) {
+            const ICONS = {
+                COPY: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>',
+                PASTE: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect></svg>',
+                DELETE: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>',
+                EDIT: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>',
+                NEW_CHAT: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>',
+                RELOAD: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>',
+                SELECT_ALL: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>',
+                ZOOM: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>',
+                FOLDER: '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>',
+            };
+            
+            const items = [];
+            const selection = window.getSelection().toString().trim();
+            
+            // Text selection actions
+            if (selection) {
+                items.push({ icon: ICONS.COPY, label: 'Copy', action: () => ChatApp.Utils.copyToClipboard(selection) });
+                items.push({ divider: true });
+            }
+            
+            // Chat input context
+            const chatInput = target.closest('#chat-input');
+            if (chatInput) {
+                if (!selection) {
+                    items.push({ icon: ICONS.PASTE, label: 'Paste', action: async () => {
+                        try {
+                            const text = await navigator.clipboard.readText();
+                            chatInput.value += text;
+                            chatInput.dispatchEvent(new Event('input'));
+                        } catch(e) { ChatApp.UI.showToast('Clipboard access denied', 'error'); }
+                    }});
+                }
+                items.push({ icon: ICONS.SELECT_ALL, label: 'Select All', action: () => chatInput.select() });
+                items.push({ divider: true });
+            }
+            
+            // Message context
+            const messageEl = target.closest('.message');
+            if (messageEl) {
+                const messageId = messageEl.dataset.messageId;
+                const contentEl = messageEl.querySelector('.message-content');
+                const rawText = contentEl ? contentEl.innerText : '';
+                if (rawText && !selection) {
+                    items.push({ icon: ICONS.COPY, label: 'Copy Message', action: () => ChatApp.Utils.copyToClipboard(rawText) });
+                }
+                if (messageId) {
+                    items.push({ icon: ICONS.DELETE, label: 'Delete Message', danger: true, action: () => ChatApp.Controller.deleteMessage(messageId) });
+                }
+                items.push({ divider: true });
+            }
+            
+            // Conversation sidebar item context
+            const convoItem = target.closest('.conversation-item');
+            if (convoItem) {
+                const chatId = convoItem.dataset.chatId;
+                items.push({ icon: ICONS.EDIT, label: 'Rename', action: () => {
+                    const titleEl = convoItem.querySelector('.conversation-title');
+                    if (titleEl) titleEl.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+                }});
+                items.push({ icon: ICONS.FOLDER, label: 'Move to Folder', action: () => {
+                    const folderBtn = convoItem.querySelector('.folder-btn');
+                    if (folderBtn) folderBtn.click();
+                }});
+                items.push({ icon: ICONS.DELETE, label: 'Delete Chat', danger: true, action: () => ChatApp.Controller.deleteConversation(chatId) });
+                items.push({ divider: true });
+            }
+            
+            // Image context
+            const imgEl = target.closest('img');
+            if (imgEl && !target.closest('.avatar-preview') && !target.closest('.profile-avatar')) {
+                items.push({ icon: ICONS.ZOOM, label: 'View Full Size', action: () => ChatApp.UI.showFullscreenPreview(imgEl.src, 'image') });
+                items.push({ icon: ICONS.COPY, label: 'Copy Image URL', action: () => ChatApp.Utils.copyToClipboard(imgEl.src) });
+                items.push({ divider: true });
+            }
+            
+            // Always-present items
+            items.push({ icon: ICONS.NEW_CHAT, label: 'New Chat', action: () => ChatApp.Controller.startNewChat() });
+            items.push({ icon: ICONS.RELOAD, label: 'Refresh', action: () => location.reload() });
+            
+            return items;
         },
         setJbAiBackendStatus(statusUpdate) {
             const current = ChatApp.State.jbAiBackend || {};
@@ -4883,6 +5116,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
     }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     ChatApp.Controller.init();
+    await ChatApp.Accounts.init();
 });
