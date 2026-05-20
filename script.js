@@ -730,11 +730,11 @@ const ChatApp = {
             }
         },
         deleteFolder(id) {
-            ChatApp.State.folders = ChatApp.State.folders.filter(f => f.id !== id);
+            ChatApp.State.folders = ChatApp.State.folders.filter(f => String(f.id) !== String(id));
             this.saveFolders();
             
             ChatApp.State.allConversations.forEach(chat => {
-                if (chat.folderId === id) {
+                if (chat.folderId && String(chat.folderId) === String(id)) {
                     chat.folderId = null;
                 }
             });
@@ -742,9 +742,9 @@ const ChatApp = {
             ChatApp.UI.renderSidebar();
         },
         moveChatToFolder(chatId, folderId) {
-            const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
+            const chat = ChatApp.State.allConversations.find(c => String(c.id) === String(chatId));
             if (chat) {
-                chat.folderId = folderId || null;
+                chat.folderId = folderId ? String(folderId) : null;
                 ChatApp.Store.saveAllConversations();
                 ChatApp.UI.renderSidebar();
             }
@@ -872,9 +872,20 @@ const ChatApp = {
             });
             // Hide tooltip on any click or mousedown
             document.addEventListener('mousedown', () => hideTooltipFn(), { capture: true });
+            document.addEventListener('click', () => hideTooltipFn(), { capture: true });
+            document.addEventListener('dragstart', () => hideTooltipFn(), { capture: true });
             document.addEventListener('scroll', () => hideTooltipFn(), { capture: true, passive: true });
-            // Hide tooltip when window loses focus
+            // Hide tooltip when window loses focus or cursor leaves the page
             window.addEventListener('blur', () => hideTooltipFn());
+            window.addEventListener('mouseleave', () => hideTooltipFn());
+
+            // MutationObserver to automatically hide tooltip if target is removed from DOM
+            const observer = new MutationObserver(() => {
+                if (activeTooltipTarget && !activeTooltipTarget.isConnected) {
+                    hideTooltipFn();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
         },
         applyTheme(themeName) {
             document.documentElement.setAttribute('data-theme', themeName);
@@ -1494,10 +1505,23 @@ const ChatApp = {
             
             if (!list._dragBound) {
                 list._dragBound = true;
-                list.addEventListener('dragover', (e) => { e.preventDefault(); list.classList.add('drag-over'); });
-                list.addEventListener('dragleave', () => { list.classList.remove('drag-over'); });
+                list._dragCounter = 0;
+                list.addEventListener('dragenter', (e) => {
+                    e.preventDefault();
+                    list._dragCounter++;
+                    list.classList.add('drag-over');
+                });
+                list.addEventListener('dragover', (e) => { e.preventDefault(); });
+                list.addEventListener('dragleave', () => {
+                    list._dragCounter--;
+                    if (list._dragCounter <= 0) {
+                        list._dragCounter = 0;
+                        list.classList.remove('drag-over');
+                    }
+                });
                 list.addEventListener('drop', (e) => {
                     e.preventDefault();
+                    list._dragCounter = 0;
                     list.classList.remove('drag-over');
                     const chatId = e.dataTransfer.getData('text/plain');
                     if (chatId) ChatApp.Folders.moveChatToFolder(chatId, null);
@@ -1525,10 +1549,23 @@ const ChatApp = {
                     const folderGroup = document.createElement('div');
                     folderGroup.className = 'folder-group' + (isCollapsed ? ' collapsed' : '');
                     
-                    folderGroup.addEventListener('dragover', (e) => { e.preventDefault(); folderGroup.classList.add('drag-over'); });
-                    folderGroup.addEventListener('dragleave', () => { folderGroup.classList.remove('drag-over'); });
+                    folderGroup._dragCounter = 0;
+                    folderGroup.addEventListener('dragenter', (e) => {
+                        e.preventDefault();
+                        folderGroup._dragCounter++;
+                        folderGroup.classList.add('drag-over');
+                    });
+                    folderGroup.addEventListener('dragover', (e) => { e.preventDefault(); });
+                    folderGroup.addEventListener('dragleave', () => {
+                        folderGroup._dragCounter--;
+                        if (folderGroup._dragCounter <= 0) {
+                            folderGroup._dragCounter = 0;
+                            folderGroup.classList.remove('drag-over');
+                        }
+                    });
                     folderGroup.addEventListener('drop', (e) => {
                         e.preventDefault();
+                        folderGroup._dragCounter = 0;
                         folderGroup.classList.remove('drag-over');
                         const chatId = e.dataTransfer.getData('text/plain');
                         if (chatId) ChatApp.Folders.moveChatToFolder(chatId, folder.id);
@@ -1618,7 +1655,7 @@ const ChatApp = {
                     const chatList = document.createElement('div');
                     chatList.className = 'folder-chats';
                     
-                    const folderChats = ChatApp.State.allConversations.filter(c => c.folderId === folder.id);
+                    const folderChats = ChatApp.State.allConversations.filter(c => c.folderId && String(c.folderId) === String(folder.id));
                     if (folderChats.length === 0) {
                         const emptyInfo = document.createElement('div');
                         emptyInfo.className = 'conversation-empty';
@@ -1660,7 +1697,7 @@ const ChatApp = {
             item.dataset.chatId = chat.id;
             item.setAttribute('role', 'menuitem');
             item.setAttribute('draggable', 'true');
-            if (chat.id === ChatApp.State.currentChatId) {
+            if (String(chat.id) === String(ChatApp.State.currentChatId)) {
                 item.classList.add('active');
                 item.setAttribute('aria-current', 'true');
             }
@@ -3780,9 +3817,46 @@ You are a digital professional. Be concise, accurate, and effective.`;
             elements.fullscreenCloseBtn.addEventListener('click', Controller.closeFullscreenPreview.bind(Controller));
             elements.fullscreenOverlay.addEventListener('click', (e) => { if (e.target === elements.fullscreenOverlay) { Controller.closeFullscreenPreview(); } });
             document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && elements.body.classList.contains('modal-open')) { Controller.closeFullscreenPreview(); } });
-            elements.body.addEventListener('dragover', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.add('drag-over'); });
-            elements.body.addEventListener('dragleave', (e) => { e.preventDefault(); e.stopPropagation(); if (e.relatedTarget === null || !elements.body.contains(e.relatedTarget)) { elements.body.classList.remove('drag-over'); } });
-            elements.body.addEventListener('drop', (e) => { e.preventDefault(); e.stopPropagation(); elements.body.classList.remove('drag-over'); if (e.dataTransfer?.files?.length > 0) { Controller.addFilesToState(e.dataTransfer.files); } });
+            let bodyDragCounter = 0;
+            elements.body.addEventListener('dragenter', (e) => {
+                const isFileDrag = e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+                if (!isFileDrag) return;
+                e.preventDefault();
+                e.stopPropagation();
+                bodyDragCounter++;
+                const wrapper = document.querySelector('.chat-input-wrapper');
+                if (wrapper) wrapper.classList.add('file-drag-over');
+            });
+            elements.body.addEventListener('dragover', (e) => {
+                const isFileDrag = e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+                if (!isFileDrag) return;
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            elements.body.addEventListener('dragleave', (e) => {
+                const isFileDrag = e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+                if (!isFileDrag) return;
+                e.preventDefault();
+                e.stopPropagation();
+                bodyDragCounter--;
+                if (bodyDragCounter <= 0) {
+                    bodyDragCounter = 0;
+                    const wrapper = document.querySelector('.chat-input-wrapper');
+                    if (wrapper) wrapper.classList.remove('file-drag-over');
+                }
+            });
+            elements.body.addEventListener('drop', (e) => {
+                const isFileDrag = e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+                if (!isFileDrag) return;
+                e.preventDefault();
+                e.stopPropagation();
+                bodyDragCounter = 0;
+                const wrapper = document.querySelector('.chat-input-wrapper');
+                if (wrapper) wrapper.classList.remove('file-drag-over');
+                if (e.dataTransfer?.files?.length > 0) {
+                    Controller.addFilesToState(e.dataTransfer.files);
+                }
+            });
             // Custom Context Menu
             this.initCustomContextMenu();
             
@@ -4701,7 +4775,7 @@ You are a digital professional. Be concise, accurate, and effective.`;
             if (ChatApp.State.currentConversation.length === 0) return;
             try {
                 if (ChatApp.State.currentChatId) {
-                    const chat = ChatApp.State.allConversations.find(c => c.id === ChatApp.State.currentChatId);
+                    const chat = ChatApp.State.allConversations.find(c => String(c.id) === String(ChatApp.State.currentChatId));
                     if (chat) { 
                         chat.history = ChatApp.State.currentConversation;
                         const userMessages = ChatApp.State.currentConversation.filter(m => m.content.role === 'user').length;
@@ -4723,8 +4797,8 @@ You are a digital professional. Be concise, accurate, and effective.`;
             } catch (error) { console.error('Failed to save chat:', error); ChatApp.UI.showToast('Failed to save conversation. Please try again.', 'error'); }
         },
         loadChat(chatId) {
-            if (ChatApp.State.currentChatId === chatId) return;
-            const chat = ChatApp.State.allConversations.find(c => c.id === chatId);
+            if (String(ChatApp.State.currentChatId) === String(chatId)) return;
+            const chat = ChatApp.State.allConversations.find(c => String(c.id) === String(chatId));
             if (!chat) { ChatApp.UI.showToast("Load failed.", "error"); return; }
             this.startNewChat();
             ChatApp.State.currentChatId = chatId;
@@ -4762,9 +4836,9 @@ You are a digital professional. Be concise, accurate, and effective.`;
         deleteConversation(chatId) {
             if (!chatId) return;
             if (!confirm('Delete this conversation? This action cannot be undone.')) return;
-            ChatApp.State.allConversations = ChatApp.State.allConversations.filter(c => c.id !== chatId);
+            ChatApp.State.allConversations = ChatApp.State.allConversations.filter(c => String(c.id) !== String(chatId));
             ChatApp.Store.saveAllConversations();
-            if (ChatApp.State.currentChatId === chatId) { this.startNewChat(); } else { ChatApp.UI.renderSidebar(); }
+            if (String(ChatApp.State.currentChatId) === String(chatId)) { this.startNewChat(); } else { ChatApp.UI.renderSidebar(); }
             ChatApp.UI.showToast('Conversation deleted.');
         },
         downloadAllData() {
