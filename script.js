@@ -3480,6 +3480,8 @@ const ChatApp = {
             try {
                 const response = await puterInstance.ai.chat(messages, {
                     model: model || 'gpt-5.4-nano',
+                    temperature: titleMode ? 0.2 : 0.7,
+                    max_tokens: titleMode ? 30 : 8192,
                     stream: false
                 });
                 const text = typeof response === 'string' ? response : (response?.message?.content || '');
@@ -3508,6 +3510,8 @@ const ChatApp = {
             try {
                 response = await puterInstance.ai.chat(messages, {
                     model: model || 'gpt-5.4-nano',
+                    temperature: 0.7,
+                    max_tokens: 8192,
                     stream: true
                 });
             } catch (err) {
