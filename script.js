@@ -24,7 +24,8 @@ const ChatApp = {
             OPENAI: 'openai',
             ANTHROPIC: 'anthropic',
             GROQ: 'groq',
-            DEEPSEEK: 'deepseek'
+            DEEPSEEK: 'deepseek',
+            GPTFREE: 'gpt-free'
         },
         API_ENDPOINTS: {
             GOOGLE_BASE: 'https://generativelanguage.googleapis.com/v1beta/models',
@@ -65,14 +66,16 @@ const ChatApp = {
                 openai: 'gpt-4.1-mini',
                 anthropic: 'claude-3-5-haiku-latest',
                 groq: 'llama-3.3-70b-versatile',
-                deepseek: 'deepseek-chat'
+                deepseek: 'deepseek-chat',
+                'gpt-free': 'gpt-5.4-nano'
             },
             apiKeys: {
                 google: '',
                 openai: '',
                 anthropic: '',
                 groq: '',
-                deepseek: ''
+                deepseek: '',
+                'gpt-free': ''
             }
         },
         PROMPT_LIBRARY_DEFAULT_CATEGORY: 'All',
@@ -2458,6 +2461,7 @@ const ChatApp = {
                         <option value="anthropic">Anthropic</option>
                         <option value="groq">Groq</option>
                         <option value="deepseek">DeepSeek</option>
+                        <option value="gpt-free">GPT-Free</option>
                     </select>
                 </div>
                 <div class="settings-row settings-row-input" data-provider-base-url-row="true" style="display: none;">
@@ -2629,6 +2633,15 @@ const ChatApp = {
                     requiresModel: true,
                     requiresApiKey: true,
                     capabilityNote: 'DeepSeek direct mode runs OpenAI-compatible completions using your DeepSeek API key.'
+                },
+                'gpt-free': {
+                    modelPlaceholder: 'gpt-5.4-nano',
+                    supportsGoogleTools: false,
+                    supportsAgentMode: true,
+                    requiresBaseUrl: false,
+                    requiresModel: true,
+                    requiresApiKey: false,
+                    capabilityNote: 'GPT-Free mode runs serverless and keyless in your browser powered by Puter.js (free and unlimited OpenAI models).'
                 }
             };
 
@@ -2988,6 +3001,8 @@ const ChatApp = {
                     return 'Groq';
                 case ChatApp.Config.PROVIDERS.DEEPSEEK:
                     return 'DeepSeek';
+                case ChatApp.Config.PROVIDERS.GPTFREE:
+                    return 'GPT-Free';
                 default:
                     return 'Google';
             }
@@ -3001,6 +3016,12 @@ const ChatApp = {
                     throw new Error('J.B.A.I backend URL is missing. Add it in Settings.');
                 }
                 return { provider, baseUrl: normalizedBaseUrl };
+            }
+            if (provider === ChatApp.Config.PROVIDERS.GPTFREE) {
+                if (!model) {
+                    throw new Error(`${providerLabel} model name is missing. Add it in Settings.`);
+                }
+                return { provider, model };
             }
             if (!apiKey) {
                 throw new Error(`${providerLabel} API key is missing. Add it in Settings.`);
@@ -3388,6 +3409,123 @@ const ChatApp = {
             if (!text) throw new Error('Anthropic returned an empty response.');
             return text;
         },
+        async ensurePuterLoaded() {
+            if (window.puter) return window.puter;
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = 'https://js.puter.com/v2/';
+                script.onload = () => {
+                    if (window.puter) resolve(window.puter);
+                    else reject(new Error('Puter.js loaded but object not found.'));
+                };
+                script.onerror = () => reject(new Error('Failed to load Puter.js from CDN.'));
+                document.head.appendChild(script);
+            });
+        },
+        partsToPuterContent(parts) {
+            const hasImages = parts.some(part => part?.inlineData?.mimeType?.startsWith('image/'));
+            if (!hasImages) {
+                return parts.map(part => part.text || '').join('\n');
+            }
+
+            const content = [];
+            let omittedCount = 0;
+            parts.forEach((part) => {
+                if (typeof part?.text === 'string' && part.text) {
+                    content.push({ type: 'text', text: part.text });
+                    return;
+                }
+
+                const inlineData = part?.inlineData;
+                if (!inlineData || typeof inlineData !== 'object') return;
+
+                const mimeType = typeof inlineData.mimeType === 'string' ? inlineData.mimeType : '';
+                const data = typeof inlineData.data === 'string' ? inlineData.data : '';
+
+                if (!data) return;
+                if (mimeType.startsWith('image/')) {
+                    content.push({
+                        type: 'image',
+                        image: data
+                    });
+                } else {
+                    omittedCount += 1;
+                }
+            });
+
+            if (omittedCount > 0) {
+                content.push({
+                    type: 'text',
+                    text: `[${omittedCount} non-image attachment(s) omitted because GPT-Free mode only forwards image attachments.]`
+                });
+            }
+
+            return content;
+        },
+        async requestPuterText({ model, contents, systemInstructionText, signal, titleMode = false }) {
+            const puterInstance = await this.ensurePuterLoaded();
+
+            const messages = [];
+            if (systemInstructionText) {
+                messages.push({ role: 'system', content: systemInstructionText });
+            }
+            contents.forEach((message) => {
+                const role = message.role === 'model' ? 'assistant' : 'user';
+                messages.push({
+                    role,
+                    content: this.partsToPuterContent(message.parts || [])
+                });
+            });
+
+            try {
+                const response = await puterInstance.ai.chat(messages, {
+                    model: model || 'gpt-5.4-nano',
+                    stream: false
+                });
+                const text = typeof response === 'string' ? response : (response?.message?.content || '');
+                if (!text) throw new Error('Puter.js returned an empty response.');
+                return text;
+            } catch (err) {
+                throw new Error(`Puter.js error: ${err.message || err}`);
+            }
+        },
+        async *streamPuterResponse({ contents, systemInstructionText, model, signal }) {
+            const puterInstance = await this.ensurePuterLoaded();
+
+            const messages = [];
+            if (systemInstructionText) {
+                messages.push({ role: 'system', content: systemInstructionText });
+            }
+            contents.forEach((message) => {
+                const role = message.role === 'model' ? 'assistant' : 'user';
+                messages.push({
+                    role,
+                    content: this.partsToPuterContent(message.parts || [])
+                });
+            });
+
+            let response;
+            try {
+                response = await puterInstance.ai.chat(messages, {
+                    model: model || 'gpt-5.4-nano',
+                    stream: true
+                });
+            } catch (err) {
+                throw new Error(`Puter.js error: ${err.message || err}`);
+            }
+
+            if (!response) {
+                throw new Error('Puter.js returned an empty response.');
+            }
+
+            for await (const part of response) {
+                if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+                const text = part?.text || '';
+                if (text) {
+                    yield { type: 'text', delta: text };
+                }
+            }
+        },
         async requestJbAiText({ baseUrl, contents, signal, toolsConfig }) {
             const payload = this.buildJbAiPayload(contents, toolsConfig);
 
@@ -3563,6 +3701,16 @@ const ChatApp = {
                 });
             }
 
+            if (provider === ChatApp.Config.PROVIDERS.GPTFREE) {
+                return this.requestPuterText({
+                    model,
+                    contents: sanitizedContents,
+                    systemInstructionText,
+                    signal,
+                    titleMode
+                });
+            }
+
             return this.requestGoogleText({
                 apiKey,
                 model,
@@ -3702,12 +3850,23 @@ You are a digital professional. Be concise, accurate, and effective.`;
         },
         async *streamTextResponse(apiContents, systemInstruction, signal, toolsConfig) {
             try {
-                const { provider } = ChatApp.Store.getActiveProviderSettings();
+                const { provider, model } = ChatApp.Store.getActiveProviderSettings();
                 if (provider === ChatApp.Config.PROVIDERS.JBAI) {
                     yield* this.streamJbAiResponse({
                         contents: apiContents,
                         signal,
                         toolsConfig
+                    });
+                    return;
+                }
+
+                if (provider === ChatApp.Config.PROVIDERS.GPTFREE) {
+                    const systemInstructionText = this.joinSystemInstruction(systemInstruction);
+                    yield* this.streamPuterResponse({
+                        contents: apiContents,
+                        systemInstructionText,
+                        model,
+                        signal
                     });
                     return;
                 }
